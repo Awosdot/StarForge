@@ -48,6 +48,9 @@ enum Commands {
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
+    /// Generate Soroban smart contract code from natural language
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
     /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
@@ -219,6 +222,7 @@ async fn main() {
     let command_name = match &cli.command {
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
+        Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
@@ -266,6 +270,7 @@ async fn main() {
     let result = match cli.command {
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
+        Commands::Generate(cmd) => commands::generate::handle(cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
         Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
         Commands::Debug(cmd) => commands::debug::handle(cmd).await,
