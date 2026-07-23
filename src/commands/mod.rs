@@ -2,6 +2,7 @@ pub mod ai;
 pub mod analytics;
 pub mod approval;
 pub mod audit;
+pub mod autocomplete;
 pub mod backup;
 pub mod benchmark;
 pub mod bridge;

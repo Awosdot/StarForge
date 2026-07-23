@@ -87,6 +87,29 @@ enum Commands {
     #[command(subcommand)]
     Completions(commands::completions::CompletionShell),
 
+    /// Smart autocomplete — suggest and record commands
+    Autocomplete {
+        /// Show suggestions for this partial command
+        #[arg(long)]
+        suggest: Option<String>,
+
+        /// Record this command in history
+        #[arg(long)]
+        record: Option<String>,
+
+        /// Interactive autocomplete mode
+        #[arg(long, short)]
+        interactive: bool,
+
+        /// Clear command history
+        #[arg(long)]
+        clear_history: bool,
+
+        /// Show usage statistics
+        #[arg(long)]
+        stats: bool,
+    },
+
     /// Interactive REPL for local Soroban contract testing
     Shell(commands::shell::ShellArgs),
 
@@ -194,6 +217,10 @@ enum Commands {
     /// Execute an installed plugin command (e.g. `starforge defi ...`)
     #[command(external_subcommand)]
     External(Vec<String>),
+
+    /// Contract storage migration tools (transform, validate, rollback)
+    #[command(subcommand)]
+    Migrate(commands::migrate::MigrateCommands),
 }
 
 #[tokio::main]
@@ -228,6 +255,7 @@ async fn main() {
         Commands::Network(_) => "network",
         Commands::Node(_) => "node",
         Commands::Completions(_) => "completions",
+        Commands::Autocomplete { .. } => "autocomplete",
         Commands::Shell(_) => "shell",
         Commands::Monitor(_) => "monitor",
         Commands::Multisig(_) => "multisig",
@@ -258,6 +286,7 @@ async fn main() {
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
         Commands::External(_) => "external",
+        Commands::Migrate(_) => "migrate",
     }
     .to_string();
 
@@ -279,6 +308,9 @@ async fn main() {
         Commands::Network(cmd) => commands::network::handle(cmd).await,
         Commands::Node(cmd) => commands::node::handle(cmd).await,
         Commands::Completions(shell) => commands::completions::handle(shell).await,
+        Commands::Autocomplete { suggest, record, interactive, clear_history, stats } => {
+            commands::autocomplete::handle_autocomplete(suggest, record, interactive, clear_history, stats).await
+        },
         Commands::Shell(args) => commands::shell::handle(args).await,
         Commands::Monitor(args) => commands::monitor::handle(args).await,
         Commands::Multisig(cmd) => commands::multisig_builder::handle(cmd).await,
@@ -309,6 +341,7 @@ async fn main() {
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
     };
     let duration = start.elapsed();
 
