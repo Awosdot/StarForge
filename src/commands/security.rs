@@ -171,7 +171,7 @@ pub struct RemediationArgs {
     pub command: RemediationCommands,
 }
 
-pub async fn handle(cmd: SecurityCommands) -> Result<()> {
+pub async fn handlez(cmd: SecurityCommands) -> Result<()> {
     match cmd {
         SecurityCommands::Harden(args) => handle_harden(args),
         SecurityCommands::Checklist(args) => handle_checklist(args),
@@ -662,4 +662,83 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             Ok(())
         }
     }
+
+    fn handle_dashboard() -> Result<()> {
+    p::header("Security Dashboard");
+
+    let mut incidents = IncidentStore::load_all()?;
+
+    let critical_open = incidents
+        .iter()
+        .filter(|i| {
+            i.severity.eq_ignore_ascii_case("critical")
+                && !matches!(i.status, crate::utils::security::IncidentStatus::Resolved)
+        })
+        .count();
+    let open_incidents = incidents
+        .iter()
+        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Resolved))
+        .count();
+
+    let remediation_items = crate::utils::security::remediation::load_all()?;
+    let open_remediation = remediation_items
+        .iter()
+        .filter(|i| {
+            let s = i.status.to_string();
+            s != "resolved" && s != "verified"
+        })
+        .count();
+
+    let mut score: i32 = 100;
+    score -= (critical_open as i32) * 20;
+    score -= ((open_incidents - critical_open) as i32) * 10;
+    score -= (open_remediation as i32) * 5;
+    let score = score.max(0);
+
+    println!();
+    p::kv("Security score", &format!("{}/100", score));
+    println!();
+
+    p::header("Risk Heatmap");
+    println!("  Critical open incidents : {}", critical_open);
+    println!("  Total open incidents    : {}", open_incidents);
+    println!("  Open remediation items  : {}", open_remediation);
+    println!();
+
+    p::header("Incident Timeline (most recent)");
+    if incidents.is_empty() {
+        p::info("No incidents recorded");
+    } else {
+        incidents.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        for inc in incidents.iter().take(10) {
+            println!(
+                "  {} [{}] {} — {:?} ({})",
+                inc.id, inc.severity, inc.title, inc.status, inc.created_at
+            );
+        }
+    }
+    println!();
+
+    p::header("Compliance Status");
+    p::kv(
+        "No critical open incidents",
+        if critical_open == 0 { "PASS" } else { "FAIL" },
+    );
+    p::kv(
+        "Remediation backlog clear",
+        if open_remediation == 0 { "PASS" } else { "FAIL" },
+    );
+    println!();
+
+    p::info("Run `starforge security audit <path>` for a live per-contract score.");
+    p::success("Dashboard generated");
+    Ok(())
+}
+
+    /// Track remediation of findings from audit/pentest/checklist runs
+    Remediation(RemediationArgs),
+    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
+    Dashboard,
+}
+
 }
