@@ -1,4 +1,4 @@
-pub mod ai_debug;
+pub mod ai_audit;
 pub mod analytics;
 pub mod approval;
 pub mod audit;
