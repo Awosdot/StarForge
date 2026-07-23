@@ -42,6 +42,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Local LLM assistant powered by Ollama (status, models, pull, ask, audit…)
+    #[command(subcommand)]
+    Ai(commands::ai::AiCommands),
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
@@ -108,6 +111,9 @@ enum Commands {
     /// Manage third-party plugins
     #[command(subcommand)]
     Plugin(commands::plugin::PluginCommands),
+    /// Privacy protection, anonymization, consent, and reporting
+    #[command(subcommand)]
+    Privacy(commands::privacy::PrivacyCommands),
     /// Manage community contract templates from the marketplace
     #[command(subcommand)]
     Template(commands::template::TemplateCommands),
@@ -206,8 +212,10 @@ async fn main() {
     }
 
     let command_name = match &cli.command {
+        Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
+        Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
@@ -228,6 +236,7 @@ async fn main() {
         Commands::Test(_) => "test",
         Commands::Gas(_) => "gas",
         Commands::Plugin(_) => "plugin",
+        Commands::Privacy(_) => "privacy",
         Commands::Template(_) => "template",
         Commands::Registry(_) => "registry",
         Commands::Upgrade(_) => "upgrade",
@@ -247,14 +256,17 @@ async fn main() {
         Commands::Docs(_) => "docs",
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
+        Commands::Migrate(_) => "migrate",
         Commands::External(_) => "external",
     }
     .to_string();
 
     let start = std::time::Instant::now();
     let result = match cli.command {
+        Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
+        Commands::Generate(cmd) => commands::generate::handle(cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
         Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
         Commands::Debug(cmd) => commands::debug::handle(cmd).await,
@@ -275,6 +287,7 @@ async fn main() {
         Commands::Test(args) => commands::test::handle(args).await,
         Commands::Gas(args) => commands::gas::handle(args).await,
         Commands::Plugin(args) => commands::plugin::handle(args).await,
+        Commands::Privacy(cmd) => commands::privacy::handle(cmd).await,
         Commands::Template(args) => commands::template::handle(args).await,
         Commands::Registry(cmd) => commands::registry::handle(cmd).await,
         Commands::Upgrade(cmd) => commands::upgrade::handle(cmd).await,
@@ -294,6 +307,7 @@ async fn main() {
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();
@@ -322,6 +336,16 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
     let mut hints: Vec<String> = Vec::new();
 
     match command {
+        "ai" => {
+            if msg.contains("not running") || msg.contains("ollama") {
+                hints.push("Install Ollama from https://ollama.ai/download".into());
+                hints.push("Start the daemon: ollama serve".into());
+                hints.push("Pull a model: starforge ai pull codellama:7b".into());
+            } else if msg.contains("model") || msg.contains("not found") {
+                hints.push("List available models: starforge ai models".into());
+                hints.push("Download a model: starforge ai pull codellama:7b".into());
+            }
+        }
         "wallet" => {
             if msg.contains("not found") || msg.contains("no wallet") {
                 hints.push("Create a wallet first: starforge wallet create <name>".into());

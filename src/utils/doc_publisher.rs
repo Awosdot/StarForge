@@ -10,6 +10,7 @@
 //! All operations are synchronous; async variants can be added if needed.
 
 use anyhow::{Context, Result};
+use reqwest;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -228,35 +229,43 @@ fn publish_http(
     create_tarball(build_dir, &tarball_path)
         .context("Failed to create documentation tarball")?;
 
-    let bytes = fs::read(&tarball_path).context("Failed to read tarball")?;
+    let bytes = std::fs::read(&tarball_path).context("Failed to read tarball")?;
 
-    let mut request = ureq::post(endpoint).set("Content-Type", "application/gzip");
-    if let Some(token) = auth_token {
-        request = request.set("Authorization", &format!("Bearer {}", token));
-    }
-
-    let response = request
-        .send_bytes(&bytes)
-        .with_context(|| format!("HTTP POST to {} failed", endpoint))?;
+    let endpoint_owned = endpoint.to_string();
+    let token_owned = auth_token.map(String::from);
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+    let (status_code, status_text) = rt.block_on(async move {
+        let client = reqwest::Client::new();
+        let mut req = client
+            .post(&endpoint_owned)
+            .header("Content-Type", "application/gzip")
+            .body(bytes);
+        if let Some(token) = token_owned {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        match req.send().await {
+            Ok(r) => (r.status().as_u16(), r.status().canonical_reason().unwrap_or("").to_string()),
+            Err(_) => (500u16, "request failed".to_string()),
+        }
+    });
 
     // Clean up tarball.
-    let _ = fs::remove_file(&tarball_path);
+    let _ = std::fs::remove_file(&tarball_path);
 
-    if response.status() >= 200 && response.status() < 300 {
+    if (200..300).contains(&status_code) {
         Ok(PublishResult {
             published_to: endpoint.to_string(),
             files_written,
             message: format!(
                 "Documentation uploaded to {} (HTTP {})",
-                endpoint,
-                response.status()
+                endpoint, status_code
             ),
         })
     } else {
         anyhow::bail!(
             "HTTP publish failed with status {}: {}",
-            response.status(),
-            response.status_text()
+            status_code,
+            status_text
         )
     }
 }

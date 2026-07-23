@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use reqwest;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -192,20 +193,29 @@ struct RpcError {
 }
 
 fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
-    let body = serde_json::to_string(&RpcRequest {
-        jsonrpc: "2.0",
-        id: 1,
-        method,
-        params,
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+        "params": params,
+    });
+
+    let url_owned = url.to_string();
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+    let text = rt.block_on(async move {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()?;
+        let res = client
+            .post(&url_owned)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .context("RPC request failed")?;
+        res.text().await.context("Failed to read RPC response")
     })?;
 
-    let response = ureq::post(url)
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(30))
-        .send_string(&body)
-        .context("RPC request failed")?;
-
-    let text = response.into_string()?;
     let parsed: RpcResponse = serde_json::from_str(&text).context("Invalid RPC response")?;
 
     if let Some(error) = parsed.error {
@@ -273,12 +283,16 @@ impl TestnetClient {
             .context("Friendbot is not available for this network")?;
 
         let url = format!("{}?addr={}", bot_url, urlencoding::encode(address));
-        match ureq::get(&url)
-            .timeout(Duration::from_secs(self.config.timeout_secs))
-            .call()
-        {
-            Ok(response) => {
-                let text = response.into_string()?;
+        let timeout_secs = self.config.timeout_secs;
+        let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+        match rt.block_on(async move {
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(timeout_secs))
+                .build()?;
+            let res = client.get(&url).send().await.context("Friendbot request failed")?;
+            res.text().await.context("Failed to read Friendbot response")
+        }) {
+            Ok(text) => {
                 let parsed: serde_json::Value =
                     serde_json::from_str(&text).unwrap_or_default();
                 Ok(FundbotResult {
