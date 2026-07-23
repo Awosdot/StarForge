@@ -1,3 +1,4 @@
+pub mod ai_debugger;
 pub mod approval_engine;
 pub mod audit;
 pub mod security_scanner;

@@ -42,6 +42,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// AI-powered contract debugging assistant (error analysis, bug identification, fix suggestions)
+    #[command(subcommand)]
+    AiDebug(commands::ai_debug::AiDebugCommands),
+
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
@@ -217,6 +221,7 @@ async fn main() {
     }
 
     let command_name = match &cli.command {
+        Commands::AiDebug(_) => "ai-debug",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
         Commands::Contract(_) => "contract",
@@ -264,6 +269,7 @@ async fn main() {
 
     let start = std::time::Instant::now();
     let result = match cli.command {
+        Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
@@ -414,6 +420,11 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("List available templates: starforge template search".into());
                 hints.push("Check your internet connection and retry.".into());
             }
+        }
+        "ai-debug" => {
+            hints.push("Provide the full error message in quotes: starforge ai-debug analyse \"<error>\"".into());
+            hints.push("Explain a specific category: starforge ai-debug explain auth".into());
+            hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
         }
         "benchmark" | "test" => {
             if msg.contains("wasm") || msg.contains("not found") {

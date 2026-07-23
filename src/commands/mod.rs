@@ -1,3 +1,4 @@
+pub mod ai_debug;
 pub mod analytics;
 pub mod audit;
 pub mod backup;
