@@ -48,6 +48,9 @@ enum Commands {
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
+    /// Generate Soroban smart contract code from natural language
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
     /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
@@ -64,6 +67,9 @@ enum Commands {
     Deployments(commands::deployments::DeploymentsCommands),
     /// Show starforge config and environment info
     Info,
+    /// Manage AI prompt templates and versioning
+    #[command(subcommand)]
+    Prompts(commands::prompts::PromptsCommands),
     /// Manage starforge configuration (telemetry, network)
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
@@ -219,12 +225,14 @@ async fn main() {
     let command_name = match &cli.command {
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
+        Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
         Commands::Deploy(_) => "deploy",
         Commands::Deployments(_) => "deployments",
         Commands::Info => "info",
+        Commands::Prompts(_) => "prompts",
         Commands::Config(_) => "config",
         Commands::Telemetry(_) => "telemetry",
         Commands::Tx(_) => "tx",
@@ -266,12 +274,14 @@ async fn main() {
     let result = match cli.command {
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
+        Commands::Generate(cmd) => commands::generate::handle(cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
         Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
         Commands::Debug(cmd) => commands::debug::handle(cmd).await,
         Commands::Deploy(args) => commands::deploy::handle(args).await,
         Commands::Deployments(cmd) => commands::deployments::handle(cmd).await,
         Commands::Info => commands::info::handle().await,
+        Commands::Prompts(cmd) => commands::prompts::handle(cmd).await,
         Commands::Config(cmd) => commands::config::handle(cmd).await,
         Commands::Telemetry(cmd) => commands::telemetry::handle(cmd).await,
         Commands::Tx(args) => commands::tx::handle(args).await,
