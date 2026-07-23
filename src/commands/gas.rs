@@ -399,8 +399,10 @@ fn optimize(args: OptimizeArgs) -> Result<()> {
 
 // ── New subcommand handlers ───────────────────────────────────────────────────
 
+fn diff(old_wasm: std::path::PathBuf, new_wasm: std::path::PathBuf) -> Result<()> {
+    let old_wasm = old_wasm;
+    let new_wasm = new_wasm;
     p::header("Gas & Compute Visualizer — Diff");
-    p::kv("Baseline", &old_wasm.display().to_string());
     p::kv("Candidate", &new_wasm.display().to_string());
 
     let mut profile = profiler::Profiler::start();
@@ -511,6 +513,12 @@ fn optimize(args: OptimizeArgs) -> Result<()> {
         value_cell(&new_report.score.to_string()),
         if new_report.score >= old_report.score {
             good_cell(&format!("{:+}", new_report.score as i32 - old_report.score as i32))
+        } else {
+            bad_cell(&format!("{:+}", new_report.score as i32 - old_report.score as i32))
+        },
+        value_cell("—"),
+    ]);
+
     p::separator();
 
     // Gas breakdown
@@ -556,10 +564,9 @@ fn optimize(args: OptimizeArgs) -> Result<()> {
         } else if comparison.delta_stroops > 0 {
             "Regressed (higher estimated cost)"
         } else {
-            bad_cell(&format!("{:+}", new_report.score as i32 - old_report.score as i32))
+            "No change"
         },
-        value_cell("—"),
-    ]);
+    );
 
     println!("{table}");
 

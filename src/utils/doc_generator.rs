@@ -671,7 +671,7 @@ impl HtmlDocGenerator {
             .filter(|f| f.visibility == Visibility::Public)
             .map(|f| {
                 format!(
-                    r#"<li><a href="#fn-{}">{}</a></li>"#,
+                    r##"<li><a href="#fn-{}">{}</a></li>"##,
                     html_id(&f.name),
                     f.name
                 )
