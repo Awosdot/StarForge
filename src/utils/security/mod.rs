@@ -1,3 +1,5 @@
+pub mod ai_audit;
+pub mod ai_audit_service;
 pub mod anomaly;
 pub mod audit;
 pub mod checklist;
@@ -11,6 +13,12 @@ pub mod report;
 pub mod threat_intel;
 pub mod validation;
 
+pub use ai_audit::{
+    build_system_prompt, build_user_prompt, run_static_checks, AiAuditResponse, AttackScenario,
+    AuditLevel, AuditRequest, FixSuggestion, SecurityAuditReport, SecurityPatterns,
+    SecurityVulnerability, StaticCheckResult,
+};
+pub use ai_audit_service::AiAuditService;
 pub use anomaly::{AnomalyDetector, AnomalyFinding};
 pub use audit::{
     format_html_report, format_report, generate_github_actions_workflow, run_audit, AuditConfig,
