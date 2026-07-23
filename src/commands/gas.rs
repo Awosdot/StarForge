@@ -63,6 +63,14 @@ pub enum GasCommands {
         #[command(subcommand)]
         action: AlertsAction,
     },
+    /// AI-powered gas estimation and optimization suggestions
+    AiEstimate {
+        /// Path to the compiled wasm
+        wasm: PathBuf,
+        /// Target network
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -138,6 +146,7 @@ pub async fn handle(cmd: GasCommands) -> Result<()> {
         } => estimate(wasm, network, alert_threshold, save),
         GasCommands::History { network, limit } => history(network, limit),
         GasCommands::Alerts { action } => alerts(action),
+        GasCommands::AiEstimate { wasm, network } => ai_estimate(wasm, network),
     }
 }
 
@@ -641,7 +650,166 @@ mod tests {
     #[test]
     fn base_table_has_utf8_preset() {
         let table = base_table();
+        value_cell("WASM size (bytes)"),
+        value_cell(&old_report.size_bytes.to_string()),
+        value_cell(&new_report.size_bytes.to_string()),
+        if size_delta <= 0 {
+            good_cell(&format!("{:+}", size_delta))
+        } else {
+            bad_cell(&format!("{:+}", size_delta))
+        },
+        if size_pct <= 0.0 {
+            good_cell(&format!("{:+.2}%", size_pct))
+        } else {
+            bad_cell(&format!("{:+.2}%", size_pct))
+        },
+    ]);
+
+    // Sim cost row
+    table.add_row(vec![
+        value_cell("Est. sim cost (stroops)"),
+        value_cell(&old_cost.to_string()),
+        value_cell(&new_cost.to_string()),
+        if cost_delta <= 0 {
+            good_cell(&format!("{:+}", cost_delta))
+        } else {
+            bad_cell(&format!("{:+}", cost_delta))
+        },
+        if cost_pct <= 0.0 {
+            good_cell(&format!("{:+.2}%", cost_pct))
+        } else {
+            bad_cell(&format!("{:+.2}%", cost_pct))
+        },
+    ]);
+
+    // Auth cost row
+    table.add_row(vec![
+        value_cell("Est. auth cost (stroops)"),
+        value_cell(&old_auth.to_string()),
+        value_cell(&new_auth.to_string()),
+        if auth_delta <= 0 {
+            good_cell(&format!("{:+}", auth_delta))
+        } else {
+            bad_cell(&format!("{:+}", auth_delta))
+        },
+        value_cell("—"),
+    ]);
+
+    // Ledger reads row
+    table.add_row(vec![
+        value_cell("Est. ledger footprint reads"),
+        value_cell(&old_reads.to_string()),
+        value_cell(&new_reads.to_string()),
+        if reads_delta <= 0 {
+            good_cell(&format!("{:+}", reads_delta))
+        } else {
+            bad_cell(&format!("{:+}", reads_delta))
+        },
+        value_cell("—"),
+    ]);
+
+    // Heuristic score row
+    table.add_row(vec![
+        value_cell("Heuristic score"),
+        value_cell(&old_report.score.to_string()),
+        value_cell(&new_report.score.to_string()),
+        if new_report.score >= old_report.score {
+            good_cell(&format!("{:+}", new_report.score as i32 - old_report.score as i32))
+        } else {
+            bad_cell(&format!("{:+}", new_report.score as i32 - old_report.score as i32))
+        },
+        value_cell("—"),
+    ]);
+
+    println!("{table}");
+
+    // ── Verdict ───────────────────────────────────────────────────────────
+    println!();
+    if cost_delta < 0 {
+        p::success(&format!(
+            "Candidate is BETTER — saves {} stroops ({:+.2}%)",
+            cost_delta.abs(),
+            cost_pct
+        ));
+    } else if cost_delta > 0 {
+        p::warn(&format!(
+            "Candidate REGRESSED — costs {} more stroops ({:+.2}%)",
+            cost_delta,
+            cost_pct
+        ));
+    } else {
+        p::info("No change in estimated compute cost.");
+    }
+
+    // ── Profile table ─────────────────────────────────────────────────────
+    println!();
+    let mut ptbl = base_table();
+    ptbl.set_header(vec![header_cell("Step"), header_cell("Elapsed")]);
+    for point in profile.points() {
+        ptbl.add_row(vec![
+            value_cell(&point.label),
+            value_cell(&format!("{:?}", point.elapsed)),
+        ]);
+    }
+    ptbl.add_row(vec![
+        value_cell("Total"),
+        value_cell(&format!("{:?}", profile.total_elapsed())),
+    ]);
+    println!("{ptbl}");
+
+    let headers = &["ID", "Network", "WASM", "Total Fee (stroops)", "XLM", "Recorded At"];
+    let rows: Vec<Vec<String>> = filtered
+        .iter()
+        .map(|e| {
+            vec![
+                e.id[..8].to_string(),
+                e.estimate.network.clone(),
+                shorten_path(&e.estimate.wasm_path, 30),
+                e.estimate.total_fee_stroops.to_string(),
+                format!("{:.7}", e.estimate.total_fee_xlm),
+                e.estimate.estimated_at[..10].to_string(),
+            ]
+        })
+        .collect();
+
+    p::table(headers, &rows);
+    p::separator();
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn estimate_simulation_cost_zero() {
+        assert_eq!(estimate_simulation_cost(0), 2_000);
+    }
+
+    #[test]
+    fn estimate_simulation_cost_nonzero() {
+        // 8 bytes → 2000 + 1 = 2001
+        assert_eq!(estimate_simulation_cost(8), 2_001);
+    }
+
+    #[test]
+    fn estimate_simulation_cost_large() {
+        // 80_000 bytes → 2000 + 10000 = 12000
+        assert_eq!(estimate_simulation_cost(80_000), 12_000);
+    }
+
+    #[test]
+    fn base_table_has_utf8_preset() {
+        let table = base_table();
         // Just ensure it constructs without panic
         let _ = table.to_string();
     }
+}
+
+fn ai_estimate(wasm: PathBuf, network: String) -> Result<()> {
+    use crate::utils::ai_gas_estimation::AiGasEstimator;
+    let estimator = AiGasEstimator::new();
+    let estimate = estimator.estimate(&wasm, &network)?;
+    println!("AI Gas Estimate: {:#?}", estimate);
+    Ok(())
 }
