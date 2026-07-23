@@ -171,7 +171,7 @@ pub struct RemediationArgs {
     pub command: RemediationCommands,
 }
 
-pub async fn handlez(cmd: SecurityCommands) -> Result<()> {
+pub async fn handle(cmd: SecurityCommands) -> Result<()> {
     match cmd {
         SecurityCommands::Harden(args) => handle_harden(args),
         SecurityCommands::Checklist(args) => handle_checklist(args),
