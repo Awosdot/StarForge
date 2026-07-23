@@ -49,12 +49,9 @@ enum Commands {
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
     /// Generate Soroban project boilerplate
+    /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
-    /// Generate Soroban smart contract code from natural language
-    #[command(subcommand)]
-    Generate(commands::generate::GenerateCommands),
-    /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
     /// Debug Soroban contracts with breakpoints, stepping, and inspection
@@ -197,11 +194,6 @@ enum Commands {
     /// Execute an installed plugin command (e.g. `starforge defi ...`)
     #[command(external_subcommand)]
     External(Vec<String>),
-
-    // in the Commands enum, after the Upgrade variant:
-    /// Contract storage migration tools (transform, validate, rollback)
-    #[command(subcommand)]
-    Migrate(commands::migrate::MigrateCommands),
 }
 
 #[tokio::main]
