@@ -50,9 +50,9 @@ enum Commands {
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
     /// Generate Soroban project boilerplate
+    /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
-    /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
     /// Debug Soroban contracts with breakpoints, stepping, and inspection
@@ -88,6 +88,29 @@ enum Commands {
     #[command(subcommand)]
     Completions(commands::completions::CompletionShell),
 
+    /// Smart autocomplete — suggest and record commands
+    Autocomplete {
+        /// Show suggestions for this partial command
+        #[arg(long)]
+        suggest: Option<String>,
+
+        /// Record this command in history
+        #[arg(long)]
+        record: Option<String>,
+
+        /// Interactive autocomplete mode
+        #[arg(long, short)]
+        interactive: bool,
+
+        /// Clear command history
+        #[arg(long)]
+        clear_history: bool,
+
+        /// Show usage statistics
+        #[arg(long)]
+        stats: bool,
+    },
+
     /// Interactive REPL for local Soroban contract testing
     Shell(commands::shell::ShellArgs),
 
@@ -112,6 +135,9 @@ enum Commands {
     /// Manage third-party plugins
     #[command(subcommand)]
     Plugin(commands::plugin::PluginCommands),
+    /// Privacy protection, anonymization, consent, and reporting
+    #[command(subcommand)]
+    Privacy(commands::privacy::PrivacyCommands),
     /// Manage community contract templates from the marketplace
     #[command(subcommand)]
     Template(commands::template::TemplateCommands),
@@ -193,16 +219,9 @@ enum Commands {
     #[command(external_subcommand)]
     External(Vec<String>),
 
-    // in the Commands enum, after the Upgrade variant:
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
-
-    // in the command_name match:
-    Commands::Migrate(_) => "migrate",
-
-    // in the result dispatch match:
-    Commands::Migrate(cmd) => commands::migrate::handle(cmd),
 }
 
 #[tokio::main]
@@ -224,6 +243,7 @@ async fn main() {
         Commands::AiDebug(_) => "ai-debug",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
+        Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
@@ -236,6 +256,7 @@ async fn main() {
         Commands::Network(_) => "network",
         Commands::Node(_) => "node",
         Commands::Completions(_) => "completions",
+        Commands::Autocomplete { .. } => "autocomplete",
         Commands::Shell(_) => "shell",
         Commands::Monitor(_) => "monitor",
         Commands::Multisig(_) => "multisig",
@@ -244,6 +265,7 @@ async fn main() {
         Commands::Test(_) => "test",
         Commands::Gas(_) => "gas",
         Commands::Plugin(_) => "plugin",
+        Commands::Privacy(_) => "privacy",
         Commands::Template(_) => "template",
         Commands::Registry(_) => "registry",
         Commands::Upgrade(_) => "upgrade",
@@ -263,7 +285,9 @@ async fn main() {
         Commands::Docs(_) => "docs",
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
+        Commands::Migrate(_) => "migrate",
         Commands::External(_) => "external",
+        Commands::Migrate(_) => "migrate",
     }
     .to_string();
 
@@ -272,6 +296,7 @@ async fn main() {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
+        Commands::Generate(cmd) => commands::generate::handle(cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
         Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
         Commands::Debug(cmd) => commands::debug::handle(cmd).await,
@@ -284,6 +309,9 @@ async fn main() {
         Commands::Network(cmd) => commands::network::handle(cmd).await,
         Commands::Node(cmd) => commands::node::handle(cmd).await,
         Commands::Completions(shell) => commands::completions::handle(shell).await,
+        Commands::Autocomplete { suggest, record, interactive, clear_history, stats } => {
+            commands::autocomplete::handle_autocomplete(suggest, record, interactive, clear_history, stats).await
+        },
         Commands::Shell(args) => commands::shell::handle(args).await,
         Commands::Monitor(args) => commands::monitor::handle(args).await,
         Commands::Multisig(cmd) => commands::multisig_builder::handle(cmd).await,
@@ -292,6 +320,7 @@ async fn main() {
         Commands::Test(args) => commands::test::handle(args).await,
         Commands::Gas(args) => commands::gas::handle(args).await,
         Commands::Plugin(args) => commands::plugin::handle(args).await,
+        Commands::Privacy(cmd) => commands::privacy::handle(cmd).await,
         Commands::Template(args) => commands::template::handle(args).await,
         Commands::Registry(cmd) => commands::registry::handle(cmd).await,
         Commands::Upgrade(cmd) => commands::upgrade::handle(cmd).await,
@@ -311,7 +340,9 @@ async fn main() {
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
     };
     let duration = start.elapsed();
 
@@ -339,6 +370,16 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
     let mut hints: Vec<String> = Vec::new();
 
     match command {
+        "ai" => {
+            if msg.contains("not running") || msg.contains("ollama") {
+                hints.push("Install Ollama from https://ollama.ai/download".into());
+                hints.push("Start the daemon: ollama serve".into());
+                hints.push("Pull a model: starforge ai pull codellama:7b".into());
+            } else if msg.contains("model") || msg.contains("not found") {
+                hints.push("List available models: starforge ai models".into());
+                hints.push("Download a model: starforge ai pull codellama:7b".into());
+            }
+        }
         "wallet" => {
             if msg.contains("not found") || msg.contains("no wallet") {
                 hints.push("Create a wallet first: starforge wallet create <name>".into());
