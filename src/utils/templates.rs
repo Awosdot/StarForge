@@ -1140,6 +1140,8 @@ pub async fn publish_template_versioned(
         repository,
         homepage,
         documentation,
+        security_review: None,
+        changelog: vec![],
     };
 
     add_template(entry).await?;
@@ -1380,6 +1382,8 @@ async fn install_from_git_url(
         repository: Some(url.to_string()),
         homepage: None,
         documentation: None,
+        security_review: None,
+        changelog: vec![],
     };
 
     registry.templates.retain(|t| t.name != name);
@@ -1447,6 +1451,8 @@ async fn install_from_local_path(
         repository: None,
         homepage: None,
         documentation: None,
+        security_review: None,
+        changelog: vec![],
     };
 
     registry.templates.retain(|t| t.name != name);

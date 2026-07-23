@@ -182,8 +182,6 @@ fn hash_message(message: &str) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     let mut hasher = Sha256::new();
-    hasher.update(signer.as_bytes());
-    hasher.update(b":");
     hasher.update(message.as_bytes());
     Ok(hex::encode(hasher.finalize()))
 }
@@ -384,15 +382,20 @@ fn post_webhook(url: &str, notification: &NotificationRequest) -> Result<()> {
         "threshold": notification.threshold,
     });
 
-    let response = ureq::post(url)
-        .set("Content-Type", "application/json")
-        .send_string(&payload.to_string())?;
+    // Fire-and-forget: spawn an async task so this sync context can return.
+    let url_owned = url.to_string();
+    let body = payload.to_string();
+    tokio::spawn(async move {
+        let client = crate::utils::http_client::get_client();
+        let _ = client
+            .post(&url_owned)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await;
+    });
 
-    if response.status() >= 400 {
-        bail!("Webhook notification failed with status {}", response.status());
-    }
-
-    println!("🔔 Webhook notification sent to {}", url);
+    println!("🔔 Webhook notification queued for {}", url);
     Ok(())
 }
 
