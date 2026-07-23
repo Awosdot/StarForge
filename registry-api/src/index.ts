@@ -3,6 +3,8 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import dotenv from "dotenv";
+
+// Import API routes for the remote template registry
 import authRoutes from "./routes/auth";
 import templateRoutes from "./routes/templates";
 import reviewRoutes from "./routes/reviews";
