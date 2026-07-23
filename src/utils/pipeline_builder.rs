@@ -329,28 +329,31 @@ pub fn execute_pipeline(
     let mut rolled_back = Vec::new();
     let mut deploy_stage_ids = Vec::new();
 
-    for stage in pipeline.stages.iter_mut() {
-        stage.status = StageStatus::Running;
-        stage.error = None;
+    for i in 0..pipeline.stages.len() {
+        pipeline.stages[i].status = StageStatus::Running;
+        pipeline.stages[i].error = None;
 
-        let result = match stage.stage_type {
-            StageType::Build => execute_build_stage(stage, dry_run),
-            StageType::Test => execute_test_stage(stage, dry_run),
-            StageType::Deploy => {
-                let r = execute_deploy_stage(stage, dry_run);
-                if r.is_ok() {
-                    deploy_stage_ids.push(stage.id.clone());
+        let result = {
+            let stage = &mut pipeline.stages[i];
+            match stage.stage_type {
+                StageType::Build => execute_build_stage(stage, dry_run),
+                StageType::Test => execute_test_stage(stage, dry_run),
+                StageType::Deploy => {
+                    let r = execute_deploy_stage(stage, dry_run);
+                    if r.is_ok() {
+                        deploy_stage_ids.push(stage.id.clone());
+                    }
+                    r
                 }
-                r
+                StageType::Approval => execute_approval_stage(stage),
+                StageType::Rollback => execute_rollback_stage(stage, &deploy_stage_ids, dry_run),
             }
-            StageType::Approval => execute_approval_stage(stage),
-            StageType::Rollback => execute_rollback_stage(stage, &deploy_stage_ids, dry_run),
         };
 
         match result {
             Ok(msg) => {
-                if stage.status == StageStatus::WaitingApproval {
-                    stage.output = Some(msg);
+                if pipeline.stages[i].status == StageStatus::WaitingApproval {
+                    pipeline.stages[i].output = Some(msg);
                     pipeline.status = PipelineStatus::PendingApproval;
                     pipeline.updated_at = Utc::now().to_rfc3339();
                     save_pipeline(pipeline)?;
@@ -362,21 +365,23 @@ pub fn execute_pipeline(
                         rolled_back,
                     });
                 }
-                stage.status = StageStatus::Passed;
-                stage.output = Some(msg);
+                pipeline.stages[i].status = StageStatus::Passed;
+                pipeline.stages[i].output = Some(msg);
                 completed += 1;
             }
             Err(e) => {
-                stage.status = StageStatus::Failed;
-                stage.error = Some(e.to_string());
+                let on_failure = pipeline.stages[i].config.on_failure;
+                pipeline.stages[i].status = StageStatus::Failed;
+                pipeline.stages[i].error = Some(e.to_string());
                 failed += 1;
                 pipeline.status = PipelineStatus::Failed;
                 pipeline.updated_at = Utc::now().to_rfc3339();
                 save_pipeline(pipeline)?;
 
-                if stage.config.on_failure {
+                if on_failure {
                     for deploy_id in deploy_stage_ids.iter().rev() {
-                        if let Some(deploy_stage) = pipeline.stages.iter_mut().find(|s| &s.id == deploy_id)
+                        if let Some(deploy_stage) =
+                            pipeline.stages.iter_mut().find(|s| &s.id == deploy_id)
                         {
                             deploy_stage.status = StageStatus::RolledBack;
                             deploy_stage.output = Some("Rolled back after failure".into());

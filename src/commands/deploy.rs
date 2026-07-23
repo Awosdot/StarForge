@@ -1,4 +1,11 @@
-use crate::utils::{config, confirmation, horizon, optimizer, print as p, soroban, wallet_signer};
+use crate::utils::{
+    config, confirmation,
+    deploy_history::{
+        self, last_successful, record_deployment, set_contract_id, update_status, DeployRecord,
+        DeployStatus,
+    },
+    horizon, optimizer, print as p, soroban, wallet_signer,
+};
 use crate::commands::analytics as analytics_cmds;
 
 use anyhow::Result;
@@ -52,6 +59,21 @@ pub struct DeployArgs {
     /// HD derivation path for hardware wallet signing
     #[arg(long, default_value = crate::utils::hardware_wallet::STELLAR_HD_PATH)]
     pub hd_path: String,
+    /// Disable automatic rollback after a failed executed deploy
+    #[arg(long, default_value = "false")]
+    pub no_auto_rollback: bool,
+}
+
+/// Extract a Soroban contract id (56-char `C…` strkey) from CLI stdout/stderr.
+fn parse_contract_id_from_stdout(output: &str) -> Option<String> {
+    output.split_whitespace().find_map(|token| {
+        let cleaned = token.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+        if cleaned.len() == 56 && cleaned.starts_with('C') {
+            Some(cleaned.to_string())
+        } else {
+            None
+        }
+    })
 }
 
 fn is_wasm_above_size_limit(wasm_size_kb: f64) -> bool {
@@ -536,7 +558,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         if let Some(contract_id) = parse_contract_id_from_stdout(&stdout) {
             set_contract_id(&record_id, &contract_id)?;
             p::kv("Contract ID", &contract_id);
-            parsed_contract_id = Some(contract_id.to_string());
+            parsed_contract_id = Some(contract_id);
         }
         update_status(&record_id, DeployStatus::Success, None)?;
 

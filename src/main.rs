@@ -193,12 +193,6 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
-
-    // in the command_name match:
-    Commands::Migrate(_) => "migrate",
-
-    // in the result dispatch match:
-    Commands::Migrate(cmd) => commands::migrate::handle(cmd),
 }
 
 #[tokio::main]
@@ -259,6 +253,7 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::External(_) => "external",
+        Commands::Migrate(_) => "migrate",
     }
     .to_string();
 
@@ -306,6 +301,7 @@ async fn main() {
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
     };
     let duration = start.elapsed();
 

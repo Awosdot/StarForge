@@ -182,8 +182,6 @@ fn hash_message(message: &str) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     let mut hasher = Sha256::new();
-    hasher.update(signer.as_bytes());
-    hasher.update(b":");
     hasher.update(message.as_bytes());
     Ok(hex::encode(hasher.finalize()))
 }
@@ -384,11 +382,31 @@ fn post_webhook(url: &str, notification: &NotificationRequest) -> Result<()> {
         "threshold": notification.threshold,
     });
 
-    let response = ureq::post(url)
-        .set("Content-Type", "application/json")
-        .send_string(&payload.to_string())?;
+    let url_owned = url.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result: Result<reqwest::Response> = (|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            rt.block_on(async {
+                crate::utils::http_client::get_client()
+                    .post(&url_owned)
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e))
+            })
+        })();
+        let _ = tx.send(result);
+    });
 
-    if response.status() >= 400 {
+    let response = rx
+        .recv()
+        .map_err(|_| anyhow::anyhow!("Webhook worker exited unexpectedly"))??;
+
+    if !response.status().is_success() {
         bail!("Webhook notification failed with status {}", response.status());
     }
 

@@ -204,7 +204,8 @@ pub fn validate_wasm(path: &Path) -> Result<(Vec<u8>, String)> {
             path.display()
         );
     }
-    Ok((bytes, wasm_hash(&bytes)))
+    let hash = wasm_hash(&bytes);
+    Ok((bytes, hash))
 }
 
 // ── Audit trail ───────────────────────────────────────────────────────────────
@@ -477,8 +478,9 @@ pub fn get_proposal(proposal_id: &str, network: &str) -> Result<GovernancePropos
         .find(|p| p.id == proposal_id && p.network == network)
         .ok_or_else(|| anyhow::anyhow!("Proposal '{}' not found on {}", proposal_id, network))?;
     refresh_timelock_status(proposal);
+    let updated = proposal.clone();
     save_proposals(&proposals)?;
-    Ok(proposal.clone())
+    Ok(updated)
 }
 
 pub fn list_proposals(

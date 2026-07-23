@@ -218,6 +218,35 @@ baseline regression detection, comparison deltas, and a dashboard summary.
 
 ---
 
+## `docs`
+
+AI-assisted documentation generation for Soroban contracts (issue #499).
+
+| Subcommand | Purpose |
+|------------|---------|
+| `docs generate <CONTRACT> --source <FILE.rs>` | Generate comprehensive Markdown docs from rustdoc + AI enrichment |
+| `docs generate <CONTRACT> --source <FILE.rs> --lang rust,ts,python,go` | Multi-language usage examples |
+| `docs generate <CONTRACT> --source <FILE.rs> --output docs.md --rustdoc-out stubs.rs` | Write Markdown + rustdoc stubs |
+| `docs extract <PATH> [--format json\|markdown]` | Extract rustdoc comments |
+| `docs show / list / search / versions / export` | Browse the local docs store (`~/.starforge/docs`) |
+| `docs html / api-ref / publish` | HTML site, API reference, and publish helpers |
+
+```bash
+starforge docs generate counter --name Counter \
+  --source ./contracts/counter/src/lib.rs \
+  --lang rust,ts,python \
+  --output ./docs/counter.md
+
+starforge docs export counter
+starforge docs show counter
+```
+
+With `--source`, StarForge extracts `///` / `//!` rustdoc comments, documents functions and types,
+infers architecture / storage layout / security notes, and emits multi-language usage guides.
+Set `STARFORGE_AI_API_KEY` (optional `STARFORGE_AI_BASE_URL`, `STARFORGE_AI_MODEL`) to refine prose via an OpenAI-compatible API.
+
+---
+
 ## `security`
 
 | Subcommand | Purpose |

@@ -1,4 +1,7 @@
-use crate::utils::{config, print as p, rollback_testing, test_automation, test_runner};
+use crate::utils::{
+    config, contract_testing, print as p, rollback_testing, test_automation, test_coverage,
+    test_runner,
+};
 use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;

@@ -199,13 +199,33 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
         params,
     })?;
 
-    let response = ureq::post(url)
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(30))
-        .send_string(&body)
-        .context("RPC request failed")?;
+    let url = url.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = (|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context("Failed to create tokio runtime for RPC")?;
+            rt.block_on(async {
+                let response = crate::utils::http_client::get_client()
+                    .post(&url)
+                    .header("Content-Type", "application/json")
+                    .body(body)
+                    .timeout(Duration::from_secs(30))
+                    .send()
+                    .await
+                    .context("RPC request failed")?;
+                let text = response.text().await.context("Failed to read RPC response")?;
+                Ok::<_, anyhow::Error>(text)
+            })
+        })();
+        let _ = tx.send(result);
+    });
 
-    let text = response.into_string()?;
+    let text = rx
+        .recv()
+        .map_err(|_| anyhow::anyhow!("RPC worker exited unexpectedly"))??;
     let parsed: RpcResponse = serde_json::from_str(&text).context("Invalid RPC response")?;
 
     if let Some(error) = parsed.error {
@@ -273,12 +293,36 @@ impl TestnetClient {
             .context("Friendbot is not available for this network")?;
 
         let url = format!("{}?addr={}", bot_url, urlencoding::encode(address));
-        match ureq::get(&url)
-            .timeout(Duration::from_secs(self.config.timeout_secs))
-            .call()
+        let timeout_secs = self.config.timeout_secs;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = (|| {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .context("Failed to create tokio runtime for Friendbot")?;
+                rt.block_on(async {
+                    let response = crate::utils::http_client::get_client()
+                        .get(&url)
+                        .timeout(Duration::from_secs(timeout_secs))
+                        .send()
+                        .await
+                        .context("Friendbot request failed")?;
+                    let text = response
+                        .text()
+                        .await
+                        .context("Failed to read Friendbot response")?;
+                    Ok::<_, anyhow::Error>(text)
+                })
+            })();
+            let _ = tx.send(result);
+        });
+
+        match rx
+            .recv()
+            .map_err(|_| anyhow::anyhow!("Friendbot worker exited unexpectedly"))?
         {
-            Ok(response) => {
-                let text = response.into_string()?;
+            Ok(text) => {
                 let parsed: serde_json::Value =
                     serde_json::from_str(&text).unwrap_or_default();
                 Ok(FundbotResult {
