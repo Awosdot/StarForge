@@ -7,6 +7,7 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use sha2::{Sha256, Digest};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::sync::Mutex;
 
 // ── Deterministic Configuration ───────────────────────────────────────────────
@@ -44,9 +45,11 @@ pub struct SeededRng {
     seed: u64,
 }
 
-impl std::fmt::Debug for SeededRng {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SeededRng").field("seed", &self.seed).finish()
+impl fmt::Debug for SeededRng {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SeededRng")
+            .field("seed", &self.seed)
+            .finish()
     }
 }
 

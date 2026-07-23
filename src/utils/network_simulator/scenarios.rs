@@ -148,7 +148,7 @@ impl ScenarioRunner {
             // Write initial storage.
             for (key, value) in &ctr.initial_storage {
                 sim.write_contract_storage(&instance.contract_id, key, value.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to write storage: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!(e))?;
             }
 
             result
@@ -163,8 +163,7 @@ impl ScenarioRunner {
     pub fn run(scenario: Scenario) -> (NetworkSimulator, ScenarioResult) {
         let config = scenario.config.clone();
         let mut sim = NetworkSimulator::with_config(config);
-        let runner = ScenarioRunner;
-        match runner.apply(&mut sim, &scenario) {
+        match Self::new().apply(&mut sim, &scenario) {
             Ok(result) => (sim, result),
             Err(e) => panic!("Scenario '{}' failed to apply: {}", scenario.name, e),
         }

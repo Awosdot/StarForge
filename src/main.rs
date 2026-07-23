@@ -221,14 +221,6 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
-
-    /// AI contract completion assistant (suggest, boilerplate, stub, imports, infer)
-    #[command(subcommand)]
-    Complete(commands::complete::CompleteCommands),
-
-    /// Execute an installed plugin command (e.g. `starforge defi ...`)
-    #[command(external_subcommand)]
-    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -353,7 +345,7 @@ async fn main() {
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
     };
     let duration = start.elapsed();
 

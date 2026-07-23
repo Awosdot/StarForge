@@ -382,18 +382,33 @@ fn post_webhook(url: &str, notification: &NotificationRequest) -> Result<()> {
         "threshold": notification.threshold,
     });
 
-    // Fire-and-forget: spawn an async task so this sync context can return.
     let url_owned = url.to_string();
-    let body = payload.to_string();
-    tokio::spawn(async move {
-        let client = crate::utils::http_client::get_client();
-        let _ = client
-            .post(&url_owned)
-            .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-            .await;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result: Result<reqwest::Response> = (|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            rt.block_on(async {
+                crate::utils::http_client::get_client()
+                    .post(&url_owned)
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e))
+            })
+        })();
+        let _ = tx.send(result);
     });
+
+    let response = rx
+        .recv()
+        .map_err(|_| anyhow::anyhow!("Webhook worker exited unexpectedly"))??;
+
+    if !response.status().is_success() {
+        bail!("Webhook notification failed with status {}", response.status());
+    }
 
     println!("🔔 Webhook notification queued for {}", url);
     Ok(())

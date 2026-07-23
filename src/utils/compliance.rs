@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -149,7 +149,7 @@ pub fn create_policy(
         updated_at: now,
     };
 
-    policies.push(policy);
+    policies.push(policy.clone());
     save_policies_raw(&policies)?;
     Ok(policy)
 }

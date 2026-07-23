@@ -316,7 +316,7 @@ fn process_expired_requests() -> Result<Vec<ApprovalRequest>> {
         }
         if let Some(ref expiry) = req.expires_at {
             if let Ok(exp_dt) = chrono::DateTime::parse_from_rfc3339(expiry) {
-                if now > chrono::DateTime::<chrono::Utc>::from(exp_dt) {
+                if now > exp_dt.with_timezone(&Utc) {
                     req.status = ApprovalStatus::Expired;
                     req.updated_at = now.to_rfc3339();
                     changed = true;

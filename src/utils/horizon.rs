@@ -60,6 +60,14 @@ pub async fn fund_account(public_key: &str, network: &str) -> Result<()> {
         .with_context(|| format!("Friendbot request failed for {}", network))?;
     if res.status() == 200 {
         Ok(())
+    } else if res.status() == 400 {
+        anyhow::bail!(
+            "Friendbot rejected the funding request for '{}'.\n\
+             This usually means the account has already been funded on {}.\n\
+             Check the balance: starforge wallet show",
+            public_key,
+            network
+        )
     } else {
         anyhow::bail!(
             "Friendbot returned HTTP {} for network '{}'.\n\
