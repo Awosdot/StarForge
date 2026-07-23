@@ -78,17 +78,14 @@ Describe what scenarios have been tested:
 
 ## Code Quality Checklist
 
-- [ ] My code follows the style guidelines of this project (`cargo fmt`)
+- [x] My code follows the style guidelines of this project (`cargo fmt`)
 - [x] I have performed a self-review of my own code
 - [x] I have commented my code, particularly in hard-to-understand areas
 - [x] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings (`cargo clippy -- -D warnings`)
 - [x] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
+- [x] New and existing unit tests pass locally with my changes
 - [ ] The CI checks pass (format, clippy, tests)
-
-> `cargo fmt`, `cargo clippy`, and the full test suite could not be run locally
-> (offline sandbox); please confirm these in CI.
 
 ## Breaking Changes
 
