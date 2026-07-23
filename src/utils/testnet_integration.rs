@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use reqwest;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -192,11 +193,27 @@ struct RpcError {
 }
 
 fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
-    let body = serde_json::to_string(&RpcRequest {
-        jsonrpc: "2.0",
-        id: 1,
-        method,
-        params,
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+        "params": params,
+    });
+
+    let url_owned = url.to_string();
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+    let text = rt.block_on(async move {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()?;
+        let res = client
+            .post(&url_owned)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .context("RPC request failed")?;
+        res.text().await.context("Failed to read RPC response")
     })?;
 
     let url = url.to_string();

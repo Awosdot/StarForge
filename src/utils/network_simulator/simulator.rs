@@ -195,7 +195,7 @@ impl NetworkSimulator {
             tx_nonce: 0,
             tx_history: Vec::new(),
             wasm_store: HashMap::new(),
-            config,
+            config: config.clone(),
         };
 
         if enable_failure_injection {

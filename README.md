@@ -195,6 +195,38 @@ starforge new contract my-dex --template uniswap-v2 --from marketplace
 starforge new dapp my-dapp
 ```
 
+### Local AI assistant
+
+StarForge can use a locally running [Ollama](https://ollama.ai/) instance for
+Soroban development help. Install Ollama, start the daemon, and pull the
+recommended model before using the assistant:
+
+```bash
+ollama serve
+starforge ai pull codellama:7b
+```
+
+```bash
+# Check Ollama and locally installed models
+starforge ai status
+starforge ai models
+
+# Ask a Soroban development question
+starforge ai ask "How should I store an expiring value?"
+
+# Review or explain a contract source file
+starforge ai audit src/lib.rs
+starforge ai explain src/lib.rs
+
+# Generate tests or find gas optimisation opportunities
+starforge ai test src/lib.rs
+starforge ai optimise src/lib.rs
+```
+
+All requests remain local to Ollama at `http://localhost:11434`; no contract
+source or prompts are sent to a cloud provider. Use `starforge ai status` to
+diagnose an installation or runtime problem.
+
 ### Template marketplace commands
 
 ```bash

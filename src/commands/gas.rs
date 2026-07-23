@@ -61,6 +61,14 @@ pub enum GasCommands {
         #[command(subcommand)]
         action: AlertsAction,
     },
+    /// AI-powered gas estimation and optimization suggestions
+    AiEstimate {
+        /// Path to the compiled wasm
+        wasm: PathBuf,
+        /// Target network
+        #[arg(long, default_value = "testnet")]
+        network: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -100,6 +108,7 @@ pub async fn handle(cmd: GasCommands) -> Result<()> {
         } => estimate(wasm, network, alert_threshold, save),
         GasCommands::History { network, limit } => history(network, limit),
         GasCommands::Alerts { action } => alerts(action),
+        GasCommands::AiEstimate { wasm, network } => ai_estimate(wasm, network),
     }
 }
 
@@ -516,4 +525,12 @@ fn shorten_path(path: &str, max_len: usize) -> String {
     } else {
         format!("…{}", &path[path.len() - (max_len - 1)..])
     }
+}
+
+fn ai_estimate(wasm: PathBuf, network: String) -> Result<()> {
+    use crate::utils::ai_gas_estimation::AiGasEstimator;
+    let estimator = AiGasEstimator::new();
+    let estimate = estimator.estimate(&wasm, &network)?;
+    println!("AI Gas Estimate: {:#?}", estimate);
+    Ok(())
 }

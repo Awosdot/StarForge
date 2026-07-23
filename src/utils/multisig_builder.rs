@@ -410,7 +410,7 @@ fn post_webhook(url: &str, notification: &NotificationRequest) -> Result<()> {
         bail!("Webhook notification failed with status {}", response.status());
     }
 
-    println!("🔔 Webhook notification sent to {}", url);
+    println!("🔔 Webhook notification queued for {}", url);
     Ok(())
 }
 
