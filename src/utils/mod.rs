@@ -39,6 +39,7 @@ pub mod optimizer;
 pub mod performance;
 pub mod pipeline_builder;
 pub mod print;
+pub mod privacy;
 pub mod profiler;
 pub mod registry;
 pub mod repl;
