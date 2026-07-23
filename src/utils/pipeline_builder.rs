@@ -351,6 +351,7 @@ pub fn execute_pipeline(
             Ok(msg) => {
                 if stage.status == StageStatus::WaitingApproval {
                     stage.output = Some(msg);
+                    drop(stage); // release mutable borrow before save
                     pipeline.status = PipelineStatus::PendingApproval;
                     pipeline.updated_at = Utc::now().to_rfc3339();
                     save_pipeline(pipeline)?;
@@ -370,11 +371,12 @@ pub fn execute_pipeline(
                 stage.status = StageStatus::Failed;
                 stage.error = Some(e.to_string());
                 failed += 1;
+                let on_failure = stage.config.on_failure;
                 pipeline.status = PipelineStatus::Failed;
                 pipeline.updated_at = Utc::now().to_rfc3339();
                 save_pipeline(pipeline)?;
 
-                if stage.config.on_failure {
+                if on_failure {
                     for deploy_id in deploy_stage_ids.iter().rev() {
                         if let Some(deploy_stage) = pipeline.stages.iter_mut().find(|s| &s.id == deploy_id)
                         {

@@ -42,6 +42,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Local LLM assistant powered by Ollama (status, models, pull, ask, audit…)
+    #[command(subcommand)]
+    Ai(commands::ai::AiCommands),
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
@@ -193,12 +196,6 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
-
-    // in the command_name match:
-    Commands::Migrate(_) => "migrate",
-
-    // in the result dispatch match:
-    Commands::Migrate(cmd) => commands::migrate::handle(cmd),
 }
 
 #[tokio::main]
@@ -217,6 +214,7 @@ async fn main() {
     }
 
     let command_name = match &cli.command {
+        Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
         Commands::Contract(_) => "contract",
@@ -258,12 +256,14 @@ async fn main() {
         Commands::Docs(_) => "docs",
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
+        Commands::Migrate(_) => "migrate",
         Commands::External(_) => "external",
     }
     .to_string();
 
     let start = std::time::Instant::now();
     let result = match cli.command {
+        Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
@@ -305,6 +305,7 @@ async fn main() {
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();
@@ -333,6 +334,16 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
     let mut hints: Vec<String> = Vec::new();
 
     match command {
+        "ai" => {
+            if msg.contains("not running") || msg.contains("ollama") {
+                hints.push("Install Ollama from https://ollama.ai/download".into());
+                hints.push("Start the daemon: ollama serve".into());
+                hints.push("Pull a model: starforge ai pull codellama:7b".into());
+            } else if msg.contains("model") || msg.contains("not found") {
+                hints.push("List available models: starforge ai models".into());
+                hints.push("Download a model: starforge ai pull codellama:7b".into());
+            }
+        }
         "wallet" => {
             if msg.contains("not found") || msg.contains("no wallet") {
                 hints.push("Create a wallet first: starforge wallet create <name>".into());

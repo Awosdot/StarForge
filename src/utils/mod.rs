@@ -35,6 +35,7 @@ pub mod multisig_builder;
 pub mod network_simulator;
 pub mod node;
 pub mod notifications;
+pub mod ollama;
 pub mod optimizer;
 pub mod performance;
 pub mod pipeline_builder;

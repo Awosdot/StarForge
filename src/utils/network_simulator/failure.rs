@@ -9,7 +9,7 @@ use std::collections::HashMap;
 // ── Failure Modes ─────────────────────────────────────────────────────────────
 
 /// All possible failure modes the simulator can inject.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FailureMode {
     /// Simulate an RPC timeout (no response).
     RpcTimeout,
@@ -228,7 +228,7 @@ impl FailureInjector {
 
         for rule in &mut self.rules {
             if rule.should_fire(rpc_method, contract_id, account, rng_probability) {
-                return Some(rule.mode);
+                return Some(rule.mode.clone());
             }
         }
 
