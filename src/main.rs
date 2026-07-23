@@ -221,6 +221,9 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+
+    /// AI Contextual Help: command, workflow, error, and best-practice guidance
+    Help(commands::help::HelpArgs),
 }
 
 #[tokio::main]
@@ -289,6 +292,7 @@ async fn main() {
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
         Commands::Migrate(_) => "migrate",
+        Commands::Help(_) => "help",
     }
     .to_string();
 
@@ -346,6 +350,7 @@ async fn main() {
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+        Commands::Help(args) => commands::help::handle(args).await,
     };
     let duration = start.elapsed();
 
@@ -358,9 +363,39 @@ async fn main() {
     );
 
     if let Err(e) = result {
-        let hints = recovery_hints(&command_name, &e);
+        let mut hints = recovery_hints(&command_name, &e);
+        // Augment the static command-specific hints with the AI Contextual
+        // Help engine. Patterns that did not match the static rule table
+        // still produce a useful, command-agnostic one-liner.
+        utils::context_help::troubleshoot_merging(&e.to_string(), &mut hints);
         utils::print::cli_error(&e, &hints.iter().map(String::as_str).collect::<Vec<_>>());
         std::process::exit(1);
+    }
+
+    // On a successful run, optionally surface a single proactive tip.
+// Gated so the happy path stays cheap:
+//   * STARFORGE_HELP_TIPS=0 explicitly opts out;
+//   * telemetry must be enabled (it already touches the disk/network);
+//   * `proactive_tip` further ignores commands on its blocklist.
+    // Truthy semantics: only the listed false-strings opt out. Any other
+    // value ("1", "yes", " true", "", unset) keeps tips enabled; tighten
+    // with care so we never regress "1" → disable.
+    let tips_allowed = std::env::var("STARFORGE_HELP_TIPS")
+        .map(|v| !matches!(v.to_lowercase().as_str(), "0" | "false" | "off" | "no"))
+        .unwrap_or(true);
+    if tips_allowed {
+        let cfg = utils::config::load().ok();
+        let tips_enabled = cfg.and_then(|c| c.telemetry_enabled).unwrap_or(true);
+        if tips_enabled {
+            let history_path = utils::config::config_dir();
+            if let Ok(history_entries) = utils::history::load_history(&history_path) {
+                if let Some(tip) =
+                    utils::context_help::proactive_tip(&command_name, &history_entries)
+                {
+                    utils::print::info(&tip);
+                }
+            }
+        }
     }
 }
 
