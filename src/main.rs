@@ -143,6 +143,9 @@ enum Commands {
     /// Run a comprehensive security audit on a Soroban contract
     Audit(commands::audit::AuditArgs),
 
+    /// AI-powered security audit for Soroban contracts using Claude
+    AiAudit(commands::ai_audit::AiAuditArgs),
+
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
     Schedule(commands::schedule::ScheduleCommands),
@@ -247,6 +250,7 @@ async fn main() {
         Commands::Pipeline(_) => "pipeline",
         Commands::Security(_) => "security",
         Commands::Audit(_) => "audit",
+        Commands::AiAudit(_) => "ai-audit",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -294,6 +298,7 @@ async fn main() {
         Commands::Pipeline(cmd) => commands::pipeline_builder::handle(cmd).await,
         Commands::Security(cmd) => commands::security::handle(cmd).await,
         Commands::Audit(args) => commands::audit::handle(args).await,
+        Commands::AiAudit(args) => commands::ai_audit::handle(args).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
