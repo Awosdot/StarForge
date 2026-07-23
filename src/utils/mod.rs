@@ -6,6 +6,7 @@ pub mod bridge;
 pub mod benchmarking;
 pub mod bindings;
 pub mod call_graph;
+pub mod completion;
 pub mod config;
 pub mod confirmation;
 pub mod contract_assertions;
