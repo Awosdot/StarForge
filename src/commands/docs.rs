@@ -24,17 +24,6 @@ pub enum DocsCommands {
         version: String,
     },
 
-    /// Extract doc comments from a Rust source file or directory
-    Extract {
-        /// Path to a `.rs` file or a directory containing `.rs` files
-        path: PathBuf,
-        /// Save the extracted data to the docs store under this contract ID
-        #[arg(long)]
-        contract: Option<String>,
-        /// Print a summary table instead of full JSON
-        #[arg(long)]
-        summary: bool,
-    },
 
     /// Show stored documentation for a contract
     Show {
@@ -138,12 +127,6 @@ pub async fn handle(cmd: DocsCommands) -> Result<()> {
             network,
             version,
         } => generate(contract, name, description, network, version),
-
-        DocsCommands::Extract {
-            path,
-            contract,
-            summary,
-        } => extract(path, contract, summary),
 
         DocsCommands::Show { contract, version } => show(contract, version),
         DocsCommands::List => list(),
@@ -317,106 +300,6 @@ fn generate(
 // extract
 // ──────────────────────────────────────────────────────────────────────────────
 
-fn extract(path: PathBuf, contract: Option<String>, summary: bool) -> Result<()> {
-    p::header("Documentation Generator — Extract");
-
-    p::step(1, 2, &format!("Extracting doc comments from {}...", path.display()));
-
-    let extracted: Vec<doc_extractor::ExtractedDoc> = if path.is_dir() {
-        doc_extractor::extract_from_directory(&path)?
-    } else {
-        vec![doc_extractor::extract_from_file(&path)?]
-    };
-
-    let total_fns: usize = extracted.iter().map(|e| e.functions.len()).sum();
-    let total_structs: usize = extracted.iter().map(|e| e.structs.len()).sum();
-    let total_enums: usize = extracted.iter().map(|e| e.enums.len()).sum();
-    let total_examples: usize = extracted.iter().map(|e| e.examples.len()).sum();
-
-    p::step(2, 2, "Extraction complete.");
-    println!();
-    p::kv("Files processed", &extracted.len().to_string());
-    p::kv("Functions found", &total_fns.to_string());
-    p::kv("Structs found", &total_structs.to_string());
-    p::kv("Enums found", &total_enums.to_string());
-    p::kv("Code examples", &total_examples.to_string());
-
-    if summary {
-        // Print summary table.
-        println!();
-        for doc in &extracted {
-            println!(
-                "  {} {}",
-                "→".cyan(),
-                doc.source_file.display().to_string().bright_white()
-            );
-            if let Some(ref md) = doc.module_doc {
-                let first_line = md.lines().next().unwrap_or("");
-                println!("    {}", first_line.dimmed());
-            }
-            for func in &doc.functions {
-                println!("    {} fn {}", "•".dimmed(), func.name.cyan());
-            }
-        }
-    } else {
-        // Full JSON output.
-        let json = serde_json::to_string_pretty(&extracted)?;
-        println!("\n{}", json);
-    }
-
-    // Optionally persist into the docs store.
-    if let Some(contract_id) = contract {
-        p::info(&format!("Saving extracted docs under contract '{}'...", contract_id));
-
-        // Build FunctionDoc list from extracted data.
-        let functions: Vec<docs::FunctionDoc> = extracted
-            .iter()
-            .flat_map(|e| {
-                e.functions.iter().map(|f| docs::FunctionDoc {
-                    name: f.name.clone(),
-                    description: f.doc.lines().next().unwrap_or("").to_string(),
-                    parameters: f
-                        .params
-                        .iter()
-                        .map(|p| docs::ParamDoc {
-                            name: p.name.clone(),
-                            ty: p.ty.clone(),
-                            description: String::new(),
-                            required: true,
-                        })
-                        .collect(),
-                    returns: f.return_type.clone(),
-                    examples: f.examples.clone(),
-                })
-            })
-            .collect();
-
-        let module_desc = extracted
-            .first()
-            .and_then(|e| e.module_doc.as_deref())
-            .unwrap_or("")
-            .lines()
-            .next()
-            .unwrap_or("")
-            .to_string();
-
-        docs::generate_documentation(
-            &contract_id,
-            &contract_id,
-            &module_desc,
-            "testnet",
-            "1.0.0",
-            functions,
-            vec![],
-            vec![],
-            vec![],
-        )?;
-
-        p::success("Extracted documentation saved to docs store.");
-    }
-
-    Ok(())
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // show
