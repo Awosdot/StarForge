@@ -177,6 +177,8 @@ impl NetworkSimulator {
     /// Create a simulator with a custom configuration.
     pub fn with_config(config: SimulatorConfig) -> Self {
         let seed = config.deterministic.seed;
+        let initial_accounts = config.initial_accounts.clone();
+        let enable_failure_injection = config.enable_failure_injection;
         let mut sim = Self {
             ledger: LedgerInfo {
                 sequence: config.initial_ledger_sequence,
@@ -196,12 +198,12 @@ impl NetworkSimulator {
             config,
         };
 
-        if config.enable_failure_injection {
+        if enable_failure_injection {
             sim.failure_injector.enable();
         }
 
         // Create initial accounts.
-        for (key_or_name, balance) in &config.initial_accounts {
+        for (key_or_name, balance) in &initial_accounts {
             let pk = if key_or_name.starts_with('G') && key_or_name.len() == 56 {
                 key_or_name.clone()
             } else {

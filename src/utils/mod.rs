@@ -19,6 +19,7 @@ pub mod database;
 pub mod contract_deps;
 pub mod deploy_history;
 pub mod deploy_orchestrator;
+pub mod event_monitoring;
 pub mod doc_generator;
 pub mod docs;
 pub mod governance;

@@ -290,6 +290,8 @@ pub fn generate_report(contract_id: &str, network: &str) -> Result<PerformanceRe
                 min_gas
             },
             avg_execution_time_ms: avg_time,
+            avg_memory_used_bytes: None,
+            max_memory_used_bytes: None,
             success_rate,
         },
         metrics: contract_metrics.metrics,
@@ -328,6 +330,7 @@ impl MetricCollector {
             timestamp: chrono::Utc::now().to_rfc3339(),
             success: true,
             execution_time_ms: total_ms,
+            memory_used: None,
             network: self.network,
         })?;
 

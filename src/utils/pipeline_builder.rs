@@ -329,28 +329,42 @@ pub fn execute_pipeline(
     let mut rolled_back = Vec::new();
     let mut deploy_stage_ids = Vec::new();
 
-    for stage in pipeline.stages.iter_mut() {
-        stage.status = StageStatus::Running;
-        stage.error = None;
+    for index in 0..pipeline.stages.len() {
+        let result = {
+            let stage = &mut pipeline.stages[index];
+            stage.status = StageStatus::Running;
+            stage.error = None;
 
-        let result = match stage.stage_type {
-            StageType::Build => execute_build_stage(stage, dry_run),
-            StageType::Test => execute_test_stage(stage, dry_run),
-            StageType::Deploy => {
-                let r = execute_deploy_stage(stage, dry_run);
-                if r.is_ok() {
-                    deploy_stage_ids.push(stage.id.clone());
+            match stage.stage_type {
+                StageType::Build => execute_build_stage(stage, dry_run),
+                StageType::Test => execute_test_stage(stage, dry_run),
+                StageType::Deploy => {
+                    let r = execute_deploy_stage(stage, dry_run);
+                    if r.is_ok() {
+                        deploy_stage_ids.push(stage.id.clone());
+                    }
+                    r
                 }
-                r
+                StageType::Approval => execute_approval_stage(stage),
+                StageType::Rollback => execute_rollback_stage(stage, &deploy_stage_ids, dry_run),
             }
-            StageType::Approval => execute_approval_stage(stage),
-            StageType::Rollback => execute_rollback_stage(stage, &deploy_stage_ids, dry_run),
         };
 
         match result {
             Ok(msg) => {
-                if stage.status == StageStatus::WaitingApproval {
-                    stage.output = Some(msg);
+                let waiting_approval = {
+                    let stage = &mut pipeline.stages[index];
+                    if stage.status == StageStatus::WaitingApproval {
+                        stage.output = Some(msg);
+                        true
+                    } else {
+                        stage.status = StageStatus::Passed;
+                        stage.output = Some(msg);
+                        false
+                    }
+                };
+
+                if waiting_approval {
                     pipeline.status = PipelineStatus::PendingApproval;
                     pipeline.updated_at = Utc::now().to_rfc3339();
                     save_pipeline(pipeline)?;
@@ -362,19 +376,21 @@ pub fn execute_pipeline(
                         rolled_back,
                     });
                 }
-                stage.status = StageStatus::Passed;
-                stage.output = Some(msg);
                 completed += 1;
             }
             Err(e) => {
-                stage.status = StageStatus::Failed;
-                stage.error = Some(e.to_string());
+                let rollback_on_failure = {
+                    let stage = &mut pipeline.stages[index];
+                    stage.status = StageStatus::Failed;
+                    stage.error = Some(e.to_string());
+                    stage.config.on_failure
+                };
+
                 failed += 1;
                 pipeline.status = PipelineStatus::Failed;
                 pipeline.updated_at = Utc::now().to_rfc3339();
-                save_pipeline(pipeline)?;
 
-                if stage.config.on_failure {
+                if rollback_on_failure {
                     for deploy_id in deploy_stage_ids.iter().rev() {
                         if let Some(deploy_stage) = pipeline.stages.iter_mut().find(|s| &s.id == deploy_id)
                         {
@@ -386,6 +402,7 @@ pub fn execute_pipeline(
                     pipeline.status = PipelineStatus::RolledBack;
                 }
 
+                save_pipeline(pipeline)?;
                 return Ok(PipelineExecutionResult {
                     pipeline_id: pipeline.id.clone(),
                     dry_run,
@@ -800,7 +817,7 @@ pub fn render_html_ui(pipeline: &DeploymentPipeline) -> String {
                     .filter(|a| a.action == ApprovalAction::Approved)
                     .count();
                 format!(
-                    "<p class=\"meta\">Approvals: {}/{}</p><ul>{}</ul>",
+                    r#"<p class="meta">Approvals: {}/{}</p><ul>{}</ul>"#,
                     approved,
                     required,
                     stage
@@ -819,7 +836,7 @@ pub fn render_html_ui(pipeline: &DeploymentPipeline) -> String {
                 .as_ref()
                 .map(|t| {
                     format!(
-                        "<p class=\"meta\">Tests: {} executed, {} failed</p>",
+                        "<p class="meta">Tests: {} executed, {} failed</p>",
                         t.cases_executed, t.failures
                     )
                 })

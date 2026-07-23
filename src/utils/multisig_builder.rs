@@ -182,8 +182,6 @@ fn hash_message(message: &str) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     let mut hasher = Sha256::new();
-    hasher.update(signer.as_bytes());
-    hasher.update(b":");
     hasher.update(message.as_bytes());
     Ok(hex::encode(hasher.finalize()))
 }
