@@ -7,6 +7,7 @@ pub mod backup;
 pub mod benchmark;
 pub mod bridge;
 pub mod command_tree;
+pub mod complete;
 pub mod completions;
 pub mod config;
 pub mod contract;

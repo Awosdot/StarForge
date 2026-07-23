@@ -218,13 +218,17 @@ enum Commands {
     #[command(subcommand)]
     Approval(commands::approval::ApprovalCommands),
 
-    /// Execute an installed plugin command (e.g. `starforge defi ...`)
-    #[command(external_subcommand)]
-    External(Vec<String>),
-
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+
+    /// AI contract completion assistant (suggest, boilerplate, stub, imports, infer)
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+
+    /// Execute an installed plugin command (e.g. `starforge defi ...`)
+    #[command(external_subcommand)]
+    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -290,6 +294,7 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
+        Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
         Commands::Migrate(_) => "migrate",
     }
@@ -345,7 +350,8 @@ async fn main() {
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+        Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
         Commands::Migrate(cmd) => commands::migrate::handle(cmd).await,
     };
