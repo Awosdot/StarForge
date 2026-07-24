@@ -218,6 +218,10 @@ enum Commands {
     #[command(subcommand)]
     Approval(commands::approval::ApprovalCommands),
 
+    /// Manage feature flags for AI features (rollouts, A/B tests, rollback)
+    #[command(subcommand)]
+    FeatureFlags(commands::feature_flags_cmd::FeatureFlagsArgs),
+
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
@@ -244,6 +248,8 @@ async fn main() {
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
+        Commands::Complete(_) => "complete",
+        Commands::FeatureFlags(_) => "feature-flags",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
         Commands::Deploy(_) => "deploy",
@@ -342,6 +348,7 @@ async fn main() {
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
+        Commands::FeatureFlags(args) => commands::feature_flags_cmd::handle(args).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
