@@ -1,4 +1,4 @@
-use crate::utils::{print as p, registry, templates};
+use crate::utils::{print as p, registry, templates, template_customization_ai};
 use anyhow::Result;
 use clap::Subcommand;
 use std::path::PathBuf;
@@ -154,6 +154,25 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
+    /// Customize a template using AI based on requirements
+    Customize {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Requirements for customization
+        requirements: String,
+    },
+    /// View customization history for a template
+    CustomizeHistory {
+        /// Path to the template directory
+        path: PathBuf,
+    },
+    /// Rollback template to a previous customization state
+    CustomizeRollback {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Optional index to rollback to (0 is oldest, omit for previous)
+        index: Option<usize>,
+    },
 }
 
 pub async fn handle(cmd: TemplateCommands) -> Result<()> {
@@ -226,6 +245,9 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
+        TemplateCommands::Customize { path, requirements } => template_customize(path, requirements).await,
+        TemplateCommands::CustomizeHistory { path } => template_customize_history(path).await,
+        TemplateCommands::CustomizeRollback { path, index } => template_customize_rollback(path, index).await,
     }
 }
 
@@ -975,5 +997,61 @@ async fn template_audit(name: Option<String>) -> Result<()> {
         );
     }
 
+    Ok(())
+}
+
+async fn template_customize(path: PathBuf, requirements: String) -> Result<()> {
+    p::header("Template Customization (AI)");
+    p::kv("Template Path", &path.display().to_string());
+    p::kv("Requirements", &requirements);
+    println!();
+
+    p::step(1, 3, "Analyzing template structure...");
+    p::step(2, 3, "Generating AI customizations...");
+    let result = template_customization_ai::customize_template(&path, &requirements).await?;
+    p::step(3, 3, "Validating changes...");
+
+    println!();
+    if result.success {
+        p::success("Customization successful!");
+    } else {
+        p::warn("Customization completed with warnings!");
+    }
+
+    println!("\nChanges made:");
+    for change in &result.changes {
+        println!("  - {}", change);
+    }
+
+    println!("\nValidation report:");
+    println!("{}", result.validation_report);
+
+    Ok(())
+}
+
+async fn template_customize_history(path: PathBuf) -> Result<()> {
+    p::header("Template Customization History");
+    let history = template_customization_ai::get_customization_history(&path).await?;
+
+    if history.entries.is_empty() {
+        p::info("No customization history found for this template");
+        return Ok(());
+    }
+
+    for (i, entry) in history.entries.iter().enumerate() {
+        println!("\n--- Entry {} ---", i);
+        p::kv("Timestamp", &entry.timestamp);
+        p::kv("Requirements", &entry.requirements);
+        println!("Changes made:");
+        println!("{}", entry.changes_made);
+    }
+
+    Ok(())
+}
+
+async fn template_customize_rollback(path: PathBuf, index: Option<usize>) -> Result<()> {
+    p::header("Template Customization Rollback");
+    template_customization_ai::rollback_customization(&path, index).await?;
+    p::success("Rollback successful!");
     Ok(())
 }

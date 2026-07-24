@@ -62,6 +62,8 @@ pub mod stream;
 pub mod telemetry;
 pub mod template;
 pub mod template_vcs;
+pub mod template_version_ai;
+pub mod template_customization_ai;
 pub mod templates;
 pub mod test_automation;
 pub mod test_coverage;
