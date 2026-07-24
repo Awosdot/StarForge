@@ -1,8 +1,8 @@
 //! AI audit service that orchestrates static analysis and Claude integration.
 
 use super::ai_audit::{
-    build_system_prompt, build_user_prompt, run_static_checks, AiAuditResponse, AttackScenario,
-    AuditLevel, AuditRequest, FixSuggestion, SecurityAuditReport, SecurityVulnerability,
+    build_fallback_report, build_system_prompt, build_user_prompt, run_static_checks,
+    AiAuditResponse, AuditLevel, AuditRequest, SecurityAuditReport,
 };
 use anyhow::{anyhow, Result};
 use chrono::Utc;
@@ -46,15 +46,9 @@ pub struct AiAuditService {
 impl AiAuditService {
     /// Create a new audit service with Anthropic API key.
     pub fn new(api_key: String) -> Result<Self> {
-        if api_key.is_empty() {
-            return Err(anyhow!(
-                "ANTHROPIC_API_KEY not set. Set it via environment variable."
-            ));
-        }
-
         Ok(AiAuditService {
             client: Client::new(),
-            api_key,
+            api_key: api_key.trim().to_string(),
             model: "claude-opus-4-1".to_string(), // High-capability model for security
         })
     }
@@ -75,6 +69,16 @@ impl AiAuditService {
         // Step 1: Run static analysis (fast, deterministic)
         let static_findings = run_static_checks(&request.contract_code);
 
+        if self.api_key.is_empty() {
+            return Ok(build_fallback_report(
+                &request.contract_name,
+                &request.contract_code,
+                &static_findings,
+                request.security_level,
+                request.include_attack_simulation,
+            ));
+        }
+
         // Step 2: Call Claude for deep analysis
         let system_prompt = build_system_prompt();
         let user_prompt = build_user_prompt(
@@ -85,10 +89,18 @@ impl AiAuditService {
             request.include_attack_simulation,
         );
 
-        let ai_result = self
-            .call_claude(&system_prompt, &user_prompt)
-            .await
-            .map_err(|e| anyhow!("AI audit failed: {}", e))?;
+        let ai_result = match self.call_claude(&system_prompt, &user_prompt).await {
+            Ok(result) => result,
+            Err(_) => {
+                return Ok(build_fallback_report(
+                    &request.contract_name,
+                    &request.contract_code,
+                    &static_findings,
+                    request.security_level,
+                    request.include_attack_simulation,
+                ));
+            }
+        };
 
         // Step 3: Combine results into report
         let report = SecurityAuditReport {
@@ -131,11 +143,12 @@ impl AiAuditService {
             .await
             .map_err(|e| anyhow!("Failed to call Anthropic API: {}", e))?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
             return Err(anyhow!(
                 "Anthropic API error {}: {}",
-                response.status(),
+                status,
                 error_text
             ));
         }

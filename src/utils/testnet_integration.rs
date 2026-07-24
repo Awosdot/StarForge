@@ -201,6 +201,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
     });
 
     let url_owned = url.to_string();
+    let body_for_request = body.clone();
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
     let text = rt.block_on(async move {
         let client = reqwest::Client::builder()
@@ -209,7 +210,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
         let res = client
             .post(&url_owned)
             .header("Content-Type", "application/json")
-            .json(&body)
+            .json(&body_for_request)
             .send()
             .await
             .context("RPC request failed")?;
@@ -217,6 +218,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
     })?;
 
     let url = url.to_string();
+    let body_for_worker = body.clone();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let result = (|| {
@@ -228,7 +230,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
                 let response = crate::utils::http_client::get_client()
                     .post(&url)
                     .header("Content-Type", "application/json")
-                    .body(body)
+                    .body(body_for_worker.to_string())
                     .timeout(Duration::from_secs(30))
                     .send()
                     .await
