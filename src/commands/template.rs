@@ -1,4 +1,4 @@
-use crate::utils::{print as p, registry, templates};
+use crate::utils::{print as p, registry, templates, template_performance};
 use anyhow::Result;
 use clap::Subcommand;
 use std::path::PathBuf;
@@ -154,6 +154,14 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
+    /// Analyze a template directory for gas, runtime, and resource optimization opportunities
+    Optimize {
+        /// Template path or template name to analyze
+        path: PathBuf,
+        /// Optional template display name
+        #[arg(long)]
+        name: Option<String>,
+    },
 }
 
 pub async fn handle(cmd: TemplateCommands) -> Result<()> {
@@ -226,6 +234,7 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
+        TemplateCommands::Optimize { path, name } => optimize(path, name).await,
     }
 }
 
@@ -583,6 +592,41 @@ async fn remove(name: String, purge: bool) -> Result<()> {
 
 fn init() -> Result<()> {
     p::info("Template registry is ready. Use `starforge template list` to view templates.");
+    Ok(())
+}
+
+async fn optimize(path: PathBuf, name: Option<String>) -> Result<()> {
+    let analysis = template_performance::analyze_template_directory(&path, name.as_deref())?;
+
+    p::header(&format!("Template Performance Analysis: {}", analysis.template_name));
+    p::separator();
+    p::kv("Path", &analysis.path);
+    p::kv("Overall score", &format!("{}/100", analysis.overall_score));
+    p::kv("Estimated gas reduction", &format!("{}%", analysis.estimated_gas_reduction_percent));
+    p::kv("Estimated speedup", &format!("{}%", analysis.estimated_speedup_percent));
+    p::kv("Estimated memory savings", &format!("{}%", analysis.estimated_memory_savings_percent));
+    println!();
+    p::info("Optimization focus areas");
+    p::kv("Storage layout", &format!("{}/100", analysis.storage_layout_score));
+    p::kv("Function efficiency", &format!("{}/100", analysis.function_efficiency_score));
+    p::kv("Loop optimization", &format!("{}/100", analysis.loop_optimization_score));
+    p::kv("External call optimization", &format!("{}/100", analysis.external_call_score));
+    p::kv("Batch operations", &format!("{}/100", analysis.batch_operations_score));
+    println!();
+    p::info("Benchmark summary");
+    p::kv("Summary", &analysis.benchmark_summary);
+    println!();
+    if analysis.suggestions.is_empty() {
+        p::info("No optimization opportunities detected.");
+    } else {
+        p::info("Actionable suggestions");
+        for suggestion in analysis.suggestions {
+            println!("  • [{}] {}", suggestion.priority.to_uppercase(), suggestion.title);
+            println!("    {}", suggestion.detail);
+            println!("    Impact: {}", suggestion.estimated_impact);
+        }
+    }
+
     Ok(())
 }
 
