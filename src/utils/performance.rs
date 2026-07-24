@@ -290,7 +290,11 @@ pub fn generate_report(contract_id: &str, network: &str) -> Result<PerformanceRe
                 min_gas
             },
             avg_execution_time_ms: avg_time,
+            avg_memory_used_bytes: None,
+            max_memory_used_bytes: None,
             success_rate,
+            avg_memory_used_bytes: None,
+            max_memory_used_bytes: None,
         },
         metrics: contract_metrics.metrics,
         alerts_triggered: triggered,
@@ -328,7 +332,9 @@ impl MetricCollector {
             timestamp: chrono::Utc::now().to_rfc3339(),
             success: true,
             execution_time_ms: total_ms,
+            memory_used: None,
             network: self.network,
+            memory_used: None,
         })?;
 
         Ok(())
@@ -679,6 +685,7 @@ mod tests {
             timestamp: chrono::Utc::now().to_rfc3339(),
             success: true,
             execution_time_ms: 50,
+            memory_used: None,
             network: "testnet".to_string(),
         };
 
@@ -709,6 +716,8 @@ mod tests {
             min_gas_used: 0.0,
             avg_execution_time_ms: 0.0,
             success_rate: 100.0,
+            avg_memory_used_bytes: None,
+            max_memory_used_bytes: None,
         };
         assert_eq!(summary.total_executions, 0);
         assert_eq!(summary.success_rate, 100.0);
@@ -757,6 +766,7 @@ mod tests {
                 timestamp: (base_time + chrono::Duration::seconds(i as i64)).to_rfc3339(),
                 success: true,
                 execution_time_ms: if i < 5 { 500 + i as u64 * 50 } else { 1000 + i as u64 * 50 },
+                memory_used: None,
                 network: "testnet".to_string(),
             };
             record_gas_usage(&record).unwrap();
@@ -783,6 +793,7 @@ mod tests {
                 timestamp: (base_time - chrono::Duration::seconds((8 - i) as i64)).to_rfc3339(),
                 success: true,
                 execution_time_ms: 500 + i * 50,
+                memory_used: None,
                 network: "testnet".to_string(),
             };
             record_gas_usage(&record).unwrap();

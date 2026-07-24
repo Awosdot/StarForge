@@ -68,6 +68,10 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
                 ChatMessage {
                     role: "system".to_string(),
                     content: rendered_prompt,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: prompt.clone(),
                 }
             ];
 
