@@ -293,8 +293,6 @@ pub fn generate_report(contract_id: &str, network: &str) -> Result<PerformanceRe
             avg_memory_used_bytes: None,
             max_memory_used_bytes: None,
             success_rate,
-            avg_memory_used_bytes: None,
-            max_memory_used_bytes: None,
         },
         metrics: contract_metrics.metrics,
         alerts_triggered: triggered,
@@ -334,7 +332,6 @@ impl MetricCollector {
             execution_time_ms: total_ms,
             memory_used: None,
             network: self.network,
-            memory_used: None,
         })?;
 
         Ok(())
