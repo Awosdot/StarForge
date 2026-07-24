@@ -1,4 +1,4 @@
-use crate::utils::{print as p, registry, templates};
+use crate::utils::{ai_docs, print as p, registry, templates};
 use anyhow::Result;
 use clap::Subcommand;
 use std::path::PathBuf;
@@ -154,6 +154,22 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
+    /// Generate comprehensive AI-assisted documentation for a template: getting
+    /// started guide, function/API reference, configuration reference,
+    /// multi-language usage examples, and a troubleshooting guide
+    GenerateDocs {
+        /// Template name
+        name: String,
+        /// Languages for usage examples: rust,ts,python,go (comma-separated)
+        #[arg(long, default_value = "rust,ts,python")]
+        lang: String,
+        /// Skip optional LLM enrichment; use heuristic generation only
+        #[arg(long, default_value_t = false)]
+        no_ai: bool,
+        /// Write Markdown documentation to this path (defaults to <template>/DOCS.md)
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
 }
 
 pub async fn handle(cmd: TemplateCommands) -> Result<()> {
@@ -226,6 +242,12 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
+        TemplateCommands::GenerateDocs {
+            name,
+            lang,
+            no_ai,
+            output,
+        } => template_generate_docs(name, lang, no_ai, output).await,
     }
 }
 
@@ -974,6 +996,127 @@ async fn template_audit(name: Option<String>) -> Result<()> {
             &format!("{}/{}", audited, registry.templates.len()),
         );
     }
+
+    Ok(())
+}
+
+// ─── template generate-docs ───────────────────────────────────────────────────
+
+/// Locate a template's local source directory — prefer the built-in examples
+/// shipped with StarForge, falling back to whatever path the registry has
+/// recorded for an installed/published template.
+async fn resolve_template_dir(name: &str) -> Result<PathBuf> {
+    let builtin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("templates")
+        .join("examples")
+        .join(name);
+
+    if builtin.exists() {
+        return Ok(builtin);
+    }
+
+    let entry = templates::get_template(name).await?;
+    match entry.path {
+        Some(ref p) => Ok(PathBuf::from(p)),
+        None => anyhow::bail!(
+            "Template '{}' has no local path. Install it first with: starforge template install {}",
+            name,
+            name
+        ),
+    }
+}
+
+/// Read a template's primary contract source file (`src/lib.rs` or `src/main.rs`).
+fn read_template_source(template_dir: &std::path::Path) -> Result<(PathBuf, String)> {
+    let lib_path = template_dir.join("src/lib.rs");
+    let main_path = template_dir.join("src/main.rs");
+
+    if lib_path.exists() {
+        let code = std::fs::read_to_string(&lib_path)?;
+        return Ok((lib_path, code));
+    }
+    if main_path.exists() {
+        let code = std::fs::read_to_string(&main_path)?;
+        return Ok((main_path, code));
+    }
+
+    anyhow::bail!(
+        "No src/lib.rs or src/main.rs found in {}",
+        template_dir.display()
+    )
+}
+
+async fn template_generate_docs(
+    name: String,
+    lang: String,
+    no_ai: bool,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    p::header(&format!("AI Template Documentation Generation — {}", name));
+
+    p::step(1, 4, "Locating template source...");
+    let template_dir = resolve_template_dir(&name).await?;
+    let (source_path, _code) = read_template_source(&template_dir)?;
+    p::kv("Source", &source_path.display().to_string());
+
+    // Pull registry metadata (description/version) when available; fall back
+    // to sensible defaults for templates that aren't in the registry yet
+    // (e.g. a bare built-in example that hasn't been published).
+    let (description, version) = match templates::get_template(&name).await {
+        Ok(entry) => (Some(entry.description), entry.version),
+        Err(_) => (None, "0.1.0".to_string()),
+    };
+
+    let languages = {
+        let parsed = ai_docs::DocLanguage::parse_list(&lang);
+        if parsed.is_empty() {
+            vec![
+                ai_docs::DocLanguage::Rust,
+                ai_docs::DocLanguage::TypeScript,
+                ai_docs::DocLanguage::Python,
+            ]
+        } else {
+            parsed
+        }
+    };
+
+    let options = ai_docs::AiDocsOptions {
+        contract_id: name.clone(),
+        name: name.clone(),
+        description,
+        network: "template".to_string(),
+        version,
+        languages,
+        use_llm: !no_ai,
+    };
+
+    p::step(
+        2,
+        4,
+        "Generating documentation (functions, storage, configuration, security, troubleshooting)...",
+    );
+    let generated = ai_docs::generate_from_source(&source_path, &options)?;
+
+    p::step(3, 4, "Persisting documentation to the docs store...");
+    let markdown_out = output
+        .clone()
+        .unwrap_or_else(|| template_dir.join("DOCS.md"));
+    let entry = ai_docs::persist_generated(&generated, Some(&markdown_out), None)?;
+
+    p::step(4, 4, "Done.");
+    println!();
+    p::success(&format!(
+        "Documentation generated for '{}' ({})",
+        entry.name, generated.enrichment_mode
+    ));
+    p::kv("Template", &entry.contract_id);
+    p::kv("Version", &entry.version);
+    p::kv("Functions documented", &entry.api.functions.len().to_string());
+    p::kv("Storage keys", &entry.api.storage.len().to_string());
+    p::kv("Sections", &entry.sections.len().to_string());
+    p::kv("Markdown", &markdown_out.display().to_string());
+    p::info("Use `starforge docs show <name>` to view the stored documentation.");
+    p::info("Use `starforge docs export <name>` for Markdown on stdout.");
 
     Ok(())
 }
