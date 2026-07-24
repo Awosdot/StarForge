@@ -205,7 +205,10 @@ pub fn validate_for_signing(proposal: &Proposal, wallet: &str) -> Result<()> {
         bail!("Proposal has expired");
     }
     if !proposal.signers.contains(&wallet.to_string()) {
-        bail!("Wallet '{}' is not an authorized signer for this proposal", wallet);
+        bail!(
+            "Wallet '{}' is not an authorized signer for this proposal",
+            wallet
+        );
     }
     if proposal.signatures.iter().any(|s| s.signer == wallet) {
         bail!("Wallet '{}' has already signed this proposal", wallet);
@@ -335,13 +338,17 @@ pub enum NotificationChannel {
     Webhook(String),
 }
 
-pub fn parse_notification_channel(channel: &str, webhook: Option<String>) -> Result<NotificationChannel> {
+pub fn parse_notification_channel(
+    channel: &str,
+    webhook: Option<String>,
+) -> Result<NotificationChannel> {
     match channel.to_lowercase().as_str() {
         "email" => Ok(NotificationChannel::Email),
         "slack" => Ok(NotificationChannel::Slack),
         "discord" => Ok(NotificationChannel::Discord),
         "webhook" => {
-            let url = webhook.ok_or_else(|| anyhow::anyhow!("--webhook is required for webhook channel"))?;
+            let url = webhook
+                .ok_or_else(|| anyhow::anyhow!("--webhook is required for webhook channel"))?;
             Ok(NotificationChannel::Webhook(url))
         }
         other => bail!("Unknown notification channel: {}", other),
@@ -361,12 +368,14 @@ pub fn send_notification(
             Ok(())
         }
         NotificationChannel::Slack => {
-            let url = webhook.ok_or_else(|| anyhow::anyhow!("--webhook is required for slack channel"))?;
+            let url = webhook
+                .ok_or_else(|| anyhow::anyhow!("--webhook is required for slack channel"))?;
             println!("💬 Slack message sent");
             post_webhook(url, &notification)
         }
         NotificationChannel::Discord => {
-            let url = webhook.ok_or_else(|| anyhow::anyhow!("--webhook is required for discord channel"))?;
+            let url = webhook
+                .ok_or_else(|| anyhow::anyhow!("--webhook is required for discord channel"))?;
             println!("🎮 Discord message sent");
             post_webhook(url, &notification)
         }
@@ -407,7 +416,10 @@ fn post_webhook(url: &str, notification: &NotificationRequest) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("Webhook worker exited unexpectedly"))??;
 
     if !response.status().is_success() {
-        bail!("Webhook notification failed with status {}", response.status());
+        bail!(
+            "Webhook notification failed with status {}",
+            response.status()
+        );
     }
 
     println!("🔔 Webhook notification queued for {}", url);

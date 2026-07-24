@@ -65,11 +65,9 @@ pub fn save_history(entries: &[HistoryEntry], config_dir: &PathBuf) -> Result<()
 pub fn prune_history(entries: &mut Vec<HistoryEntry>, max: usize) {
     if entries.len() > max {
         // Sort by (last_used descending, count descending) to keep most recent and frequent
-        entries.sort_by(|a, b| {
-            match b.last_used.cmp(&a.last_used) {
-                std::cmp::Ordering::Equal => b.count.cmp(&a.count),
-                other => other,
-            }
+        entries.sort_by(|a, b| match b.last_used.cmp(&a.last_used) {
+            std::cmp::Ordering::Equal => b.count.cmp(&a.count),
+            other => other,
         });
         entries.truncate(max);
     }
