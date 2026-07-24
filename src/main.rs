@@ -221,6 +221,18 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+
+    /// Generate a Soroban smart contract from a natural language prompt (OpenAI)
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+
+    /// AI Contract Completion Assistant (offline code completion, boilerplate, stubs)
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+
+    /// Run an installed external plugin by name
+    #[command(external_subcommand)]
+    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -286,9 +298,9 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
+        Commands::Generate(_) => "generate",
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
-        Commands::Migrate(_) => "migrate",
     }
     .to_string();
 
@@ -297,7 +309,7 @@ async fn main() {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
-        Commands::Generate(cmd) => commands::generate::handle(cmd).await,
+        Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
         Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
         Commands::Debug(cmd) => commands::debug::handle(cmd).await,
@@ -345,7 +357,6 @@ async fn main() {
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
     };
     let duration = start.elapsed();
 

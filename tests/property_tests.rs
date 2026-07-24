@@ -80,8 +80,7 @@ proptest! {
     /// Keys shorter or longer than 56 characters must fail.
     #[test]
     fn prop_public_key_wrong_length_fails(
-        len in 0usize..200usize,
-        body in stellar_chars(0).prop_flat_map(move |_| stellar_chars(len)),
+        (len, body) in (0usize..200usize).prop_flat_map(|len| stellar_chars(len).prop_map(move |body| (len, body))),
     ) {
         prop_assume!(len != 55); // 55-char body + 'G' = 56 total = valid length
         let key = format!("G{}", body);
@@ -134,8 +133,7 @@ proptest! {
     /// Secret keys shorter or longer than 56 must fail (plain key path).
     #[test]
     fn prop_secret_key_wrong_length_fails(
-        len in 0usize..200usize,
-        body in stellar_chars(0).prop_flat_map(move |_| stellar_chars(len)),
+        (len, body) in (0usize..200usize).prop_flat_map(|len| stellar_chars(len).prop_map(move |body| (len, body))),
     ) {
         prop_assume!(len != 55);
         let key = format!("S{}", body);
