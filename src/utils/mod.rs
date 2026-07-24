@@ -71,3 +71,4 @@ pub mod testnet_integration;
 pub mod tutorial_engine;
 pub mod tx_batch;
 pub mod ai_gas_estimation;
+pub mod ai_test_assistant;

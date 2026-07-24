@@ -176,6 +176,10 @@ enum Commands {
     /// AI-powered security audit for Soroban contracts using Claude
     AiAudit(commands::ai_audit::AiAuditArgs),
 
+    /// AI-driven testing assistance (generate, optimize, analyze, maintain tests)
+    #[command(subcommand)]
+    AiTest(commands::ai_test::AiTestCommands),
+
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
     Schedule(commands::schedule::ScheduleCommands),
@@ -274,6 +278,7 @@ async fn main() {
         Commands::Security(_) => "security",
         Commands::Audit(_) => "audit",
         Commands::AiAudit(_) => "ai-audit",
+        Commands::AiTest(_) => "ai-test",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -331,6 +336,7 @@ async fn main() {
         Commands::Security(cmd) => commands::security::handle(cmd).await,
         Commands::Audit(args) => commands::audit::handle(args).await,
         Commands::AiAudit(args) => commands::ai_audit::handle(args).await,
+        Commands::AiTest(cmd) => commands::ai_test::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
@@ -469,6 +475,18 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             hints.push("Provide the full error message in quotes: starforge ai-debug analyse \"<error>\"".into());
             hints.push("Explain a specific category: starforge ai-debug explain auth".into());
             hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
+        }
+        "ai-test" => {
+            if msg.contains("not found") || msg.contains("no such file") {
+                hints.push("Ensure the source file exists: ls src/lib.rs".into());
+                hints.push("Build your contract first: stellar contract build".into());
+            } else if msg.contains("ollama") || msg.contains("not running") {
+                hints.push("Install Ollama: https://ollama.ai/download".into());
+                hints.push("Start Ollama: ollama serve".into());
+                hints.push("Or run without --use-ai for local generation".into());
+            } else if msg.contains("coverage") {
+                hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
+            }
         }
         "benchmark" | "test" => {
             if msg.contains("wasm") || msg.contains("not found") {
