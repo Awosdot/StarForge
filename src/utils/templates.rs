@@ -154,6 +154,35 @@ pub struct ChangelogEntry {
     pub notes: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TemplateUpdateImpact {
+    pub severity: String,
+    pub breaking_changes: bool,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TemplateUpdateReport {
+    pub template_name: String,
+    pub previous_version: Option<String>,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub compatibility: String,
+    pub impact: TemplateUpdateImpact,
+    pub migration_guidance: Vec<String>,
+    pub rollback_steps: Vec<String>,
+    pub backup_path: Option<String>,
+    pub tracked_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct TemplateUpdateState {
+    template_name: String,
+    backup_path: Option<String>,
+    previous_version: Option<String>,
+    last_report: Option<TemplateUpdateReport>,
+}
+
 /// Outcome of a template-vs-CLI compatibility check.
 #[derive(Debug, PartialEq, Eq)]
 pub enum CompatibilityStatus {
@@ -286,6 +315,157 @@ pub fn assert_template_compatible(entry: &TemplateEntry) -> Result<()> {
             )
         }
     }
+}
+
+fn infer_template_version_from_dir(path: &Path) -> Option<String> {
+    let cargo_toml = path.join("Cargo.toml");
+    if cargo_toml.exists() {
+        if let Ok(content) = fs::read_to_string(&cargo_toml) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if let Some((_, value)) = trimmed.split_once("version") {
+                    let value = value.trim().trim_matches('"');
+                    if !value.is_empty() {
+                        return Some(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let package_json = path.join("package.json");
+    if package_json.exists() {
+        if let Ok(content) = fs::read_to_string(&package_json) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if let Some((_, value)) = trimmed.split_once("\"version\"") {
+                    let value = value.trim().trim_matches(':').trim().trim_matches('"');
+                    if !value.is_empty() {
+                        return Some(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn build_update_report(
+    template_name: &str,
+    previous_version: Option<&str>,
+    latest_version: &str,
+    entry: &TemplateEntry,
+) -> Result<TemplateUpdateReport> {
+    let update_available = previous_version != Some(latest_version);
+    let compatibility = match check_template_compatibility(entry) {
+        CompatibilityStatus::Compatible => "Compatible with the current StarForge CLI".to_string(),
+        CompatibilityStatus::TooOld { required_min, running } => {
+            format!("Requires StarForge >= {} but the running CLI is {}", required_min, running)
+        }
+        CompatibilityStatus::TooNew { required_max, running } => {
+            format!("Requires StarForge <= {} but the running CLI is {}", required_max, running)
+        }
+        CompatibilityStatus::MalformedMetadata { reason } => {
+            format!("Version metadata is malformed: {}", reason)
+        }
+    };
+
+    let mut migration_guidance = Vec::new();
+    let mut severity = "low".to_string();
+    let mut breaking_changes = false;
+    let mut impact_summary = "No material changes are expected for this template update.".to_string();
+
+    if update_available {
+        impact_summary = format!(
+            "The template is moving from {} to {}.",
+            previous_version.unwrap_or("an unknown version"),
+            latest_version
+        );
+
+        if let Some(latest) = entry.changelog.first() {
+            let notes = latest.notes.clone();
+            if notes.to_lowercase().contains("breaking")
+                || notes.to_lowercase().contains("migration")
+                || notes.to_lowercase().contains("removed")
+                || notes.to_lowercase().contains("deprecated")
+            {
+                breaking_changes = true;
+                severity = "high".to_string();
+                impact_summary.push_str(" The release notes mention breaking or migration-sensitive changes.");
+            }
+        }
+
+        if previous_version.is_some() && latest_version.contains('.') {
+            let current_parts: Vec<&str> = previous_version.unwrap_or_default().split('.').collect();
+            let latest_parts: Vec<&str> = latest_version.split('.').collect();
+            if current_parts.first() != latest_parts.first() {
+                severity = "high".to_string();
+                impact_summary.push_str(" The version jump appears to be a major release.");
+                breaking_changes = true;
+            } else if current_parts.get(1) != latest_parts.get(1) {
+                severity = "medium".to_string();
+                impact_summary.push_str(" The update introduces a feature or compatibility change.");
+            }
+        }
+
+        migration_guidance.push("Review the release notes and regenerate any custom project scaffolding before shipping changes.".to_string());
+        migration_guidance.push("Re-run your template smoke test after the update to confirm everything still works.".to_string());
+        if breaking_changes {
+            migration_guidance.push("Treat this as a breaking update and plan a migration or rollback path before applying it broadly.".to_string());
+        }
+    }
+
+    if !compatibility.contains("Compatible") {
+        migration_guidance.push(format!("Compatibility note: {}", compatibility));
+    }
+
+    let rollback_steps = vec![
+        "The update process keeps a backup copy of the previous template contents.".to_string(),
+        format!("Use `starforge template rollback {}` to restore the previous template state if needed.", template_name),
+    ];
+
+    Ok(TemplateUpdateReport {
+        template_name: template_name.to_string(),
+        previous_version: previous_version.map(str::to_string),
+        latest_version: latest_version.to_string(),
+        update_available,
+        compatibility,
+        impact: TemplateUpdateImpact {
+            severity: severity.clone(),
+            breaking_changes,
+            summary: impact_summary,
+        },
+        migration_guidance,
+        rollback_steps,
+        backup_path: None,
+        tracked_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string(),
+    })
+}
+
+fn write_update_state(template_path: &Path, state: &TemplateUpdateState) -> Result<()> {
+    let state_file = template_path.join(".starforge-update-state.json");
+    let contents = serde_json::to_string_pretty(state)?;
+    fs::write(&state_file, contents)
+        .with_context(|| format!("Failed to persist update state to {}", state_file.display()))?;
+    Ok(())
+}
+
+fn read_update_state(template_path: &Path) -> Result<Option<TemplateUpdateState>> {
+    let state_file = template_path.join(".starforge-update-state.json");
+    if !state_file.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(&state_file)
+        .with_context(|| format!("Failed to read update state from {}", state_file.display()))?;
+    let state = serde_json::from_str(&contents)
+        .with_context(|| format!("Failed to parse update state from {}", state_file.display()))?;
+    Ok(Some(state))
 }
 
 impl TemplateEntry {
@@ -1558,7 +1738,7 @@ async fn install_from_registry(name: &str, version: Option<&str>, force: bool) -
 
 /// Re-fetch a git-sourced template into its local storage directory, updating
 /// it in place. Only git-sourced templates support this operation.
-pub async fn update_installed_template(name: &str) -> Result<()> {
+pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateReport> {
     let entry = get_template(name).await?;
 
     match &entry.source {
@@ -1568,6 +1748,29 @@ pub async fn update_installed_template(name: &str) -> Result<()> {
             } else {
                 template_storage_dir()?.join(name)
             };
+
+            let previous_version = infer_template_version_from_dir(&dest).or_else(|| Some(entry.version.clone()));
+            let mut report = build_update_report(
+                name,
+                previous_version.as_deref(),
+                &entry.version,
+                &entry,
+            )?;
+
+            if dest.exists() {
+                let backup_root = template_storage_dir()?.join(".backups").join(name);
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let backup_dir = backup_root.join(format!("{}_{}", timestamp, previous_version.as_deref().unwrap_or("unknown")));
+                if backup_dir.exists() {
+                    fs::remove_dir_all(&backup_dir)?;
+                }
+                fs::create_dir_all(&backup_dir)?;
+                copy_dir_recursive(&dest, &backup_dir)?;
+                report.backup_path = Some(backup_dir.to_string_lossy().to_string());
+            }
 
             if dest.exists() {
                 fs::remove_dir_all(&dest).with_context(|| {
@@ -1584,7 +1787,17 @@ pub async fn update_installed_template(name: &str) -> Result<()> {
             }
             save_registry(&registry)?;
 
-            Ok(())
+            let state = TemplateUpdateState {
+                template_name: name.to_string(),
+                backup_path: report.backup_path.clone(),
+                previous_version: previous_version.clone(),
+                last_report: Some(report.clone()),
+            };
+            if dest.exists() {
+                write_update_state(&dest, &state)?;
+            }
+
+            Ok(report)
         }
         other => anyhow::bail!(
             "Template '{}' uses source '{}' which does not support updates. \
@@ -1596,7 +1809,7 @@ pub async fn update_installed_template(name: &str) -> Result<()> {
 }
 
 /// Update all git-sourced templates. Returns a list of (name, result) pairs.
-pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<()>)>> {
+pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<TemplateUpdateReport>)>> {
     let registry = load_registry().await?;
     let git_names: Vec<String> = registry
         .templates
@@ -1611,6 +1824,54 @@ pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<()>)
         results.push((name, result));
     }
     Ok(results)
+}
+
+pub async fn rollback_installed_template(name: &str) -> Result<TemplateUpdateReport> {
+    let entry = get_template(name).await?;
+    let dest = if let Some(ref p) = entry.path {
+        PathBuf::from(p)
+    } else {
+        template_storage_dir()?.join(name)
+    };
+
+    let state = read_update_state(&dest)?
+        .ok_or_else(|| anyhow::anyhow!("No recorded update state exists for template '{}'", name))?;
+    let backup_path = state.backup_path.as_deref().ok_or_else(|| {
+        anyhow::anyhow!("No backup is available for template '{}'", name)
+    })?;
+
+    if dest.exists() {
+        fs::remove_dir_all(&dest).with_context(|| {
+            format!("Failed to remove template directory before rollback: {}", dest.display())
+        })?;
+    }
+
+    copy_dir_recursive(Path::new(backup_path), &dest).with_context(|| {
+        format!("Failed to restore template from backup at {}", backup_path)
+    })?;
+
+    let mut report = state.last_report.unwrap_or_else(|| TemplateUpdateReport {
+        template_name: name.to_string(),
+        previous_version: state.previous_version.clone(),
+        latest_version: entry.version.clone(),
+        update_available: true,
+        compatibility: "Rollback restored the previous template contents".to_string(),
+        impact: TemplateUpdateImpact {
+            severity: "low".to_string(),
+            breaking_changes: false,
+            summary: "Rollback restored the previous template state.".to_string(),
+        },
+        migration_guidance: vec!["Rollback completed successfully.".to_string()],
+        rollback_steps: vec![],
+        backup_path: state.backup_path.clone(),
+        tracked_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string(),
+    });
+    report.backup_path = state.backup_path.clone();
+    Ok(report)
 }
 
 #[cfg(test)]

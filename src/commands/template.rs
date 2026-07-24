@@ -133,6 +133,11 @@ pub enum TemplateCommands {
         #[arg(long, short, conflicts_with = "name")]
         all: bool,
     },
+    /// Roll back the last tracked update for a template
+    Rollback {
+        /// Template name to roll back
+        name: String,
+    },
     /// Run the built-in test suite for a template
     Test {
         /// Template name or path to a template directory
@@ -223,6 +228,7 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             force,
         } => install(source, name, version, force).await,
         TemplateCommands::Update { name, all } => update(name, all).await,
+        TemplateCommands::Rollback { name } => rollback(name).await,
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
@@ -735,7 +741,13 @@ async fn update(name: Option<String>, all: bool) -> Result<()> {
         println!();
         for (tpl_name, result) in &results {
             match result {
-                Ok(()) => p::success(&format!("  {} updated", tpl_name)),
+                Ok(report) => {
+                    p::success(&format!("  {} updated", tpl_name));
+                    p::kv("Impact", &report.impact.severity);
+                    if report.impact.breaking_changes {
+                        p::warn(&format!("  {} has breaking changes", tpl_name));
+                    }
+                }
                 Err(e) => p::warn(&format!("  {} — {}", tpl_name, e)),
             }
         }
@@ -752,9 +764,25 @@ async fn update(name: Option<String>, all: bool) -> Result<()> {
 
     p::header(&format!("Template Update: {}", name));
     p::step(1, 1, "Re-fetching from source...");
-    templates::update_installed_template(&name).await?;
+    let report = templates::update_installed_template(&name).await?;
     println!();
     p::success(&format!("Template '{}' updated", name));
+    p::kv("Compatibility", &report.compatibility);
+    p::kv("Impact", &report.impact.summary);
+    for guidance in &report.migration_guidance {
+        p::info(guidance);
+    }
+    Ok(())
+}
+
+async fn rollback(name: String) -> Result<()> {
+    p::header(&format!("Template Rollback: {}", name));
+    p::step(1, 1, "Restoring the last tracked template state...");
+    let report = templates::rollback_installed_template(&name).await?;
+    println!();
+    p::success(&format!("Template '{}' rolled back", name));
+    p::kv("Backup", report.backup_path.as_deref().unwrap_or("n/a"));
+    p::kv("Compatibility", &report.compatibility);
     Ok(())
 }
 
