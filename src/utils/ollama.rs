@@ -371,6 +371,59 @@ practical — developers should be able to act on your advice immediately.",
         )
     }
 
+    /// Prompt for AI contract pattern recognition and anti-pattern detection.
+    ///
+    /// `contract_code` is the raw Rust source.
+    /// `pre_scan_json` is a JSON-serialised `PreScanResult` from the static
+    /// indicator scan, giving the model a head-start before full analysis.
+    /// `feedback_context` is an optional string injected from the user feedback
+    /// store to calibrate confidence on patterns the user has already rated.
+    pub fn pattern_recognition_prompt(
+        contract_code: &str,
+        pre_scan_json: &str,
+        feedback_context: &str,
+    ) -> String {
+        format!(
+            "{}\
+Analyse the following Soroban smart contract for design patterns and anti-patterns.\n\n\
+A static indicator scan has already been run and produced the following preliminary \
+matches (JSON). Use these as hints but do not treat them as definitive — the LLM \
+analysis should confirm, refine, or reject each match:\n\n\
+```json\n{}\n```\n{}\n\n\
+**Contract source:**\n```rust\n{}\n```\n\n\
+Provide a structured analysis with the following sections:\n\n\
+## Recognised Patterns\n\
+List every design pattern present. For each include:\n\
+- Pattern name and category (Token / Governance / DeFi / Access Control / Storage / General)\n\
+- Confidence level (High / Medium / Low) with a one-sentence justification\n\
+- Specific improvement suggestions tailored to this contract's implementation\n\n\
+## Anti-Patterns Detected\n\
+List every anti-pattern found. For each include:\n\
+- Anti-pattern name, severity (Critical / High / Medium / Low), and category\n\
+- Where in the code it appears (function name or line description)\n\
+- Concrete remediation steps with example code where helpful\n\n\
+## Pattern Documentation\n\
+For the two highest-confidence pattern matches, provide a short documentation \
+paragraph a developer could paste into the contract's README.\n\n\
+## Actionable Improvements\n\
+Rank the top 5 actionable improvements across all findings, ordered by impact.",
+            SYSTEM_CONTEXT, pre_scan_json, feedback_context, contract_code
+        )
+    }
+
+    /// Prompt asking the LLM to classify a contract into its primary pattern
+    /// category without full analysis — useful for the `library` subcommand
+    /// when browsing which patterns apply.
+    pub fn pattern_classify_prompt(contract_code: &str) -> String {
+        format!(
+            "{}Given the following Soroban contract, classify it into one or more of these \
+pattern categories: Token, Governance, DeFi, AccessControl, Storage, General.\n\n\
+For each matching category, give a one-line reason.\n\n\
+```rust\n{}\n```",
+            SYSTEM_CONTEXT, contract_code
+        )
+    }
+
     /// Prompt for comparing two performance profiles and summarising the delta.
     ///
     /// `baseline_json` and `candidate_json` are both JSON-serialised
@@ -478,6 +531,27 @@ mod tests {
         assert!(prompt.contains(baseline));
         assert!(prompt.contains(candidate));
         assert!(prompt.to_lowercase().contains("compare"));
+    }
+
+    #[test]
+    fn pattern_recognition_prompt_includes_all_inputs() {
+        let code = "fn transfer(env: Env) {}";
+        let scan = r#"{"matched_patterns":[]}"#;
+        let feedback = "pattern 'sep41' confirmed correct 3 times";
+        let prompt = prompts::pattern_recognition_prompt(code, scan, feedback);
+        assert!(prompt.contains(code));
+        assert!(prompt.contains(scan));
+        assert!(prompt.contains(feedback));
+        assert!(prompt.to_lowercase().contains("anti-pattern"));
+        assert!(prompt.contains(prompts::SYSTEM_CONTEXT));
+    }
+
+    #[test]
+    fn pattern_classify_prompt_includes_code() {
+        let code = "fn mint(env: Env) {}";
+        let prompt = prompts::pattern_classify_prompt(code);
+        assert!(prompt.contains(code));
+        assert!(prompt.to_lowercase().contains("categor"));
     }
 
     #[test]

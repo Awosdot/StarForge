@@ -12,10 +12,13 @@
 //! - `optimise`        – gas-optimisation suggestions for a Soroban contract
 //! - `profile`         – AI-driven performance profiling of a compiled WASM
 //! - `compare-profiles`– AI-generated comparative analysis between two profile snapshots
+//! - `patterns`        – AI contract pattern recognition and anti-pattern detection
+//! - `library`         – browse the built-in Soroban pattern / anti-pattern library
 
 use crate::utils::{
     contract_profiler,
     ollama::{self, GenerateOptions},
+    pattern_library,
     print as p,
 };
 use anyhow::{Context, Result};
@@ -151,6 +154,68 @@ pub enum AiCommands {
         #[arg(short, long, default_value = ollama::DEFAULT_MODEL)]
         model: String,
     },
+
+    /// AI-powered pattern recognition for a Soroban contract source file.
+    ///
+    /// Runs a fast static indicator scan first, then asks the local LLM to
+    /// confirm/refine matches, detect anti-patterns, and rank improvements.
+    Patterns {
+        /// Path to the Soroban contract Rust source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Only show patterns in this category
+        /// (token | governance | defi | access_control | storage | general)
+        #[arg(long)]
+        category: Option<String>,
+
+        /// Write JSON results to this path (optional)
+        #[arg(long)]
+        output: Option<PathBuf>,
+
+        /// Skip the LLM call and return static indicator scan only
+        #[arg(long)]
+        static_only: bool,
+
+        /// Model to use
+        #[arg(short, long, default_value = ollama::DEFAULT_MODEL)]
+        model: String,
+    },
+
+    /// Browse and search the built-in Soroban pattern and anti-pattern library.
+    Library {
+        /// Filter by category (token | governance | defi | access_control | storage | general)
+        #[arg(long)]
+        category: Option<String>,
+
+        /// Show anti-patterns instead of design patterns
+        #[arg(long)]
+        anti: bool,
+
+        /// Show full details (indicators, suggestions/remediation)
+        #[arg(long, short)]
+        verbose: bool,
+    },
+
+    /// Record feedback on a pattern recognition result to improve future analyses.
+    ///
+    /// After running `starforge ai patterns`, mark a specific pattern match as
+    /// correct, incorrect, or partially correct to help calibrate the AI.
+    PatternFeedback {
+        /// Pattern ID to give feedback on (e.g. sep41-fungible-token, AP-002)
+        pattern_id: String,
+
+        /// Verdict: correct | incorrect | partial
+        verdict: String,
+
+        /// Source file used for this recognition (for keying; optional)
+        #[arg(long)]
+        file: Option<PathBuf>,
+
+        /// Optional free-text note
+        #[arg(long)]
+        note: Option<String>,
+    },
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
@@ -185,6 +250,19 @@ pub async fn handle(cmd: AiCommands) -> Result<()> {
             candidate,
             model,
         } => handle_compare_profiles(&baseline, &candidate, &model).await,
+        AiCommands::Patterns {
+            file,
+            category,
+            output,
+            static_only,
+            model,
+        } => handle_patterns(&file, category.as_deref(), output.as_deref(), static_only, &model).await,
+        AiCommands::Library { category, anti, verbose } => {
+            handle_library(category.as_deref(), anti, verbose)
+        }
+        AiCommands::PatternFeedback { pattern_id, verdict, file, note } => {
+            handle_pattern_feedback(&pattern_id, &verdict, file.as_deref(), note.as_deref())
+        }
     }
 }
 
@@ -606,6 +684,274 @@ fn percent_delta(current: f64, baseline: f64) -> f64 {
     }
 }
 
+// ─── AI Pattern Recognition ───────────────────────────────────────────────────
+
+/// Run static indicator scan + optional LLM analysis for pattern recognition.
+async fn handle_patterns(
+    file: &std::path::Path,
+    category_filter: Option<&str>,
+    output: Option<&std::path::Path>,
+    static_only: bool,
+    model: &str,
+) -> Result<()> {
+    let code = std::fs::read_to_string(file)
+        .with_context(|| format!("Cannot read source file: {}", file.display()))?;
+
+    p::header("AI Contract Pattern Recognition");
+    p::separator();
+    p::kv("File", &file.display().to_string());
+    p::kv("Lines", &code.lines().count().to_string());
+    if let Some(cat) = category_filter {
+        p::kv("Category filter", cat);
+    }
+    if static_only {
+        p::kv("Mode", "static indicator scan only");
+    } else {
+        p::kv("Model", model);
+    }
+    p::separator();
+
+    // ── Step 1: Static pre-scan ───────────────────────────────────────────────
+    let spinner = p::spinner("Running static indicator scan…");
+    let scan = pattern_library::pre_scan(&code);
+    spinner.finish_and_clear();
+
+    // Apply category filter to static results
+    let filtered_patterns: Vec<_> = scan.matched_patterns.iter().filter(|m| {
+        category_filter.is_none_or(|cat| {
+            m.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+        })
+    }).collect();
+
+    let filtered_anti: Vec<_> = scan.matched_anti_patterns.iter().filter(|m| {
+        category_filter.is_none_or(|cat| {
+            m.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+        })
+    }).collect();
+
+    println!();
+    p::info(&format!(
+        "Static Scan — {} pattern(s) and {} anti-pattern(s) detected",
+        filtered_patterns.len(),
+        filtered_anti.len()
+    ));
+
+    if !filtered_patterns.is_empty() {
+        println!();
+        let headers = &["Pattern", "Category", "Confidence", "Hits"];
+        let rows: Vec<Vec<String>> = filtered_patterns.iter().map(|m| {
+            vec![
+                m.pattern_name.clone(),
+                m.category.to_string(),
+                format!("{}%", m.confidence),
+                m.indicator_hits.to_string(),
+            ]
+        }).collect();
+        p::table(headers, &rows);
+    }
+
+    if !filtered_anti.is_empty() {
+        println!();
+        p::warn("Anti-patterns detected:");
+        let headers = &["ID", "Name", "Category", "Severity", "Hits"];
+        let rows: Vec<Vec<String>> = filtered_anti.iter().map(|m| {
+            vec![
+                m.anti_pattern_id.clone(),
+                m.anti_pattern_name.clone(),
+                m.category.to_string(),
+                m.severity.to_string(),
+                m.indicator_hits.to_string(),
+            ]
+        }).collect();
+        p::table(headers, &rows);
+    }
+
+    if filtered_patterns.is_empty() && filtered_anti.is_empty() {
+        p::info("No indicator matches found. The LLM may still identify patterns from context.");
+    }
+
+    // ── Step 2: LLM deep analysis (unless --static-only) ─────────────────────
+    if !static_only {
+        println!();
+        ensure_ollama_running().await?;
+
+        let scan_json = serde_json::to_string_pretty(&scan)
+            .context("Failed to serialise pre-scan result")?;
+        let feedback_ctx = pattern_library::feedback_context_for_prompt();
+        let prompt = ollama::prompts::pattern_recognition_prompt(&code, &scan_json, &feedback_ctx);
+        let opts = GenerateOptions {
+            temperature: Some(0.1),
+            num_predict: Some(3000),
+            num_ctx: Some(8192),
+        };
+
+        let spinner = p::spinner("Asking AI to analyse patterns…");
+        let response = ollama::generate(model, &prompt, Some(opts))
+            .await
+            .context("LLM pattern recognition failed")?;
+        spinner.finish_and_clear();
+
+        println!();
+        p::info("AI Pattern Analysis");
+        p::separator();
+        println!("{}", response.response.trim());
+
+        if response.total_duration > 0 {
+            println!();
+            p::kv("AI response time", &format!("{} ms", response.total_duration / 1_000_000));
+        }
+    }
+
+    // ── Step 3: Persist JSON output ───────────────────────────────────────────
+    if let Some(out_path) = output {
+        let json = serde_json::to_string_pretty(&scan)
+            .context("Failed to serialise scan result")?;
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(out_path, json)
+            .with_context(|| format!("Failed to write output to {}", out_path.display()))?;
+        p::success(&format!("JSON results saved → {}", out_path.display()));
+    }
+
+    p::separator();
+    Ok(())
+}
+
+/// Browse the built-in pattern or anti-pattern library.
+fn handle_library(
+    category_filter: Option<&str>,
+    show_anti: bool,
+    verbose: bool,
+) -> Result<()> {
+    p::header(if show_anti {
+        "Soroban Anti-Pattern Library"
+    } else {
+        "Soroban Design Pattern Library"
+    });
+    p::separator();
+
+    if show_anti {
+        let items: Vec<_> = pattern_library::all_anti_patterns()
+            .into_iter()
+            .filter(|ap| {
+                category_filter.is_none_or(|cat| {
+                    ap.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+                })
+            })
+            .collect();
+
+        if items.is_empty() {
+            p::info("No anti-patterns match the given filter.");
+            return Ok(());
+        }
+
+        for ap in &items {
+            println!();
+            println!(
+                "  [{:8}] {} — {} ({})",
+                ap.severity, ap.id, ap.name, ap.category
+            );
+            if verbose {
+                println!("  Description : {}", ap.description);
+                println!("  Remediation : {}", ap.remediation);
+                if !ap.indicators.is_empty() {
+                    println!("  Indicators  : {}", ap.indicators.join(", "));
+                }
+            }
+        }
+
+        println!();
+        p::info(&format!("{} anti-pattern(s) listed.", items.len()));
+    } else {
+        let items: Vec<_> = pattern_library::all_patterns()
+            .into_iter()
+            .filter(|p| {
+                category_filter.is_none_or(|cat| {
+                    p.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+                })
+            })
+            .collect();
+
+        if items.is_empty() {
+            p::info("No patterns match the given filter.");
+            return Ok(());
+        }
+
+        for pat in &items {
+            println!();
+            println!("  [{}] {} — {}", pat.category, pat.id, pat.name);
+            if verbose {
+                println!("  Description : {}", pat.description);
+                if !pat.suggestions.is_empty() {
+                    println!("  Suggestions :");
+                    for s in &pat.suggestions {
+                        println!("    • {}", s);
+                    }
+                }
+                if !pat.references.is_empty() {
+                    println!("  References  : {}", pat.references.join(", "));
+                }
+                if !pat.indicators.is_empty() {
+                    println!("  Indicators  : {}", pat.indicators.join(", "));
+                }
+            }
+        }
+
+        println!();
+        p::info(&format!("{} pattern(s) listed.", items.len()));
+    }
+
+    p::separator();
+    Ok(())
+}
+
+/// Record user feedback on a pattern recognition result.
+fn handle_pattern_feedback(
+    pattern_id: &str,
+    verdict_str: &str,
+    file: Option<&std::path::Path>,
+    note: Option<&str>,
+) -> Result<()> {
+    let verdict = match verdict_str.to_lowercase().as_str() {
+        "correct" => pattern_library::FeedbackVerdict::Correct,
+        "incorrect" => pattern_library::FeedbackVerdict::Incorrect,
+        "partial" => pattern_library::FeedbackVerdict::Partial,
+        other => anyhow::bail!(
+            "Unknown verdict '{}'. Use: correct | incorrect | partial",
+            other
+        ),
+    };
+
+    // Compute source hash if a file was provided.
+    let file_hash = match file {
+        Some(path) => {
+            let src = std::fs::read_to_string(path)
+                .with_context(|| format!("Cannot read {}", path.display()))?;
+            pattern_library::source_hash(&src)
+        }
+        None => "unknown".to_string(),
+    };
+
+    let entry = pattern_library::PatternFeedback {
+        id: format!("fb-{}", chrono::Utc::now().timestamp_millis()),
+        pattern_id: pattern_id.to_string(),
+        file_hash,
+        verdict,
+        note: note.map(str::to_string),
+        submitted_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    pattern_library::save_feedback(entry)?;
+
+    p::success(&format!(
+        "Feedback recorded for pattern '{}': {}",
+        pattern_id, verdict_str
+    ));
+    p::info("Future `starforge ai patterns` calls will incorporate this feedback.");
+    Ok(())
+}
+
 // ─── Task enum ────────────────────────────────────────────────────────────────
 
 enum Task {
@@ -729,5 +1075,39 @@ mod tests {
     #[test]
     fn percent_delta_no_change_is_zero() {
         assert_eq!(percent_delta(100.0, 100.0), 0.0);
+    }
+
+    // ── Pattern recognition helpers ───────────────────────────────────────────
+
+    #[test]
+    fn library_command_completes_without_error() {
+        // Browse patterns — no I/O other than stdout; must not panic or error.
+        let result = super::handle_library(None, false, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn library_anti_command_completes_without_error() {
+        let result = super::handle_library(None, true, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn library_verbose_token_filter() {
+        let result = super::handle_library(Some("token"), false, true);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn library_verbose_anti_defi_filter() {
+        let result = super::handle_library(Some("defi"), true, true);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn pattern_feedback_rejects_invalid_verdict() {
+        let result = super::handle_pattern_feedback("sep41-fungible-token", "maybe", None, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown verdict"));
     }
 }
