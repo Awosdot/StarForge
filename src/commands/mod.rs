@@ -1,4 +1,5 @@
 pub mod ai_audit;
+pub mod ai;
 pub mod analytics;
 pub mod approval;
 pub mod audit;
