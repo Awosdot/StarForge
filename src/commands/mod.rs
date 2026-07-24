@@ -1,4 +1,5 @@
 pub mod ai_audit;
+pub mod ai_debug;
 pub mod analytics;
 pub mod approval;
 pub mod audit;
@@ -40,6 +41,7 @@ pub mod registry;
 pub mod schedule;
 pub mod security;
 pub mod shell;
+pub mod simulate;
 pub mod social;
 pub mod telemetry;
 pub mod template;

@@ -374,7 +374,6 @@ pub fn execute_pipeline(
                 pipeline.stages[i].status = StageStatus::Failed;
                 pipeline.stages[i].error = Some(e.to_string());
                 failed += 1;
-                let on_failure = stage.config.on_failure;
                 pipeline.status = PipelineStatus::Failed;
                 pipeline.updated_at = Utc::now().to_rfc3339();
                 save_pipeline(pipeline)?;

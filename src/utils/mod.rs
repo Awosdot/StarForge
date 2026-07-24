@@ -8,6 +8,7 @@ pub mod benchmarking;
 pub mod bindings;
 pub mod call_graph;
 pub mod compliance;
+pub mod completion;
 pub mod config;
 pub mod confirmation;
 pub mod contract_assertions;
