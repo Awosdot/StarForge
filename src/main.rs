@@ -221,6 +221,22 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+
+    /// AI-powered template security scanning
+    #[command(subcommand)]
+    TemplateSecurity(commands::template_security::TemplateSecurityCommands),
+
+    /// AI-powered deployment optimization
+    #[command(subcommand)]
+    DeploymentOptimize(commands::deployment_optimize::DeploymentOptimizeCommands),
+
+    /// AI-powered multi-network deployment support
+    #[command(subcommand)]
+    MultiNetwork(commands::multi_network::MultiNetworkCommands),
+
+    /// AI-powered deployment automation
+    #[command(subcommand)]
+    DeploymentAutomate(commands::deployment_automate::DeploymentAutomateCommands),
 }
 
 #[tokio::main]
@@ -288,7 +304,10 @@ async fn main() {
         Commands::Migrate(_) => "migrate",
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
-        Commands::Migrate(_) => "migrate",
+        Commands::TemplateSecurity(_) => "template-security",
+        Commands::DeploymentOptimize(_) => "deployment-optimize",
+        Commands::MultiNetwork(_) => "multi-network",
+        Commands::DeploymentAutomate(_) => "deployment-automate",
     }
     .to_string();
 
@@ -345,7 +364,10 @@ async fn main() {
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+        Commands::TemplateSecurity(cmd) => commands::template_security::handle(cmd).await,
+        Commands::DeploymentOptimize(cmd) => commands::deployment_optimize::handle(cmd).await,
+        Commands::MultiNetwork(cmd) => commands::multi_network::handle(cmd).await,
+        Commands::DeploymentAutomate(cmd) => commands::deployment_automate::handle(cmd).await,
     };
     let duration = start.elapsed();
 
