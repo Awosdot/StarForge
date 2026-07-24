@@ -298,7 +298,6 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
-        Commands::Generate(_) => "generate",
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
     }
