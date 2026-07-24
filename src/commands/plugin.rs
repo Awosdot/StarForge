@@ -83,6 +83,11 @@ pub enum PluginCommands {
         /// Show commands for a specific plugin only
         name: Option<String>,
     },
+    /// Search the plugin marketplace for available plugins
+    Search {
+        /// Search query (e.g. "ai", "security")
+        query: Option<String>,
+    },
 }
 
 pub async fn handle(cmd: PluginCommands) -> Result<()> {
@@ -107,6 +112,7 @@ pub async fn handle(cmd: PluginCommands) -> Result<()> {
         } => audit(name, runtime_check),
         PluginCommands::Update { name, yes } => update(name, yes),
         PluginCommands::Commands { name } => commands(name),
+        PluginCommands::Search { query } => search(query).await,
     }
 }
 
@@ -189,6 +195,63 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
         }
     }
     p::info("Load plugins with: starforge plugin load");
+    Ok(())
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct MarketplacePlugin {
+    name: String,
+    description: String,
+    url: String,
+}
+
+async fn search(query: Option<String>) -> Result<()> {
+    p::header("Plugin Marketplace — Search");
+    if let Some(ref q) = query {
+        p::kv("Query", q);
+    }
+    
+    // Attempt to fetch from official plugin registry, fallback to hardcoded examples for demonstration.
+    let registry_url = "https://starforge-protocol.github.io/starforge/plugins/registry.json";
+    
+    let mut available_plugins = vec![
+        MarketplacePlugin {
+            name: "starforge-ai-audit".to_string(),
+            description: "AI-powered smart contract auditing plugin".to_string(),
+            url: "https://github.com/StarForge-Labs/starforge-ai-audit".to_string(),
+        },
+        MarketplacePlugin {
+            name: "starforge-defi".to_string(),
+            description: "DeFi scaffold and AMM tools".to_string(),
+            url: "https://github.com/Nanle-code/starforge-defi".to_string(),
+        }
+    ];
+
+    if let Ok(resp) = reqwest::get(registry_url).await {
+        if let Ok(plugins) = resp.json::<Vec<MarketplacePlugin>>().await {
+            available_plugins = plugins;
+        }
+    }
+
+    if let Some(q) = query {
+        let q = q.to_lowercase();
+        available_plugins.retain(|p| p.name.to_lowercase().contains(&q) || p.description.to_lowercase().contains(&q));
+    }
+
+    if available_plugins.is_empty() {
+        p::info("No plugins found matching your search.");
+        return Ok(());
+    }
+
+    println!("\n  Found {} plugin(s):\n", available_plugins.len());
+    
+    let rows: Vec<Vec<String>> = available_plugins.into_iter().map(|p| {
+        vec![p.name, p.description, p.url]
+    }).collect();
+    
+    p::table(&["Name", "Description", "Source URL"], &rows);
+    println!("\nTo install a plugin, run: starforge plugin install <name> --source <url>");
+
     Ok(())
 }
 
