@@ -1,6 +1,7 @@
-use crate::utils::{print as p, registry, templates};
+use crate::utils::{print as p, quality_analysis, registry, templates};
 use anyhow::Result;
 use clap::Subcommand;
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -154,6 +155,18 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
+    /// AI-assisted quality analysis: code quality, security, best practices,
+    /// documentation completeness, test coverage, and a weighted quality score
+    Quality {
+        /// Template name
+        name: String,
+        /// Output format: text or json
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Write the report to this file instead of stdout
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 pub async fn handle(cmd: TemplateCommands) -> Result<()> {
@@ -226,6 +239,9 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
+        TemplateCommands::Quality { name, format, out } => {
+            template_quality(name, format, out).await
+        }
     }
 }
 
@@ -976,4 +992,143 @@ async fn template_audit(name: Option<String>) -> Result<()> {
     }
 
     Ok(())
+}
+
+// ─── template quality ─────────────────────────────────────────────────────────
+
+/// Locate a template's local source directory — prefer the built-in examples
+/// shipped with StarForge, falling back to whatever path the registry has
+/// recorded for an installed/published template.
+async fn resolve_template_dir(name: &str) -> Result<PathBuf> {
+    let builtin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("templates")
+        .join("examples")
+        .join(name);
+
+    if builtin.exists() {
+        return Ok(builtin);
+    }
+
+    let entry = templates::get_template(name).await?;
+    match entry.path {
+        Some(ref p) => Ok(PathBuf::from(p)),
+        None => anyhow::bail!(
+            "Template '{}' has no local path. Install it first with: starforge template install {}",
+            name,
+            name
+        ),
+    }
+}
+
+/// Read a template's primary contract source file (`src/lib.rs` or `src/main.rs`).
+fn read_template_source(template_dir: &std::path::Path) -> Result<(PathBuf, String)> {
+    let lib_path = template_dir.join("src/lib.rs");
+    let main_path = template_dir.join("src/main.rs");
+
+    if lib_path.exists() {
+        let code = std::fs::read_to_string(&lib_path)?;
+        return Ok((lib_path, code));
+    }
+    if main_path.exists() {
+        let code = std::fs::read_to_string(&main_path)?;
+        return Ok((main_path, code));
+    }
+
+    anyhow::bail!(
+        "No src/lib.rs or src/main.rs found in {}",
+        template_dir.display()
+    )
+}
+
+async fn template_quality(name: String, format: String, out: Option<PathBuf>) -> Result<()> {
+    let template_dir = resolve_template_dir(&name).await?;
+    let (source_path, code) = read_template_source(&template_dir)?;
+
+    let report = quality_analysis::analyze_source(&name, &code);
+
+    let output = match format.to_lowercase().as_str() {
+        "json" => serde_json::to_string_pretty(&report)?,
+        _ => {
+            print_quality_report(&report, &source_path);
+            String::new()
+        }
+    };
+
+    if !output.is_empty() {
+        if let Some(out_path) = out {
+            std::fs::write(&out_path, &output)?;
+            p::success(&format!("Report written to {}", out_path.display()));
+        } else {
+            println!("{}", output);
+        }
+    }
+
+    Ok(())
+}
+
+fn quality_score_color(score: u8) -> colored::ColoredString {
+    let label = format!("{}/100", score);
+    match score {
+        90..=100 => label.green().bold(),
+        70..=89 => label.green(),
+        50..=69 => label.yellow(),
+        25..=49 => label.red(),
+        _ => label.red().bold(),
+    }
+}
+
+fn print_quality_report(
+    report: &quality_analysis::TemplateQualityReport,
+    source_path: &std::path::Path,
+) {
+    p::header(&format!("AI Template Quality Analysis — {}", report.template_name));
+    p::separator();
+    p::kv("Source", &source_path.display().to_string());
+    p::kv(
+        "Overall Score",
+        &quality_score_color(report.overall_score).to_string(),
+    );
+    println!();
+
+    for category in &report.categories {
+        println!(
+            "  {} {} — {}/{}",
+            "→".cyan(),
+            category.name.bold(),
+            category.score,
+            category.max_score
+        );
+        for finding in &category.findings {
+            println!("      • {}", finding);
+        }
+    }
+
+    if !report.suggestions.is_empty() {
+        println!();
+        println!("{}", "Suggestions".bold());
+        println!("{}", "─".repeat(60));
+        for (i, suggestion) in report.suggestions.iter().enumerate() {
+            println!("  {}. {}", i + 1, suggestion);
+        }
+    }
+
+    println!();
+    p::separator();
+    p::kv("Functions", &report.code_metrics.total_functions.to_string());
+    p::kv(
+        "Public functions",
+        &report.code_metrics.public_functions.to_string(),
+    );
+    p::kv(
+        "Documentation",
+        &format!("{:.0}%", report.doc_metrics.completeness_pct),
+    );
+    p::kv(
+        "Test functions",
+        &report.test_metrics.test_function_count.to_string(),
+    );
+    p::kv(
+        "Vulnerabilities",
+        &report.vulnerabilities.len().to_string(),
+    );
 }
