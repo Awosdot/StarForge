@@ -101,7 +101,9 @@ impl AiAuditService {
             best_practice_violations: ai_result.best_practice_violations.clone(),
             fix_suggestions: ai_result.fix_suggestions.clone(),
             security_score: ai_result.security_score,
-            false_positive_warning: "AI analysis may produce false positives. Review all findings with a human auditor.".to_string(),
+            false_positive_warning:
+                "AI analysis may produce false positives. Review all findings with a human auditor."
+                    .to_string(),
             tools_used: vec!["claude-opus-4-1".to_string(), "static-analysis".to_string()],
         };
 
@@ -131,13 +133,10 @@ impl AiAuditService {
             .await
             .map_err(|e| anyhow!("Failed to call Anthropic API: {}", e))?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "Anthropic API error {}: {}",
-                response.status(),
-                error_text
-            ));
+            return Err(anyhow!("Anthropic API error {}: {}", status, error_text));
         }
 
         let anthropic_response: AnthropicResponse = response

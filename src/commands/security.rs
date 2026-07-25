@@ -662,8 +662,9 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             Ok(())
         }
     }
+}
 
-    fn handle_dashboard() -> Result<()> {
+fn handle_dashboard() -> Result<()> {
     p::header("Security Dashboard");
 
     let mut incidents = IncidentStore::load_all()?;
@@ -726,19 +727,15 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
     );
     p::kv(
         "Remediation backlog clear",
-        if open_remediation == 0 { "PASS" } else { "FAIL" },
+        if open_remediation == 0 {
+            "PASS"
+        } else {
+            "FAIL"
+        },
     );
     println!();
 
     p::info("Run `starforge security audit <path>` for a live per-contract score.");
     p::success("Dashboard generated");
     Ok(())
-}
-
-    /// Track remediation of findings from audit/pentest/checklist runs
-    Remediation(RemediationArgs),
-    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
-    Dashboard,
-}
-
 }

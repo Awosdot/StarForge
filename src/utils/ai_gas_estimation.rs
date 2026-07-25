@@ -1,10 +1,10 @@
+use crate::utils::config;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use chrono::Utc;
 use uuid::Uuid;
-use crate::utils::config;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiGasEstimate {
@@ -59,18 +59,23 @@ impl AiGasEstimator {
                 operation: "Complex Loop".to_string(),
                 location: "execute (line 112)".to_string(),
                 cost_impact: 1800,
-            }
+            },
         ];
 
         let suggestions = vec![
             "Batch storage writes in `update_state` to reduce I/O costs.".to_string(),
-            "Optimize the loop in `execute` to O(1) mathematical calculation if possible.".to_string(),
+            "Optimize the loop in `execute` to O(1) mathematical calculation if possible."
+                .to_string(),
             "Consider using a smaller data type for the struct fields in `init`.".to_string(),
         ];
 
         let estimate = AiGasEstimate {
             network: network.to_string(),
-            contract_name: wasm_path.file_stem().unwrap_or_default().to_string_lossy().to_string(),
+            contract_name: wasm_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
             total_estimated_cost: 10000,
             accuracy_confidence: 0.94,
             function_costs,

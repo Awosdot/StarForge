@@ -38,7 +38,9 @@ impl Database {
     }
 
     fn ensure_column(&self, table: &str, column: &str, definition: &str) -> Result<()> {
-        let mut stmt = self.conn.prepare(&format!("PRAGMA table_info({})", table))?;
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
         let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
         for existing in columns {
             if existing? == column {

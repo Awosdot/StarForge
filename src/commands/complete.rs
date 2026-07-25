@@ -116,11 +116,7 @@ fn handle_suggest(args: SuggestArgs) -> Result<()> {
 
     // Honour a cursor position by truncating to `--line` lines.
     let effective = match args.line {
-        Some(n) => source
-            .lines()
-            .take(n)
-            .collect::<Vec<_>>()
-            .join("\n"),
+        Some(n) => source.lines().take(n).collect::<Vec<_>>().join("\n"),
         None => source,
     };
 
@@ -277,7 +273,8 @@ fn handle_stub(args: StubArgs) -> Result<()> {
 fn apply_stub_bodies(source: &str, stubs: &[completion::StubCompletion]) -> String {
     let lines: Vec<&str> = source.lines().collect();
     // Map of 0-based open-brace line -> generated body.
-    let mut replacements: std::collections::BTreeMap<usize, &str> = std::collections::BTreeMap::new();
+    let mut replacements: std::collections::BTreeMap<usize, &str> =
+        std::collections::BTreeMap::new();
     for stub in stubs {
         replacements.insert(stub.line - 1, stub.body.as_str());
     }
@@ -304,7 +301,10 @@ fn apply_stub_bodies(source: &str, stubs: &[completion::StubCompletion]) -> Stri
                 .map(|b| &open_line[..b])
                 .unwrap_or(open_line);
             // Re-indent the body to match the signature's indentation.
-            let indent: String = open_line.chars().take_while(|c| c.is_whitespace()).collect();
+            let indent: String = open_line
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .collect();
             let mut merged = String::new();
             merged.push_str(prefix);
             for (i, bl) in body.lines().enumerate() {

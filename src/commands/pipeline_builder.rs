@@ -345,11 +345,7 @@ fn handle_approve(args: ApprovalArgs) -> Result<()> {
     let mut pipeline = pipeline_builder::load_pipeline(&args.id)?;
     pipeline_builder::approve_stage(&mut pipeline, &args.stage, &args.approver)?;
     pipeline_builder::save_pipeline(&pipeline)?;
-    let stage = pipeline
-        .stages
-        .iter()
-        .find(|s| s.id == args.stage)
-        .unwrap();
+    let stage = pipeline.stages.iter().find(|s| s.id == args.stage).unwrap();
     let required = stage.config.required_approvals.unwrap_or(1);
     let approved = stage
         .approvals
@@ -388,20 +384,17 @@ fn handle_run(args: RunArgs) -> Result<()> {
 
     for stage in &pipeline.stages {
         let marker = match stage.status {
-            pipeline_builder::StageStatus::Passed
-            | pipeline_builder::StageStatus::Approved => "✓".green(),
-            pipeline_builder::StageStatus::Failed
-            | pipeline_builder::StageStatus::Rejected => "✗".red(),
+            pipeline_builder::StageStatus::Passed | pipeline_builder::StageStatus::Approved => {
+                "✓".green()
+            }
+            pipeline_builder::StageStatus::Failed | pipeline_builder::StageStatus::Rejected => {
+                "✗".red()
+            }
             pipeline_builder::StageStatus::WaitingApproval => "⏳".yellow(),
             pipeline_builder::StageStatus::RolledBack => "↩".cyan(),
             _ => "·".dimmed(),
         };
-        println!(
-            "  {} {} — {:?}",
-            marker,
-            stage.name,
-            stage.status
-        );
+        println!("  {} {} — {:?}", marker, stage.name, stage.status);
         if let Some(err) = &stage.error {
             println!("      {}", err.red());
         }
@@ -442,8 +435,7 @@ fn handle_templates() -> Result<()> {
 
 fn handle_from_template(args: FromTemplateArgs) -> Result<()> {
     p::header("Create Pipeline From Template");
-    let pipeline =
-        pipeline_builder::from_template(&args.template, &args.name, &args.network)?;
+    let pipeline = pipeline_builder::from_template(&args.template, &args.name, &args.network)?;
     let saved = pipeline_builder::save_pipeline(&pipeline)?;
     if let Some(output) = args.output {
         pipeline_builder::export_pipeline(&pipeline, &output)?;
@@ -452,12 +444,7 @@ fn handle_from_template(args: FromTemplateArgs) -> Result<()> {
     p::kv("Template", &args.template);
     p::kv("Pipeline ID", &pipeline.id);
     p::kv("Stages", &pipeline.stages.len().to_string());
-    p::kv(
-        "Saved to",
-        &saved
-            .display()
-            .to_string(),
-    );
+    p::kv("Saved to", &saved.display().to_string());
     p::success("Pipeline created from template");
     Ok(())
 }
@@ -478,7 +465,10 @@ fn handle_export(args: ExportArgs) -> Result<()> {
 fn handle_import(args: ImportArgs) -> Result<()> {
     let pipeline = pipeline_builder::import_pipeline(&args.input)?;
     let output = args.output.unwrap_or_else(|| {
-        PathBuf::from(format!("pipeline_{}.json", &pipeline.id[..8.min(pipeline.id.len())]))
+        PathBuf::from(format!(
+            "pipeline_{}.json",
+            &pipeline.id[..8.min(pipeline.id.len())]
+        ))
     });
     pipeline_builder::export_pipeline(&pipeline, &output)?;
     pipeline_builder::save_pipeline(&pipeline)?;

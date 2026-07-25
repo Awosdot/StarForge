@@ -297,8 +297,7 @@ impl SecurityPatterns {
             if line.contains("persistent()") && line.contains("set") {
                 // Look for extend_ttl in nearby lines
                 let mut has_ttl = false;
-                for j in std::cmp::max(0, i.saturating_sub(5))..std::cmp::min(i + 5, lines.len())
-                {
+                for j in std::cmp::max(0, i.saturating_sub(5))..std::cmp::min(i + 5, lines.len()) {
                     if lines[j].contains("extend_ttl") {
                         has_ttl = true;
                         break;

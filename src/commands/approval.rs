@@ -313,14 +313,7 @@ fn handle_show_workflow(args: ShowWorkflowArgs) -> Result<()> {
     p::kv_accent("ID", &workflow.id);
     p::kv("Name", &workflow.name);
     p::kv("Description", &workflow.description);
-    p::kv(
-        "Active",
-        if workflow.active {
-            "yes"
-        } else {
-            "no"
-        },
-    );
+    p::kv("Active", if workflow.active { "yes" } else { "no" });
     p::kv(
         "Created",
         &workflow

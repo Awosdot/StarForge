@@ -100,7 +100,9 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
                     // Clean up potential markdown blocks if the LLM ignored instructions
                     let mut cleaned_code = code.trim();
                     if cleaned_code.starts_with("```rust") {
-                        cleaned_code = cleaned_code.strip_prefix("```rust\n").unwrap_or(cleaned_code);
+                        cleaned_code = cleaned_code
+                            .strip_prefix("```rust\n")
+                            .unwrap_or(cleaned_code);
                     } else if cleaned_code.starts_with("```") {
                         cleaned_code = cleaned_code.strip_prefix("```\n").unwrap_or(cleaned_code);
                     }

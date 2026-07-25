@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractMetrics {
@@ -63,8 +63,6 @@ pub struct PerformanceSummary {
     pub success_rate: f64,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertTrigger {
     pub alert: AlertConfig,
@@ -84,7 +82,6 @@ pub struct GasUsageRecord {
     pub memory_used: Option<u64>,
     pub network: String,
 }
-
 
 fn metrics_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
@@ -293,8 +290,6 @@ pub fn generate_report(contract_id: &str, network: &str) -> Result<PerformanceRe
             avg_memory_used_bytes: None,
             max_memory_used_bytes: None,
             success_rate,
-            avg_memory_used_bytes: None,
-            max_memory_used_bytes: None,
         },
         metrics: contract_metrics.metrics,
         alerts_triggered: triggered,
@@ -334,7 +329,6 @@ impl MetricCollector {
             execution_time_ms: total_ms,
             memory_used: None,
             network: self.network,
-            memory_used: None,
         })?;
 
         Ok(())
@@ -356,15 +350,21 @@ pub struct BottleneckAnalysis {
 pub fn analyze_bottlenecks(contract_id: &str) -> Result<BottleneckAnalysis> {
     let gas_history = get_gas_history(contract_id)?;
     if gas_history.is_empty() {
-        return Err(anyhow::anyhow!("No gas history found for contract: {}", contract_id));
+        return Err(anyhow::anyhow!(
+            "No gas history found for contract: {}",
+            contract_id
+        ));
     }
 
     let mut operation_frequencies: HashMap<String, usize> = HashMap::new();
     let mut operation_gas: HashMap<String, u64> = HashMap::new();
 
     for record in &gas_history {
-        *operation_frequencies.entry(record.operation.clone()).or_insert(0) += 1;
-        operation_gas.entry(record.operation.clone())
+        *operation_frequencies
+            .entry(record.operation.clone())
+            .or_insert(0) += 1;
+        operation_gas
+            .entry(record.operation.clone())
             .and_modify(|g| *g += record.gas_used)
             .or_insert(record.gas_used);
     }
@@ -385,7 +385,8 @@ pub fn analyze_bottlenecks(contract_id: &str) -> Result<BottleneckAnalysis> {
         .collect();
 
     let success_rate = gas_history.iter().filter(|r| r.success).count() as f64 / total_executions;
-    let avg_execution_time = gas_history.iter().map(|r| r.execution_time_ms).sum::<u64>() as f64 / total_executions;
+    let avg_execution_time =
+        gas_history.iter().map(|r| r.execution_time_ms).sum::<u64>() as f64 / total_executions;
 
     let mut score = 100.0;
     if success_rate < 0.95 {
@@ -430,7 +431,10 @@ pub struct RegressionReport {
 pub fn detect_regression(contract_id: &str, period_hours: u64) -> Result<RegressionReport> {
     let gas_history = get_gas_history(contract_id)?;
     if gas_history.is_empty() {
-        return Err(anyhow::anyhow!("No gas history found for contract: {}", contract_id));
+        return Err(anyhow::anyhow!(
+            "No gas history found for contract: {}",
+            contract_id
+        ));
     }
 
     let now = chrono::Utc::now();
@@ -453,12 +457,8 @@ pub fn detect_regression(contract_id: &str, period_hours: u64) -> Result<Regress
         })
         .collect();
 
-    let baseline_gas: Vec<f64> = baseline_records.iter()
-        .map(|r| r.gas_used as f64)
-        .collect();
-    let current_gas: Vec<f64> = recent_records.iter()
-        .map(|r| r.gas_used as f64)
-        .collect();
+    let baseline_gas: Vec<f64> = baseline_records.iter().map(|r| r.gas_used as f64).collect();
+    let current_gas: Vec<f64> = recent_records.iter().map(|r| r.gas_used as f64).collect();
 
     let baseline_avg = if !baseline_gas.is_empty() {
         baseline_gas.iter().sum::<f64>() / baseline_gas.len() as f64
@@ -543,7 +543,10 @@ pub struct ComparisonReport {
 pub fn compare_profiles(contract_id: &str, hours_back: u64) -> Result<ComparisonReport> {
     let gas_history = get_gas_history(contract_id)?;
     if gas_history.is_empty() {
-        return Err(anyhow::anyhow!("No gas history found for contract: {}", contract_id));
+        return Err(anyhow::anyhow!(
+            "No gas history found for contract: {}",
+            contract_id
+        ));
     }
 
     let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours_back as i64);
@@ -572,9 +575,8 @@ pub fn compare_profiles(contract_id: &str, hours_back: u64) -> Result<Comparison
     let mut performance_differences: BTreeMap<String, f64> = BTreeMap::new();
 
     if snapshots.len() >= 2 {
-        let avg_gas_current: f64 = snapshots.iter()
-            .map(|s| s.gas_used as f64)
-            .sum::<f64>() / snapshots.len() as f64;
+        let avg_gas_current: f64 =
+            snapshots.iter().map(|s| s.gas_used as f64).sum::<f64>() / snapshots.len() as f64;
 
         let avg_gas_earlier = if snapshots.len() >= 4 {
             let earlier: Vec<_> = snapshots.iter().take(snapshots.len() / 2).collect();
@@ -586,17 +588,23 @@ pub fn compare_profiles(contract_id: &str, hours_back: u64) -> Result<Comparison
         if avg_gas_earlier > 0.0 {
             performance_differences.insert(
                 "gas_usage_difference".to_string(),
-                ((avg_gas_current - avg_gas_earlier) / avg_gas_earlier) * 100.0
+                ((avg_gas_current - avg_gas_earlier) / avg_gas_earlier) * 100.0,
             );
         }
 
-        let avg_time_current: f64 = snapshots.iter()
+        let avg_time_current: f64 = snapshots
+            .iter()
             .map(|s| s.execution_time_ms as f64)
-            .sum::<f64>() / snapshots.len() as f64;
+            .sum::<f64>()
+            / snapshots.len() as f64;
 
         let avg_time_earlier = if snapshots.len() >= 4 {
             let earlier: Vec<_> = snapshots.iter().take(snapshots.len() / 2).collect();
-            earlier.iter().map(|s| s.execution_time_ms as f64).sum::<f64>() / earlier.len() as f64
+            earlier
+                .iter()
+                .map(|s| s.execution_time_ms as f64)
+                .sum::<f64>()
+                / earlier.len() as f64
         } else {
             avg_time_current
         };
@@ -604,7 +612,7 @@ pub fn compare_profiles(contract_id: &str, hours_back: u64) -> Result<Comparison
         if avg_time_earlier > 0.0 {
             performance_differences.insert(
                 "execution_time_difference".to_string(),
-                ((avg_time_current - avg_time_earlier) / avg_time_earlier) * 100.0
+                ((avg_time_current - avg_time_earlier) / avg_time_earlier) * 100.0,
             );
         }
     }
@@ -614,13 +622,16 @@ pub fn compare_profiles(contract_id: &str, hours_back: u64) -> Result<Comparison
         if *gas_diff > 20.0 {
             recommendations.push("Gas usage has increased significantly. Consider optimizing storage access patterns.".to_string());
         } else if *gas_diff < -20.0 {
-            recommendations.push("Gas usage has decreased significantly. Good optimization work!".to_string());
+            recommendations
+                .push("Gas usage has decreased significantly. Good optimization work!".to_string());
         }
     }
 
     if let Some(time_diff) = performance_differences.get("execution_time_difference") {
         if *time_diff > 20.0 {
-            recommendations.push("Execution time has increased. Investigate for potential bottlenecks.".to_string());
+            recommendations.push(
+                "Execution time has increased. Investigate for potential bottlenecks.".to_string(),
+            );
         } else if *time_diff < -20.0 {
             recommendations.push("Execution time has improved significantly.".to_string());
         }
@@ -731,15 +742,17 @@ mod tests {
         for i in 0..10 {
             let record = GasUsageRecord {
                 contract_id: contract_id.clone(),
-                operation: if i % 3 == 0 { "transfer".to_string() }
-                    else { "query".to_string() },
+                operation: if i % 3 == 0 {
+                    "transfer".to_string()
+                } else {
+                    "query".to_string()
+                },
                 gas_used: (i * 1000 + 500) as u64,
                 timestamp: (base_time + chrono::Duration::seconds(i as i64)).to_rfc3339(),
                 success: i % 5 != 0,
-            execution_time_ms: (i * 100 + 100) as u64,
+                execution_time_ms: (i * 100 + 100) as u64,
                 memory_used: None,
                 network: "testnet".to_string(),
-
             };
             record_gas_usage(&record).unwrap();
         }
@@ -761,11 +774,18 @@ mod tests {
             let record = GasUsageRecord {
                 contract_id: contract_id.clone(),
                 operation: "operation".to_string(),
-                gas_used: if i < 5 { 10000 + i as u64 * 500 }
-                    else { 15000 + i as u64 * 500 },
+                gas_used: if i < 5 {
+                    10000 + i as u64 * 500
+                } else {
+                    15000 + i as u64 * 500
+                },
                 timestamp: (base_time + chrono::Duration::seconds(i as i64)).to_rfc3339(),
                 success: true,
-                execution_time_ms: if i < 5 { 500 + i as u64 * 50 } else { 1000 + i as u64 * 50 },
+                execution_time_ms: if i < 5 {
+                    500 + i as u64 * 50
+                } else {
+                    1000 + i as u64 * 50
+                },
                 memory_used: None,
                 network: "testnet".to_string(),
             };

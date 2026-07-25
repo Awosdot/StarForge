@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use std::mem::size_of;
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "memory-profiling")]
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -14,7 +14,9 @@ impl GlobalAlloc for MemoryProfiler {
         let ptr = System.alloc(layout);
         if !ptr.is_null() {
             if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
-                alloc_tracker.allocations.push((layout.size(), ptr as usize));
+                alloc_tracker
+                    .allocations
+                    .push((layout.size(), ptr as usize));
             }
         }
         ptr
@@ -23,7 +25,9 @@ impl GlobalAlloc for MemoryProfiler {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         System.dealloc(ptr, layout);
         if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
-            alloc_tracker.allocations.retain(|(size, addr)| ptr as usize != *addr);
+            alloc_tracker
+                .allocations
+                .retain(|(size, addr)| ptr as usize != *addr);
         }
     }
 }

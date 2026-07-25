@@ -3,9 +3,9 @@
 //! These tests verify the command-line interface, argument parsing,
 //! and output formatting.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-use std::io::Write;
 
 /// Helper to create a temporary Rust file with contract code.
 fn create_temp_contract(code: &str) -> NamedTempFile {
@@ -279,7 +279,11 @@ fn test_audit_args_valid_json_output() {
     };
 
     assert_eq!(args.format, "json");
-    assert!(args.out.unwrap().extension().map_or(false, |ext| ext == "json"));
+    assert!(args
+        .out
+        .unwrap()
+        .extension()
+        .map_or(false, |ext| ext == "json"));
 }
 
 #[test]
@@ -298,7 +302,11 @@ fn test_audit_args_valid_html_output() {
     };
 
     assert_eq!(args.format, "html");
-    assert!(args.out.unwrap().extension().map_or(false, |ext| ext == "html"));
+    assert!(args
+        .out
+        .unwrap()
+        .extension()
+        .map_or(false, |ext| ext == "html"));
 }
 
 #[test]

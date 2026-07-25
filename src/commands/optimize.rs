@@ -236,9 +236,7 @@ pub fn analyse_wasm(bytes: &[u8]) -> Vec<OptimizationIssue> {
     }
 
     // Check for debug symbols (they add bloat without adding functionality)
-    let has_debug_name = bytes
-        .windows(5)
-        .any(|w| w == b".name" || w == b"debug");
+    let has_debug_name = bytes.windows(5).any(|w| w == b".name" || w == b"debug");
     if has_debug_name {
         issues.push(OptimizationIssue {
             id: "OPT-003".to_string(),
@@ -298,7 +296,9 @@ pub fn analyse_wasm(bytes: &[u8]) -> Vec<OptimizationIssue> {
             severity: IssueSeverity::Info,
             description: "Consider enabling Link-Time Optimization for further size reduction."
                 .to_string(),
-            recommendation: "Add `lto = true` and `codegen-units = 1` to [profile.release] in Cargo.toml.".to_string(),
+            recommendation:
+                "Add `lto = true` and `codegen-units = 1` to [profile.release] in Cargo.toml."
+                    .to_string(),
             estimated_saving_pct: Some(8.0),
         });
     }
@@ -328,7 +328,12 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
         let trimmed = line.trim();
 
         // Suggest replacing .clone() on primitives
-        if trimmed.contains(".clone()") && (trimmed.contains("u64") || trimmed.contains("i64") || trimmed.contains("u32") || trimmed.contains("bool")) {
+        if trimmed.contains(".clone()")
+            && (trimmed.contains("u64")
+                || trimmed.contains("i64")
+                || trimmed.contains("u32")
+                || trimmed.contains("bool"))
+        {
             suggestions.push(TransformSuggestion {
                 file: file.to_string(),
                 line: line_no,
@@ -340,7 +345,9 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
 
         // Suggest soroban_sdk::Vec instead of std::vec::Vec
         if trimmed.contains("Vec<") && !trimmed.starts_with("//") {
-            if trimmed.contains("std::vec") || (trimmed.contains("Vec<") && trimmed.contains("use std")) {
+            if trimmed.contains("std::vec")
+                || (trimmed.contains("Vec<") && trimmed.contains("use std"))
+            {
                 suggestions.push(TransformSuggestion {
                     file: file.to_string(),
                     line: line_no,
@@ -423,9 +430,18 @@ fn handle_analyse(args: AnalyseArgs) -> Result<()> {
     let issues = analyse_wasm(&bytes);
     let score = compute_score(&issues);
 
-    let critical = issues.iter().filter(|i| i.severity == IssueSeverity::Critical).count();
-    let warnings = issues.iter().filter(|i| i.severity == IssueSeverity::Warning).count();
-    let infos = issues.iter().filter(|i| i.severity == IssueSeverity::Info).count();
+    let critical = issues
+        .iter()
+        .filter(|i| i.severity == IssueSeverity::Critical)
+        .count();
+    let warnings = issues
+        .iter()
+        .filter(|i| i.severity == IssueSeverity::Warning)
+        .count();
+    let infos = issues
+        .iter()
+        .filter(|i| i.severity == IssueSeverity::Info)
+        .count();
 
     let report = OptimizationReport {
         id: format!("opt-{}", &hash[..12]),
@@ -454,7 +470,10 @@ fn handle_analyse(args: AnalyseArgs) -> Result<()> {
         p::separator();
         p::kv_accent("Report ID", &report.id);
         p::kv("Contract", &args.contract);
-        p::kv("WASM size", &format!("{:.1} KB", bytes.len() as f64 / 1024.0));
+        p::kv(
+            "WASM size",
+            &format!("{:.1} KB", bytes.len() as f64 / 1024.0),
+        );
         p::kv("WASM hash", &hash);
 
         let score_str = format!("{}/100", score);
@@ -467,10 +486,7 @@ fn handle_analyse(args: AnalyseArgs) -> Result<()> {
         };
         p::kv_accent("Optimization score", &score_colored);
         p::kv("Issues found", &format!("{}", report.total_issues));
-        p::kv(
-            "Critical",
-            &format!("{}", critical),
-        );
+        p::kv("Critical", &format!("{}", critical));
         p::kv("Warnings", &format!("{}", warnings));
         p::kv("Infos", &format!("{}", infos));
 
@@ -488,17 +504,9 @@ fn handle_analyse(args: AnalyseArgs) -> Result<()> {
                     sev,
                     issue.description.white()
                 );
-                println!(
-                    "    {} {}",
-                    "→".dimmed(),
-                    issue.recommendation.dimmed()
-                );
+                println!("    {} {}", "→".dimmed(), issue.recommendation.dimmed());
                 if let Some(saving) = issue.estimated_saving_pct {
-                    println!(
-                        "    {} Estimated saving: {:.0}%",
-                        "~".dimmed(),
-                        saving
-                    );
+                    println!("    {} Estimated saving: {:.0}%", "~".dimmed(), saving);
                 }
                 println!();
             }
@@ -550,11 +558,7 @@ fn handle_transform(args: TransformArgs) -> Result<()> {
         );
         if args.dry_run {
             println!("    {} {}", "Before:".dimmed(), s.original.trim().white());
-            println!(
-                "    {} {}",
-                "After: ".dimmed(),
-                s.suggested.trim().cyan()
-            );
+            println!("    {} {}", "After: ".dimmed(), s.suggested.trim().cyan());
         }
         println!();
     }
@@ -568,11 +572,7 @@ fn handle_transform(args: TransformArgs) -> Result<()> {
     let out_path = args.out.as_ref().unwrap_or(&args.src);
     let mut result = content.clone();
     for s in &suggestions {
-        result = result.replacen(
-            &s.original,
-            &s.suggested,
-            1,
-        );
+        result = result.replacen(&s.original, &s.suggested, 1);
     }
     fs::write(out_path, result)?;
 
@@ -611,8 +611,7 @@ fn handle_bench(args: BenchArgs) -> Result<()> {
     let optimized_hash = wasm_hash_hex(&optimized_bytes);
     let size_delta = optimized_bytes.len() as i64 - baseline_bytes.len() as i64;
     let size_reduction_pct = if baseline_bytes.len() > 0 {
-        ((baseline_bytes.len() as f64 - optimized_bytes.len() as f64)
-            / baseline_bytes.len() as f64)
+        ((baseline_bytes.len() as f64 - optimized_bytes.len() as f64) / baseline_bytes.len() as f64)
             * 100.0
     } else {
         0.0
@@ -648,10 +647,7 @@ fn handle_bench(args: BenchArgs) -> Result<()> {
 
     p::separator();
     p::kv("Baseline hash", &format!("{}…", &baseline_hash[..16]));
-    p::kv(
-        "Optimized hash",
-        &format!("{}…", &optimized_hash[..16]),
-    );
+    p::kv("Optimized hash", &format!("{}…", &optimized_hash[..16]));
     println!();
 
     let size_str = format!(
@@ -660,7 +656,11 @@ fn handle_bench(args: BenchArgs) -> Result<()> {
         optimized_bytes.len(),
         size_delta,
         size_reduction_pct.abs(),
-        if size_reduction_pct >= 0.0 { "smaller" } else { "larger" }
+        if size_reduction_pct >= 0.0 {
+            "smaller"
+        } else {
+            "larger"
+        }
     );
     let size_colored = if size_delta <= 0 {
         size_str.green().to_string()
@@ -675,7 +675,11 @@ fn handle_bench(args: BenchArgs) -> Result<()> {
         optimized_instr,
         instr_delta,
         instr_reduction_pct.abs(),
-        if instr_reduction_pct >= 0.0 { "fewer" } else { "more" }
+        if instr_reduction_pct >= 0.0 {
+            "fewer"
+        } else {
+            "more"
+        }
     );
     let instr_colored = if instr_delta <= 0 {
         instr_str.green().to_string()
@@ -761,11 +765,7 @@ fn handle_reports(args: ReportsArgs) -> Result<()> {
     let reports = load_reports_store()?;
     let filtered: Vec<_> = reports
         .iter()
-        .filter(|r| {
-            args.contract
-                .as_deref()
-                .is_none_or(|c| r.contract == c)
-        })
+        .filter(|r| args.contract.as_deref().is_none_or(|c| r.contract == c))
         .collect();
 
     if filtered.is_empty() {
@@ -859,7 +859,9 @@ mod tests {
         let mut large = minimal_wasm();
         large.extend(vec![0x00; 110 * 1024]);
         let issues = analyse_wasm(&large);
-        assert!(issues.iter().any(|i| i.kind == "binary-size" && i.severity == IssueSeverity::Critical));
+        assert!(issues
+            .iter()
+            .any(|i| i.kind == "binary-size" && i.severity == IssueSeverity::Critical));
     }
 
     #[test]

@@ -12,6 +12,7 @@ pub enum IncidentStatus {
     Open,
     Acknowledged,
     Mitigated,
+    Resolved,
     Closed,
 }
 

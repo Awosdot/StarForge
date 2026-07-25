@@ -202,9 +202,8 @@ fn build_interactive(output: Option<PathBuf>) -> Result<()> {
         proposal.metadata.description = Some(description);
     }
 
-    let output_path = output.unwrap_or_else(|| {
-        PathBuf::from(format!("proposal_{}.json", uuid::Uuid::new_v4()))
-    });
+    let output_path =
+        output.unwrap_or_else(|| PathBuf::from(format!("proposal_{}.json", uuid::Uuid::new_v4())));
     save_proposal(&output_path, &proposal)?;
 
     p::success(&format!("Proposal saved: {}", output_path.display()));
@@ -245,7 +244,8 @@ fn run_interactive_loop(proposal_path: &std::path::Path) -> Result<()> {
                     .with_prompt("Notification channel (email/slack/discord/webhook)")
                     .default("email".into())
                     .interact_text()?;
-                let webhook = if channel == "slack" || channel == "discord" || channel == "webhook" {
+                let webhook = if channel == "slack" || channel == "discord" || channel == "webhook"
+                {
                     Some(
                         Input::with_theme(&theme)
                             .with_prompt("Webhook URL")
@@ -350,7 +350,11 @@ fn sign_proposal(proposal_path: &std::path::Path, wallet: &str) -> Result<()> {
 fn print_proposal_summary(proposal: &multisig::Proposal) {
     println!();
     println!("  ID:        {}", proposal.id);
-    println!("  Threshold: {}/{}", proposal.threshold, proposal.signers.len());
+    println!(
+        "  Threshold: {}/{}",
+        proposal.threshold,
+        proposal.signers.len()
+    );
     println!("  Network:   {}", proposal.network);
     println!("  Status:    {}", proposal.get_status());
     println!();
