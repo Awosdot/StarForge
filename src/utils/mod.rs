@@ -24,6 +24,7 @@ pub mod debugger;
 pub mod contract_deps;
 pub mod deploy_history;
 pub mod deploy_orchestrator;
+pub mod deployment_monitor;
 pub mod deployment_verify;
 pub mod ai_docs;
 pub mod doc_generator;
