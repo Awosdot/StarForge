@@ -294,10 +294,7 @@ fn parse_const(line: &str) -> Option<(String, String, String)> {
             let rest = &stripped[colon_pos + 1..];
             if let Some(eq_pos) = rest.find('=') {
                 let ty = rest[..eq_pos].trim().to_string();
-                let val = rest[eq_pos + 1..]
-                    .trim()
-                    .trim_end_matches(';')
-                    .to_string();
+                let val = rest[eq_pos + 1..].trim().trim_end_matches(';').to_string();
                 if !name.is_empty() {
                     return Some((name, ty, val));
                 }
@@ -333,11 +330,19 @@ fn parse_fn_signature(line: &str) -> (Vec<ExtractedParam>, Option<String>) {
             let param_str = &line[open + 1..close];
             for part in param_str.split(',') {
                 let trimmed = part.trim();
-                if trimmed.is_empty() || trimmed == "&self" || trimmed == "&mut self" || trimmed == "self" {
+                if trimmed.is_empty()
+                    || trimmed == "&self"
+                    || trimmed == "&mut self"
+                    || trimmed == "self"
+                {
                     continue;
                 }
                 if let Some(colon_pos) = trimmed.find(':') {
-                    let name = trimmed[..colon_pos].trim().trim_start_matches('&').trim_start_matches("mut ").to_string();
+                    let name = trimmed[..colon_pos]
+                        .trim()
+                        .trim_start_matches('&')
+                        .trim_start_matches("mut ")
+                        .to_string();
                     let ty = trimmed[colon_pos + 1..].trim().to_string();
                     if !name.is_empty() {
                         params.push(ExtractedParam { name, ty });
@@ -422,9 +427,7 @@ fn extract_struct_fields(lines: &[&str], start: usize) -> Vec<ExtractedField> {
                     .chars()
                     .next()
                     .map_or(false, |c| c.is_alphabetic() || c == '_')
-                && field_part
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '_')
+                && field_part.chars().all(|c| c.is_alphanumeric() || c == '_')
             {
                 fields.push(ExtractedField {
                     name: field_part.to_string(),
@@ -477,7 +480,10 @@ fn extract_enum_variants(lines: &[&str], start: usize) -> Vec<ExtractedVariant> 
             .take_while(|c| c.is_alphanumeric() || *c == '_')
             .collect();
         if !variant_name.is_empty()
-            && variant_name.chars().next().map_or(false, |c| c.is_uppercase())
+            && variant_name
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_uppercase())
         {
             variants.push(ExtractedVariant {
                 name: variant_name,
@@ -712,7 +718,10 @@ impl HtmlDocGenerator {
             .join("\n");
 
         let mut ctx = HashMap::new();
-        ctx.insert("title".to_string(), format!("{} — StarForge Docs", contract_name));
+        ctx.insert(
+            "title".to_string(),
+            format!("{} — StarForge Docs", contract_name),
+        );
         ctx.insert("contract_name".to_string(), contract_name.to_string());
         ctx.insert("contract_id".to_string(), contract_id.to_string());
         ctx.insert("module_doc".to_string(), escape_html(&docs.module_doc));
@@ -739,7 +748,13 @@ impl HtmlDocGenerator {
                 let param_list = f
                     .params
                     .iter()
-                    .map(|p| format!("<code>{}: {}</code>", escape_html(&p.name), escape_html(&p.ty)))
+                    .map(|p| {
+                        format!(
+                            "<code>{}: {}</code>",
+                            escape_html(&p.name),
+                            escape_html(&p.ty)
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 let ret = f
@@ -765,7 +780,10 @@ impl HtmlDocGenerator {
             .join("\n");
 
         let mut ctx = HashMap::new();
-        ctx.insert("title".to_string(), format!("{} API Reference — StarForge Docs", contract_name));
+        ctx.insert(
+            "title".to_string(),
+            format!("{} API Reference — StarForge Docs", contract_name),
+        );
         ctx.insert("contract_name".to_string(), contract_name.to_string());
         ctx.insert("contract_id".to_string(), contract_id.to_string());
         ctx.insert("rows".to_string(), rows);
@@ -799,7 +817,10 @@ impl HtmlDocGenerator {
             .join("\n");
 
         let mut ctx = HashMap::new();
-        ctx.insert("title".to_string(), "StarForge Contract Documentation".to_string());
+        ctx.insert(
+            "title".to_string(),
+            "StarForge Contract Documentation".to_string(),
+        );
         ctx.insert("cards".to_string(), cards);
         ctx.insert("count".to_string(), contracts.len().to_string());
 
@@ -1053,7 +1074,12 @@ fn render_function_card(f: &ExtractedFn) -> String {
     let return_html = f
         .return_type
         .as_deref()
-        .map(|r| format!(r#"<div class="returns"><h4>Returns</h4><code>{}</code></div>"#, escape_html(r)))
+        .map(|r| {
+            format!(
+                r#"<div class="returns"><h4>Returns</h4><code>{}</code></div>"#,
+                escape_html(r)
+            )
+        })
         .unwrap_or_default();
 
     let examples_html = f
@@ -1431,16 +1457,28 @@ pub struct Config {
     #[test]
     fn extracts_visibility() {
         let docs = DocCommentExtractor::extract_from_source(SAMPLE_SOURCE);
-        let init = docs.functions.iter().find(|f| f.name == "initialize").unwrap();
+        let init = docs
+            .functions
+            .iter()
+            .find(|f| f.name == "initialize")
+            .unwrap();
         assert_eq!(init.visibility, Visibility::Public);
-        let helper = docs.functions.iter().find(|f| f.name == "internal_helper").unwrap();
+        let helper = docs
+            .functions
+            .iter()
+            .find(|f| f.name == "internal_helper")
+            .unwrap();
         assert_eq!(helper.visibility, Visibility::Private);
     }
 
     #[test]
     fn extracts_params() {
         let docs = DocCommentExtractor::extract_from_source(SAMPLE_SOURCE);
-        let transfer = docs.functions.iter().find(|f| f.name == "transfer").unwrap();
+        let transfer = docs
+            .functions
+            .iter()
+            .find(|f| f.name == "transfer")
+            .unwrap();
         let param_names: Vec<&str> = transfer.params.iter().map(|p| p.name.as_str()).collect();
         assert!(param_names.contains(&"from"));
         assert!(param_names.contains(&"to"));
@@ -1450,7 +1488,11 @@ pub struct Config {
     #[test]
     fn extracts_code_examples() {
         let docs = DocCommentExtractor::extract_from_source(SAMPLE_SOURCE);
-        let init = docs.functions.iter().find(|f| f.name == "initialize").unwrap();
+        let init = docs
+            .functions
+            .iter()
+            .find(|f| f.name == "initialize")
+            .unwrap();
         assert_eq!(init.examples.len(), 1);
         assert!(init.examples[0].code.contains("initialize"));
     }
@@ -1522,8 +1564,7 @@ pub struct Config {
     fn publisher_writes_manifest() {
         let tmp = tempdir().unwrap();
         fs::write(tmp.path().join("index.html"), "<html/>").unwrap();
-        let manifest_path =
-            DocPublisher::write_manifest(tmp.path(), "CABC123", "1.0.0").unwrap();
+        let manifest_path = DocPublisher::write_manifest(tmp.path(), "CABC123", "1.0.0").unwrap();
         assert!(manifest_path.exists());
         let content = fs::read_to_string(&manifest_path).unwrap();
         assert!(content.contains("CABC123"));

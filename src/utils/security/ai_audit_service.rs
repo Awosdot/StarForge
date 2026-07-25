@@ -101,7 +101,9 @@ impl AiAuditService {
             best_practice_violations: ai_result.best_practice_violations.clone(),
             fix_suggestions: ai_result.fix_suggestions.clone(),
             security_score: ai_result.security_score,
-            false_positive_warning: "AI analysis may produce false positives. Review all findings with a human auditor.".to_string(),
+            false_positive_warning:
+                "AI analysis may produce false positives. Review all findings with a human auditor."
+                    .to_string(),
             tools_used: vec!["claude-opus-4-1".to_string(), "static-analysis".to_string()],
         };
 

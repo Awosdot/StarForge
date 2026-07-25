@@ -567,13 +567,7 @@ fn generate_go(metadata: &ContractMetadata) -> String {
         let params = function
             .inputs
             .iter()
-            .map(|input| {
-                format!(
-                    "{} {}",
-                    pascal_case(&input.name),
-                    go_type(&input.type_name)
-                )
-            })
+            .map(|input| format!("{} {}", pascal_case(&input.name), go_type(&input.type_name)))
             .collect::<Vec<_>>()
             .join(", ");
         out.push_str(&format!(

@@ -33,7 +33,8 @@ pub fn track_event(event: &str, properties: serde_json::Value) -> Result<()> {
     }
 
     let anonymous_id = get_or_create_anonymous_id()?;
-    let minimized_properties = privacy::minimize_payload(&properties, &["event", "success", "duration_ms"]);
+    let minimized_properties =
+        privacy::minimize_payload(&properties, &["event", "success", "duration_ms"]);
     let sanitized_properties = privacy::sanitize_payload(&minimized_properties);
     let assessment = privacy::assess_privacy_impact(&sanitized_properties, "telemetry", true);
     let consent = privacy::ConsentRecord::new("telemetry", true);

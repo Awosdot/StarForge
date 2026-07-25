@@ -1,3 +1,4 @@
+use crate::commands::analytics as analytics_cmds;
 use crate::utils::{
     config, confirmation,
     deploy_history::{
@@ -6,12 +7,11 @@ use crate::utils::{
     },
     horizon, optimizer, print as p, soroban, wallet_signer,
 };
-use crate::commands::analytics as analytics_cmds;
 
+use crate::utils::hardware_wallet::HardwareWalletKind;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
-use crate::utils::hardware_wallet::HardwareWalletKind;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
@@ -528,7 +528,6 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 analytics_cmds::TrackArgs {
                     contract_id: contract_id_for_analytics.unwrap_or_default(),
 
-
                     network: args.network.clone(),
                     wasm_hash: Some(wasm_hash.clone()),
                     deployer: Some(wallet.name.clone()),
@@ -539,8 +538,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     success: false,
                     error: Some(stderr.clone()),
                 },
-            )) ;
-
+            ));
 
             // Automatic rollback safety net: revert to the last good deployment.
             handle_failed_deploy_rollback(
@@ -577,7 +575,6 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 error: None,
             },
         ));
-
 
         p::success("Deployment executed successfully!");
         p::kv("Recorded deployment", &record_id[..8.min(record_id.len())]);

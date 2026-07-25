@@ -1,13 +1,13 @@
+use crate::utils::prompt_manager::PromptManager;
 use anyhow::{anyhow, Context, Result};
 use clap::Subcommand;
+use dialoguer::Confirm;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use crate::utils::prompt_manager::PromptManager;
-use dialoguer::Confirm;
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum GenerateCommands {
@@ -62,7 +62,8 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
                 "need_tests": true,
                 "user_prompt": prompt,
             });
-            let (version_id, rendered_prompt) = manager.get_rendered_prompt("contract_generator", context)?;
+            let (version_id, rendered_prompt) =
+                manager.get_rendered_prompt("contract_generator", context)?;
 
             let mut conversation_history = vec![
                 ChatMessage {
@@ -72,7 +73,7 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
                 ChatMessage {
                     role: "user".to_string(),
                     content: prompt.clone(),
-                }
+                },
             ];
 
             loop {
@@ -105,7 +106,9 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
                     // Clean up potential markdown blocks if the LLM ignored instructions
                     let mut cleaned_code = code.trim();
                     if cleaned_code.starts_with("```rust") {
-                        cleaned_code = cleaned_code.strip_prefix("```rust\n").unwrap_or(cleaned_code);
+                        cleaned_code = cleaned_code
+                            .strip_prefix("```rust\n")
+                            .unwrap_or(cleaned_code);
                     } else if cleaned_code.starts_with("```") {
                         cleaned_code = cleaned_code.strip_prefix("```\n").unwrap_or(cleaned_code);
                     }
@@ -116,16 +119,16 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
 
                     fs::write(out, cleaned_code).context("Failed to write the generated code")?;
                     println!("✅ Contract successfully saved to {}", out.display());
-                    
+
                     if Confirm::with_theme(&ColorfulTheme::default())
                         .with_prompt("Did this generated contract meet your expectations?")
-                        .interact()? 
+                        .interact()?
                     {
                         manager.record_feedback(version_id, true, Some(5))?;
                     } else {
                         manager.record_feedback(version_id, false, Some(1))?;
                     }
-                    
+
                     break;
                 } else {
                     // Refine

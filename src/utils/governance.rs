@@ -400,10 +400,7 @@ pub fn cast_vote(
 
     let mut details = HashMap::new();
     details.insert("vote".to_string(), choice.to_string());
-    details.insert(
-        "votes_for".to_string(),
-        votes_for(proposal).to_string(),
-    );
+    details.insert("votes_for".to_string(), votes_for(proposal).to_string());
     details.insert(
         "votes_against".to_string(),
         votes_against(proposal).to_string(),
@@ -416,7 +413,12 @@ pub fn cast_vote(
             proposal.executed_at = Some(Utc::now().to_rfc3339());
             let mut emerg_details = HashMap::new();
             emerg_details.insert("emergency".to_string(), "true".to_string());
-            record_audit(proposal_id, "emergency_quorum_reached", "system", emerg_details)?;
+            record_audit(
+                proposal_id,
+                "emergency_quorum_reached",
+                "system",
+                emerg_details,
+            )?;
         } else {
             let expires = Utc::now() + Duration::seconds(proposal.timelock_seconds as i64);
             proposal.timelock_expires_at = Some(expires.to_rfc3339());
@@ -569,7 +571,10 @@ pub fn emergency_upgrade(
         );
     }
     if !cfg.emergency_guardians.contains(&guardian) {
-        anyhow::bail!("Caller '{}' is not an authorized emergency guardian", guardian);
+        anyhow::bail!(
+            "Caller '{}' is not an authorized emergency guardian",
+            guardian
+        );
     }
 
     let (_, new_hash) = validate_wasm(&wasm_path)?;
@@ -609,11 +614,7 @@ pub fn emergency_upgrade(
         status,
         network,
         created_at: now.clone(),
-        executed_at: if quorum_met {
-            Some(now)
-        } else {
-            None
-        },
+        executed_at: if quorum_met { Some(now) } else { None },
         is_emergency: true,
     };
 

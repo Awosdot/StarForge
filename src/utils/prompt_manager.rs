@@ -59,7 +59,9 @@ impl PromptManager {
     }
 
     fn seed_default_prompts(&mut self) -> Result<()> {
-        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM prompts", [], |row| row.get(0))?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM prompts", [], |row| row.get(0))?;
         if count == 0 {
             self.add_prompt_and_version(
                 "contract_generator",
@@ -163,17 +165,17 @@ impl PromptManager {
              FROM prompt_versions v
              JOIN prompts p ON v.prompt_id = p.id
              WHERE p.name = ?1 AND v.is_active = 1
-             LIMIT 1"
+             LIMIT 1",
         )?;
 
-        let (version_id, template_text): (i64, String) = stmt.query_row(params![name], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        }).context(format!("Failed to find active prompt for '{}'", name))?;
+        let (version_id, template_text): (i64, String) = stmt
+            .query_row(params![name], |row| Ok((row.get(0)?, row.get(1)?)))
+            .context(format!("Failed to find active prompt for '{}'", name))?;
 
         let mut env = Environment::new();
         env.add_template(name, &template_text)?;
         let tmpl = env.get_template(name)?;
-        
+
         let rendered = tmpl.render(context)?;
 
         self.conn.execute(
@@ -184,7 +186,12 @@ impl PromptManager {
         Ok((version_id, rendered))
     }
 
-    pub fn record_feedback(&self, version_id: i64, success: bool, rating: Option<u8>) -> Result<()> {
+    pub fn record_feedback(
+        &self,
+        version_id: i64,
+        success: bool,
+        rating: Option<u8>,
+    ) -> Result<()> {
         if success {
             self.conn.execute(
                 "UPDATE prompt_analytics SET successes = successes + 1 WHERE version_id = ?1",
@@ -212,12 +219,10 @@ impl PromptManager {
             "SELECT p.name, p.category, v.version_tag 
              FROM prompts p
              JOIN prompt_versions v ON p.id = v.prompt_id
-             WHERE v.is_active = 1"
+             WHERE v.is_active = 1",
         )?;
-        
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?;
+
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
 
         let mut prompts = Vec::new();
         for r in rows {
@@ -232,12 +237,19 @@ impl PromptManager {
                     CAST(a.rating_sum AS REAL) / NULLIF(a.rating_count, 0)
              FROM prompt_analytics a
              JOIN prompt_versions v ON a.version_id = v.id
-             JOIN prompts p ON v.prompt_id = p.id"
+             JOIN prompts p ON v.prompt_id = p.id",
         )?;
-        
+
         let rows = stmt.query_map([], |row| {
             let avg: Option<f64> = row.get(5)?;
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, avg.unwrap_or(0.0)))
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                avg.unwrap_or(0.0),
+            ))
         })?;
 
         let mut stats = Vec::new();
@@ -248,11 +260,14 @@ impl PromptManager {
     }
 
     pub fn set_active_version(&self, name: &str, version_tag: &str) -> Result<()> {
-        let prompt_id: i64 = self.conn.query_row(
-            "SELECT id FROM prompts WHERE name = ?1",
-            params![name],
-            |row| row.get(0),
-        ).context("Prompt not found")?;
+        let prompt_id: i64 = self
+            .conn
+            .query_row(
+                "SELECT id FROM prompts WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
+            .context("Prompt not found")?;
 
         self.conn.execute(
             "UPDATE prompt_versions SET is_active = 0 WHERE prompt_id = ?1",

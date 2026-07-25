@@ -271,7 +271,12 @@ pub async fn handle(args: TestArgs) -> Result<()> {
         let project_path = args
             .contract_path
             .clone()
-            .or_else(|| source.parent().and_then(|path| path.parent()).map(PathBuf::from))
+            .or_else(|| {
+                source
+                    .parent()
+                    .and_then(|path| path.parent())
+                    .map(PathBuf::from)
+            })
             .unwrap_or_else(|| PathBuf::from("."));
         let tests_dir = project_path.join("tests");
         std::fs::create_dir_all(&tests_dir)?;
