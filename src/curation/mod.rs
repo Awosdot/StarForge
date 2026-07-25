@@ -1,10 +1,10 @@
-pub mod quality;
-pub mod trends;
-pub mod spam;
 pub mod categories;
 pub mod health;
+pub mod quality;
+pub mod spam;
+pub mod trends;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TemplateMetadata {

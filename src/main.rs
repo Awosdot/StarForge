@@ -7,8 +7,8 @@
     clippy::unnecessary_lazy_evaluations
 )]
 
-pub mod curation;
 mod commands;
+pub mod curation;
 pub mod plugins;
 mod utils;
 
@@ -60,6 +60,10 @@ enum Commands {
     /// Manage starforge configuration (telemetry, network)
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
+
+    /// Manage telemetry settings directly
+    #[command(subcommand)]
+    Telemetry(commands::telemetry::TelemetryCommands),
 
     Tx(commands::tx::TxArgs), // fetch transaction for the account
 
@@ -149,6 +153,7 @@ fn main() {
         Commands::Gas(_) => "gas",
         Commands::Plugin(_) => "plugin",
         Commands::Template(_) => "template",
+        Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Lint(_) => "lint",
         Commands::Diagnostics(_) => "diagnostics",
@@ -177,6 +182,7 @@ fn main() {
         Commands::Gas(args) => commands::gas::handle(args),
         Commands::Plugin(args) => commands::plugin::handle(args),
         Commands::Template(args) => commands::template::handle(args),
+        Commands::Telemetry(cmd) => commands::telemetry::handle(cmd),
         Commands::Upgrade(cmd) => commands::upgrade::handle(cmd),
         Commands::Lint(args) => commands::lint::handle(args),
         Commands::Diagnostics(args) => commands::diagnostics::handle(args),
@@ -221,9 +227,13 @@ fn handle_external_plugin(args: Vec<String>) -> anyhow::Result<()> {
     let all_commands = plugins::registry::load_all_registered_commands();
     let known = all_commands.iter().any(|c| c.name == *plugin_name);
     if !known {
-        let available: Vec<String> = all_commands.iter().map(|c| format!("  • {}", c.name)).collect();
+        let available: Vec<String> = all_commands
+            .iter()
+            .map(|c| format!("  • {}", c.name))
+            .collect();
         let hint = if available.is_empty() {
-            "No plugin commands registered. Re-install plugins to discover their commands.".to_string()
+            "No plugin commands registered. Re-install plugins to discover their commands."
+                .to_string()
         } else {
             format!("Available plugin commands:\n{}", available.join("\n"))
         };

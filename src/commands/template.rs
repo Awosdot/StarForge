@@ -653,12 +653,7 @@ fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-fn fetch(
-    source: String,
-    name: Option<String>,
-    version: Option<String>,
-    force: bool,
-) -> Result<()> {
+fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
     p::header("Template Install");
     p::kv("Source", &source);
     if let Some(ref n) = name {

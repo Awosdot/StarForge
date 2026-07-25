@@ -128,9 +128,9 @@ pub fn validate_secret_key(secret: &str) -> Result<()> {
                 .map_err(|_| anyhow::anyhow!("Invalid KDF iteration count: must be a valid u32"))?;
         }
         if parts.len() == 6 {
-            parts[5]
-                .parse::<u32>()
-                .map_err(|_| anyhow::anyhow!("Invalid KDF parallelism factor: must be a valid u32"))?;
+            parts[5].parse::<u32>().map_err(|_| {
+                anyhow::anyhow!("Invalid KDF parallelism factor: must be a valid u32")
+            })?;
         }
 
         return Ok(());
@@ -663,10 +663,7 @@ pub fn rename_custom_network(config: &mut Config, old_name: &str, new_name: &str
         anyhow::bail!("Old and new network names are the same");
     }
 
-    let net_cfg = config
-        .networks
-        .remove(old_name)
-        .expect("network exists");
+    let net_cfg = config.networks.remove(old_name).expect("network exists");
     config.networks.insert(new_name.to_string(), net_cfg);
 
     if config.network == old_name {

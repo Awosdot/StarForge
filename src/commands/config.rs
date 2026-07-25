@@ -1,4 +1,4 @@
-use crate::utils::{config, crypto, print as p};
+use crate::utils::{config, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 
@@ -6,6 +6,13 @@ use clap::Subcommand;
 pub enum ConfigCommands {
     /// Show current global configuration
     Show,
+    /// Set a configuration key/value pair
+    Set {
+        /// Configuration key to update (e.g. telemetry.enabled)
+        key: String,
+        /// New value for the configuration key
+        value: String,
+    },
     /// Set global wallet encryption parameters (Argon2id)
     SetEncryption {
         /// Argon2 memory cost in KiB (e.g. 65536)
@@ -26,6 +33,7 @@ pub enum ConfigCommands {
 pub fn handle(cmd: ConfigCommands) -> Result<()> {
     match cmd {
         ConfigCommands::Show => show(),
+        ConfigCommands::Set { key, value } => set(&key, &value),
         ConfigCommands::SetEncryption {
             mem,
             iterations,
@@ -42,7 +50,18 @@ fn show() -> Result<()> {
 
     p::kv("Config file", &config::config_path().display().to_string());
     p::kv("Active network", &cfg.network);
-    p::kv("Telemetry", if cfg.telemetry_enabled.unwrap_or(false) { "enabled" } else { "disabled" });
+    p::kv(
+        "Telemetry",
+        if cfg.telemetry_enabled.unwrap_or(true) {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    p::kv(
+        "telemetry.enabled",
+        &cfg.telemetry_enabled.unwrap_or(true).to_string(),
+    );
 
     println!();
     p::header("Wallet Encryption (Argon2id)");
@@ -81,9 +100,15 @@ fn set_encryption(
     }
 
     let mut kdf = cfg.wallet_encryption.unwrap_or_default();
-    if let Some(m) = mem { kdf.mem = Some(m); }
-    if let Some(i) = iterations { kdf.iterations = Some(i); }
-    if let Some(p) = parallelism { kdf.parallelism = Some(p); }
+    if let Some(m) = mem {
+        kdf.mem = Some(m);
+    }
+    if let Some(i) = iterations {
+        kdf.iterations = Some(i);
+    }
+    if let Some(p) = parallelism {
+        kdf.parallelism = Some(p);
+    }
 
     cfg.wallet_encryption = Some(kdf);
     config::save(&cfg)?;
@@ -91,4 +116,28 @@ fn set_encryption(
     p::success("Global wallet encryption parameters updated.");
     show()?;
     Ok(())
+}
+
+fn set(key: &str, value: &str) -> Result<()> {
+    let mut cfg = config::load()?;
+
+    let normalized = key.to_lowercase();
+    let enabled = match value.to_lowercase().as_str() {
+        "true" | "1" | "on" | "yes" => true,
+        "false" | "0" | "off" | "no" => false,
+        _ => anyhow::bail!("Invalid boolean value '{}'. Use true or false.", value),
+    };
+
+    match normalized.as_str() {
+        "telemetry" | "telemetry.enabled" => {
+            cfg.telemetry_enabled = Some(enabled);
+            config::save(&cfg)?;
+            p::success(&format!("'{}' set to '{}'.", key, enabled));
+            Ok(())
+        }
+        _ => anyhow::bail!(
+            "Unsupported config key '{}'. Supported keys: telemetry.enabled",
+            key
+        ),
+    }
 }

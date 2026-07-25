@@ -114,8 +114,9 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
     let discovered_commands: Vec<RegisteredCommand> = {
         let mut pm = PluginManager::new();
         unsafe {
-            pm.load_plugin(&lib_path)
-                .with_context(|| format!("Failed to load plugin '{}' to discover commands", name))?;
+            pm.load_plugin(&lib_path).with_context(|| {
+                format!("Failed to load plugin '{}' to discover commands", name)
+            })?;
         }
         pm.list_commands()
             .into_iter()
@@ -140,7 +141,10 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
     p::kv_accent("Name", &name);
     p::kv("Library", &lib_path.display().to_string());
     p::kv("Plugin version", &plugin_manifest.version);
-    p::kv("StarForge compatibility", &plugin_manifest.starforge_version);
+    p::kv(
+        "StarForge compatibility",
+        &plugin_manifest.starforge_version,
+    );
     p::kv("Trust", trust.label());
     if !source_str.is_empty() {
         p::kv("Source", source_str);
@@ -216,10 +220,7 @@ fn load() -> Result<()> {
 
     // ── Report failures with structured diagnostics ──────────────────────────
     if !failed.is_empty() {
-        p::warn(&format!(
-            "{} plugin(s) failed to load:",
-            failed.len()
-        ));
+        p::warn(&format!("{} plugin(s) failed to load:", failed.len()));
         for (name, err) in &failed {
             println!();
             p::error(&format!("[{}] {}", err.category(), name));
@@ -258,16 +259,12 @@ fn load() -> Result<()> {
 
 fn uninstall(name: String, purge: bool, yes: bool) -> Result<()> {
     let reg = registry::load_registry().unwrap_or_default();
-    let plugin = reg
-        .plugins
-        .iter()
-        .find(|p| p.name == name)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Plugin '{}' is not installed. Run `starforge plugin list` to see installed plugins.",
-                name
-            )
-        })?;
+    let plugin = reg.plugins.iter().find(|p| p.name == name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Plugin '{}' is not installed. Run `starforge plugin list` to see installed plugins.",
+            name
+        )
+    })?;
 
     let lib_path = PathBuf::from(&plugin.path);
     let lib_exists = lib_path.exists();
@@ -335,7 +332,10 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
         Some(n) => {
             let found: Vec<_> = reg.plugins.iter().filter(|p| &p.name == n).collect();
             if found.is_empty() {
-                anyhow::bail!("Plugin '{}' is not installed. Run `starforge plugin list`.", n);
+                anyhow::bail!(
+                    "Plugin '{}' is not installed. Run `starforge plugin list`.",
+                    n
+                );
             }
             found
         }
@@ -428,7 +428,10 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                     failed += 1;
                 }
                 Err(e) => {
-                    p::warn(&format!("  Failed to run cargo: {}. Is Cargo installed?", e));
+                    p::warn(&format!(
+                        "  Failed to run cargo: {}. Is Cargo installed?",
+                        e
+                    ));
                     failed += 1;
                 }
             }
@@ -472,7 +475,9 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                             "  '{}' is already up to date. Source: {}",
                             pl.name, pl.source
                         ));
-                        p::info("  To update manually: replace the library at the registered path,");
+                        p::info(
+                            "  To update manually: replace the library at the registered path,",
+                        );
                         p::info(&format!("  then run: starforge plugin update {}", pl.name));
                         skipped += 1;
                     }
@@ -608,7 +613,10 @@ fn commands(name: Option<String>) -> Result<()> {
         Some(n) => {
             let found: Vec<_> = reg.plugins.iter().filter(|p| &p.name == n).collect();
             if found.is_empty() {
-                anyhow::bail!("Plugin '{}' is not installed. Run `starforge plugin list`.", n);
+                anyhow::bail!(
+                    "Plugin '{}' is not installed. Run `starforge plugin list`.",
+                    n
+                );
             }
             found
         }

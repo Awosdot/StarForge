@@ -166,7 +166,7 @@ pub fn install_plugin(
     source: &str,
     starforge_version: &str,
     plugin_version: &str,
-    commands: Vec<RegisteredCommand>
+    commands: Vec<RegisteredCommand>,
 ) -> Result<()> {
     if !library_path.exists() {
         anyhow::bail!("Plugin library not found: {}", library_path.display());

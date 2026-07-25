@@ -3,10 +3,10 @@
 
 #[cfg(test)]
 mod deployment_preparation_tests {
-    use std::collections::HashMap;
 
     // Mock structures
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct WalletEntry {
         name: String,
         public_key: String,
@@ -15,12 +15,14 @@ mod deployment_preparation_tests {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct DeploymentConfig {
         wallets: Vec<WalletEntry>,
         network: String,
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct WasmFile {
         path: String,
         size_bytes: usize,
@@ -29,6 +31,7 @@ mod deployment_preparation_tests {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct DeploymentPlan {
         wasm_path: String,
         wasm_hash: String,
