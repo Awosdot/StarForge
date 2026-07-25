@@ -118,9 +118,9 @@ fn test_simulator_contract_storage_persistence() {
     let acct = sim.create_account(1000.0);
     let ctr = sim.deploy_contract("wh", &acct.public_key).unwrap();
 
-    sim.write_contract_storage(&ctr.contract_id, "key1", "value1")
+    sim.write_contract_storage(&ctr.contract_id, "key1", "value1".to_string())
         .unwrap();
-    sim.write_contract_storage(&ctr.contract_id, "key2", "value2")
+    sim.write_contract_storage(&ctr.contract_id, "key2", "value2".to_string())
         .unwrap();
 
     assert_eq!(
@@ -208,11 +208,11 @@ fn test_snapshot_preserves_multiple_contracts() {
     let c2 = sim.deploy_contract("wasm_b", &pk).unwrap();
     let c3 = sim.deploy_contract("wasm_c", &pk).unwrap();
 
-    sim.write_contract_storage(&c1.contract_id, "a", "1")
+    sim.write_contract_storage(&c1.contract_id, "a", "1".to_string())
         .unwrap();
-    sim.write_contract_storage(&c2.contract_id, "b", "2")
+    sim.write_contract_storage(&c2.contract_id, "b", "2".to_string())
         .unwrap();
-    sim.write_contract_storage(&c3.contract_id, "c", "3")
+    sim.write_contract_storage(&c3.contract_id, "c", "3".to_string())
         .unwrap();
 
     let snap = sim.take_snapshot("multi-contract");
@@ -599,8 +599,10 @@ fn test_scenario_deterministic_across_runs() {
     assert_eq!(sim1.contracts.len(), sim2.contracts.len());
 
     // Account keys should be identical (deterministic).
-    let pk1: Vec<String> = sim1.accounts.keys().cloned().collect();
-    let pk2: Vec<String> = sim2.accounts.keys().cloned().collect();
+    let mut pk1: Vec<String> = sim1.accounts.keys().cloned().collect();
+    let mut pk2: Vec<String> = sim2.accounts.keys().cloned().collect();
+    pk1.sort();
+    pk2.sort();
     assert_eq!(pk1, pk2);
 }
 
@@ -656,8 +658,8 @@ fn test_simulator_config_with_initial_accounts() {
 fn test_simulator_get_status() {
     let mut sim = NetworkSimulator::new();
     sim.create_account(100.0);
-    sim.deploy_contract("wh", &sim.list_accounts()[0].public_key)
-        .unwrap();
+    let pk = sim.list_accounts()[0].public_key.clone();
+    sim.deploy_contract("wh", &pk).unwrap();
 
     let status = sim.get_status();
     assert_eq!(status["accounts"].as_u64().unwrap(), 1);
@@ -670,8 +672,8 @@ fn test_simulator_get_status() {
 fn test_reset_simulator() {
     let mut sim = NetworkSimulator::new();
     sim.create_account(100.0);
-    sim.deploy_contract("wh", &sim.list_accounts()[0].public_key)
-        .unwrap();
+    let pk = sim.list_accounts()[0].public_key.clone();
+    sim.deploy_contract("wh", &pk).unwrap();
     assert_eq!(sim.accounts.len(), 1);
     assert_eq!(sim.contracts.len(), 1);
 

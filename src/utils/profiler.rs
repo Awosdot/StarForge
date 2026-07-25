@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use std::mem::size_of;
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "memory-profiling")]
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -9,22 +9,13 @@ use std::alloc::{GlobalAlloc, Layout, System};
 struct MemoryProfiler;
 
 #[cfg(feature = "memory-profiling")]
-impl GlobalAlloc for MemoryProfiler {
+unsafe impl GlobalAlloc for MemoryProfiler {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc(layout);
-        if !ptr.is_null() {
-            if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
-                alloc_tracker.allocations.push((layout.size(), ptr as usize));
-            }
-        }
-        ptr
+        System.alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         System.dealloc(ptr, layout);
-        if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
-            alloc_tracker.allocations.retain(|(size, addr)| ptr as usize != *addr);
-        }
     }
 }
 
@@ -78,6 +69,7 @@ pub struct Profiler {
 }
 
 #[cfg(feature = "memory-profiling")]
+#[derive(Debug)]
 struct MemoryTracker {
     start: Instant,
     current_memory: usize,
@@ -85,7 +77,13 @@ struct MemoryTracker {
     samples: Vec<(String, Instant, usize, usize, usize, usize)>,
 }
 
+#[cfg(feature = "memory-profiling")]
+impl MemoryTracker {
+    fn record_sample(&mut self, _label: String, _elapsed: Duration) {}
+}
+
 #[cfg(not(feature = "memory-profiling"))]
+#[derive(Debug)]
 struct MemoryTracker;
 
 impl Profiler {
@@ -109,10 +107,11 @@ impl Profiler {
     }
 
     pub fn mark(&mut self, label: impl Into<String>) {
-        self.marks.push((label.into(), Instant::now()));
+        let label_str = label.into();
+        self.marks.push((label_str.clone(), Instant::now()));
         #[cfg(feature = "memory-profiling")]
         if let Some(tracker) = &mut self.memory_tracker {
-            tracker.record_sample(label.into(), self.start.elapsed());
+            tracker.record_sample(label_str, self.start.elapsed());
         }
     }
 

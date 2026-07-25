@@ -10,7 +10,10 @@ pub enum PrivacyCommands {
     /// Anonymize freeform text input
     Anonymize { text: String },
     /// Minimize a payload to a set of allowed fields
-    Minimize { payload: String, fields: Vec<String> },
+    Minimize {
+        payload: String,
+        fields: Vec<String>,
+    },
     /// Generate a privacy report for the current assessment
     Report { payload: String },
 }
@@ -33,7 +36,10 @@ pub async fn handle(cmd: PrivacyCommands) -> Result<()> {
         }
         PrivacyCommands::Minimize { payload, fields } => {
             let parsed: serde_json::Value = serde_json::from_str(&payload)?;
-            let minimized = privacy::minimize_payload(&parsed, &fields.iter().map(String::as_str).collect::<Vec<_>>());
+            let minimized = privacy::minimize_payload(
+                &parsed,
+                &fields.iter().map(String::as_str).collect::<Vec<_>>(),
+            );
             println!("{}", serde_json::to_string_pretty(&minimized)?);
         }
         PrivacyCommands::Report { payload } => {

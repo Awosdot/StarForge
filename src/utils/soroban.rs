@@ -5,8 +5,8 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use stellar_strkey::{ed25519, Contract};
 use std::time::Duration;
+use stellar_strkey::{ed25519, Contract};
 use stellar_xdr::curr::{
     AccountId, ContractDataDurability, ContractExecutable, Hash, LedgerEntryData, LedgerKey,
     LedgerKeyContractData, PublicKey, ScAddress, ScMap, ScString, ScSymbol, ScVal, Uint256,
@@ -113,16 +113,7 @@ pub async fn invoke_contract(
     let simulation = simulate_transaction(contract_id, function, args, arg_types, network).await?;
     let transaction = match wallet {
         Some(w) => Some(
-            submit_transaction(
-                contract_id,
-                function,
-                args,
-                arg_types,
-                network,
-                w,
-                signing,
-            )
-            .await?,
+            submit_transaction(contract_id, function, args, arg_types, network, w, signing).await?,
         ),
         None => None,
     };
@@ -155,8 +146,9 @@ pub async fn simulate_transaction(
     };
 
     // Make the RPC call
-    let result: serde_json::Value =
-        rpc_request_with_url(&rpc_url, request).await.context("Simulation request failed")?;
+    let result: serde_json::Value = rpc_request_with_url(&rpc_url, request)
+        .await
+        .context("Simulation request failed")?;
 
     // Parse the simulation result
     let return_value = decode_return_value(&result)?;
@@ -186,8 +178,9 @@ pub async fn simulate_deploy_transaction(
         }),
     };
 
-    let result: serde_json::Value =
-        rpc_request_with_url(&rpc_url, request).await.context("Deploy simulation request failed")?;
+    let result: serde_json::Value = rpc_request_with_url(&rpc_url, request)
+        .await
+        .context("Deploy simulation request failed")?;
 
     Ok(SimulationResult {
         return_value: decode_return_value(&result)?,
@@ -212,14 +205,8 @@ pub async fn submit_transaction(
     let xdr_args = encode_arguments(args, arg_types)?;
 
     // Build and sign the transaction
-    let signed_tx_xdr = build_and_sign_transaction(
-        contract_id,
-        function,
-        &xdr_args,
-        wallet,
-        network,
-        signing,
-    )?;
+    let signed_tx_xdr =
+        build_and_sign_transaction(contract_id, function, &xdr_args, wallet, network, signing)?;
 
     // Build the submission request
     let request = SorobanRpcRequest {
@@ -232,8 +219,9 @@ pub async fn submit_transaction(
     };
 
     // Make the RPC call
-    let result: serde_json::Value =
-        rpc_request_with_url(&rpc_url, request).await.context("Transaction submission failed")?;
+    let result: serde_json::Value = rpc_request_with_url(&rpc_url, request)
+        .await
+        .context("Transaction submission failed")?;
 
     // Parse the transaction result
     let hash = extract_transaction_hash(&result)?;
@@ -291,7 +279,8 @@ pub async fn inspect_contract(contract_id: &str, network: &str) -> Result<Contra
         }),
     };
 
-    let response: GetLedgerEntriesResult = rpc_request_with_url(&get_rpc_url(network)?, request).await
+    let response: GetLedgerEntriesResult = rpc_request_with_url(&get_rpc_url(network)?, request)
+        .await
         .with_context(|| {
             format!(
                 "Failed to inspect contract '{}' on {}",
@@ -955,36 +944,29 @@ mod tests {
 
     #[test]
     fn check_soroban_rpc_url_reports_healthy_endpoint() {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        rt.block_on(async {
-            let mut server = mockito::Server::new();
-            let mock = server
-                .mock("POST", "/")
-                .with_status(200)
-                .with_header("content-type", "application/json")
-                .with_body(r#"{"jsonrpc":"2.0","id":1,"result":{"status":"healthy"}}"#)
-                .create();
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/")
+            .with_status(200)
+            .with_body(r#"{"jsonrpc":"2.0","id":1,"result":{"healthy":true}}"#)
+            .create();
 
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
             assert!(check_soroban_rpc_url(&server.url()).await);
-            mock.assert();
         });
+        mock.assert();
     }
 
     #[test]
     fn check_soroban_rpc_url_rejects_error_response() {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        rt.block_on(async {
-            let mut server = mockito::Server::new();
-            let mock = server.mock("POST", "/").with_status(500).create();
+        let mut server = mockito::Server::new();
+        let mock = server.mock("POST", "/").with_status(500).create();
 
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
             assert!(!check_soroban_rpc_url(&server.url()).await);
-            mock.assert();
         });
+        mock.assert();
     }
 }

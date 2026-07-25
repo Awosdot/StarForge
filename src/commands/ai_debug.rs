@@ -119,7 +119,11 @@ async fn handle_analyse(args: AnalyseArgs) -> Result<()> {
     let report = ai_debugger::analyse(
         &args.error,
         stack_trace_owned.as_deref(),
-        if vars_ref.is_empty() { None } else { Some(&vars_ref) },
+        if vars_ref.is_empty() {
+            None
+        } else {
+            Some(&vars_ref)
+        },
         None,
     );
 
@@ -356,7 +360,9 @@ fn parse_variables(raw: &[String]) -> Result<Vec<(String, String)>> {
             let name = parts
                 .next()
                 .filter(|n| !n.is_empty())
-                .ok_or_else(|| anyhow::anyhow!("Invalid variable format '{}': expected NAME=VALUE", s))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Invalid variable format '{}': expected NAME=VALUE", s)
+                })?
                 .to_string();
             let value = parts.next().unwrap_or("").to_string();
             Ok((name, value))

@@ -3,9 +3,7 @@
 //! These tests verify the orchestration of static analysis and AI integration,
 //! using mocked HTTP responses to avoid actual API calls.
 
-use starforge::utils::security::{
-    AiAuditService, AuditLevel, AuditRequest, SecurityVulnerability,
-};
+use starforge::utils::security::{AiAuditService, AuditLevel, AuditRequest, SecurityVulnerability};
 
 /// Mock audit request for testing.
 fn create_test_request(code: &str, name: &str) -> AuditRequest {
@@ -21,14 +19,13 @@ fn create_test_request(code: &str, name: &str) -> AuditRequest {
 fn test_audit_service_new_validates_api_key() {
     // Empty API key should fail
     let result = AiAuditService::new(String::new());
-    assert!(
-        result.is_err(),
-        "Service should reject empty API key"
-    );
-    assert!(
-        result.unwrap_err().to_string().contains("ANTHROPIC_API_KEY"),
-        "Error message should mention API key"
-    );
+    assert!(result.is_err(), "Service should reject empty API key");
+    if let Err(e) = result {
+        assert!(
+            e.to_string().contains("ANTHROPIC_API_KEY"),
+            "Error message should mention API key"
+        );
+    }
 }
 
 #[test]
@@ -79,10 +76,7 @@ async fn test_audit_contract_validates_code_size_limit() {
 
 #[test]
 fn test_audit_request_structure() {
-    let request = create_test_request(
-        "pub fn test() {}",
-        "TestContract",
-    );
+    let request = create_test_request("pub fn test() {}", "TestContract");
 
     assert_eq!(request.contract_code, "pub fn test() {}");
     assert_eq!(request.contract_name, "TestContract");
@@ -123,9 +117,7 @@ fn test_security_vulnerability_structure() {
         line_number: Some(5),
         code_snippet: Some("pub fn withdraw(env: Env)".to_string()),
         recommendation: "Add require_auth() call".to_string(),
-        references: Some(vec![
-            "https://example.com/auth".to_string(),
-        ]),
+        references: Some(vec!["https://example.com/auth".to_string()]),
     };
 
     assert_eq!(vuln.id, "VULN-001");
@@ -209,11 +201,11 @@ fn test_security_vulnerability_without_optional_fields() {
 
 #[test]
 fn test_audit_service_model_selection() {
-    let service = AiAuditService::new("sk-ant-test".to_string()).unwrap();
+    let service = AiAuditService::new("sk-ant-test".to_string());
     // Service should use claude-opus-4-1 (best model for security)
     // We verify this by the fact it was created successfully
     // (Actual model selection is verified by API integration)
-    assert!(service.is_ok() == false || service.is_ok() == true); // Compiler check
+    assert!(service.is_ok()); // Compiler check
 }
 
 #[test]

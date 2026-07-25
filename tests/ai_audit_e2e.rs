@@ -34,8 +34,8 @@ pub struct VulnerableWithdrawal;
 
 #[contractimpl]
 impl VulnerableWithdrawal {
-    pub fn withdraw(env: Env, amount: i128) {
-        // VULNERABILITY: Missing require_auth() check
+    pub fn withdraw(env:Env, amount: i128) {
+        // VULNERABILITY: Missing authorization check
         let balance = storage.get(&DataKey::Balance);
         assert!(balance >= amount);
         
@@ -54,10 +54,11 @@ pub struct UnsafeCalculations;
 
 #[contractimpl]
 impl UnsafeCalculations {
-    pub fn add_to_balance(env: Env, amount: i128) {
+    pub fn add_to_balance(env:Env, amount: i128) {
         // VULNERABILITY: Unchecked arithmetic - no overflow protection
         let balance = storage.get(&DataKey::Balance).unwrap_or(0);
-        let new_balance = balance + amount;  // Could overflow!
+        // Could overflow!
+        let new_balance = balance + amount;
         storage.set(&DataKey::Balance, new_balance);
     }
 }
@@ -99,15 +100,10 @@ pub struct PrivacyLeak;
 
 #[contractimpl]
 impl PrivacyLeak {
-    pub fn store_secret(env: Env, password: String, key: String) {
+    pub fn store_secret(env:Env, password: String, key: String) {
         // VULNERABILITY: Storing sensitive data on-chain
-        env.storage()
-            .persistent()
-            .set(&DataKey::Password, &password);
-        
-        env.storage()
-            .persistent()
-            .set(&DataKey::SecretKey, &key);
+        env.storage().persistent().set(&DataKey::Password, &password);
+        env.storage().persistent().set(&DataKey::SecretKey, &key);
     }
 }
 "#;
@@ -115,13 +111,15 @@ impl PrivacyLeak {
 #[test]
 fn test_detects_reentrancy_in_sample_contract() {
     let findings = run_static_checks(VULNERABLE_REENTRANCY_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect reentrancy vulnerability in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("reentrancy")),
+        findings
+            .iter()
+            .any(|f| f.description.contains("reentrancy")),
         "Should identify reentrancy risk"
     );
 }
@@ -129,13 +127,15 @@ fn test_detects_reentrancy_in_sample_contract() {
 #[test]
 fn test_detects_missing_auth_in_sample_contract() {
     let findings = run_static_checks(VULNERABLE_MISSING_AUTH_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect missing require_auth in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("require_auth")),
+        findings
+            .iter()
+            .any(|f| f.description.contains("require_auth")),
         "Should identify missing authorization"
     );
 }
@@ -143,13 +143,15 @@ fn test_detects_missing_auth_in_sample_contract() {
 #[test]
 fn test_detects_arithmetic_overflow_in_sample() {
     let findings = run_static_checks(VULNERABLE_ARITHMETIC_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect unchecked arithmetic in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("arithmetic")),
+        findings
+            .iter()
+            .any(|f| f.description.contains("arithmetic")),
         "Should identify arithmetic issue"
     );
 }
@@ -157,10 +159,13 @@ fn test_detects_arithmetic_overflow_in_sample() {
 #[test]
 fn test_clean_contract_passes_static_analysis() {
     let findings = run_static_checks(SECURE_CONTRACT);
-    
+
     // Secure contract should have no findings
     assert!(
-        findings.is_empty() || findings.iter().all(|f| !f.description.contains("require_auth")),
+        findings.is_empty()
+            || findings
+                .iter()
+                .all(|f| !f.description.contains("require_auth")),
         "Secure contract with require_auth should not trigger missing auth warning"
     );
 }
@@ -168,7 +173,7 @@ fn test_clean_contract_passes_static_analysis() {
 #[test]
 fn test_detects_privacy_leak_in_sample() {
     let findings = run_static_checks(VULNERABLE_PRIVACY_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect privacy leak in sample contract"
@@ -220,7 +225,7 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
 "#;
 
     let findings = run_static_checks(contract_with_comments);
-    
+
     // Should detect missing auth and reentrancy despite comments
     assert!(
         !findings.is_empty(),
@@ -231,7 +236,7 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
 #[test]
 fn test_sample_contract_has_line_numbers() {
     let findings = run_static_checks(VULNERABLE_REENTRANCY_CONTRACT);
-    
+
     for finding in findings {
         assert!(
             !finding.line_numbers.is_empty(),
@@ -263,7 +268,7 @@ pub fn safe_withdrawal(env: Env, amount: i128) -> Result<i128, String> {
 "#;
 
     let findings = run_static_checks(realistic_contract);
-    
+
     // This contract has proper auth, order, and error handling
     assert!(
         findings.is_empty() || !findings.iter().any(|f| f.severity == "critical"),
@@ -321,7 +326,7 @@ impl TokenContract {
 "#;
 
     let findings = run_static_checks(soroban_contract);
-    
+
     // This contract properly uses extend_ttl
     assert!(
         findings.is_empty() || !findings.iter().any(|f| f.description.contains("TTL")),

@@ -266,17 +266,22 @@ pub async fn handle(args: TestArgs) -> Result<()> {
     if args.generate {
         let source = args.source.as_ref().expect("source checked above");
         p::info("Generating comprehensive contract test cases...");
-        let generated = test_generator::generate_from_source(source)?;
+        let generated = crate::utils::test_generator::generate_from_source(source)?;
 
         let project_path = args
             .contract_path
             .clone()
-            .or_else(|| source.parent().and_then(|path| path.parent()).map(PathBuf::from))
+            .or_else(|| {
+                source
+                    .parent()
+                    .and_then(|path| path.parent())
+                    .map(PathBuf::from)
+            })
             .unwrap_or_else(|| PathBuf::from("."));
         let tests_dir = project_path.join("tests");
         std::fs::create_dir_all(&tests_dir)?;
         let generated_path = tests_dir.join("starforge_generated.rs");
-        test_generator::write_generated_tests(&generated, &generated_path)?;
+        crate::utils::test_generator::write_generated_tests(&generated, &generated_path)?;
         p::kv("Rust tests saved", &generated_path.display().to_string());
 
         if let Some(contract_path) = &args.contract_path {

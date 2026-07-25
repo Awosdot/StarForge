@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Represents a single entry in the command history
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,12 +20,12 @@ pub struct HistoryFile {
 }
 
 /// Get the path to the history file: ~/.starforge/history.json
-pub fn history_file_path(config_dir: &PathBuf) -> PathBuf {
+pub fn history_file_path(config_dir: &Path) -> PathBuf {
     config_dir.join("history.json")
 }
 
 /// Load command history from disk
-pub fn load_history(config_dir: &PathBuf) -> Result<Vec<HistoryEntry>> {
+pub fn load_history(config_dir: &Path) -> Result<Vec<HistoryEntry>> {
     let path = history_file_path(config_dir);
 
     if !path.exists() {
@@ -42,7 +42,7 @@ pub fn load_history(config_dir: &PathBuf) -> Result<Vec<HistoryEntry>> {
 }
 
 /// Save command history to disk atomically
-pub fn save_history(entries: &[HistoryEntry], config_dir: &PathBuf) -> Result<()> {
+pub fn save_history(entries: &[HistoryEntry], config_dir: &Path) -> Result<()> {
     // Ensure the config directory exists
     fs::create_dir_all(config_dir)?;
 
@@ -65,11 +65,9 @@ pub fn save_history(entries: &[HistoryEntry], config_dir: &PathBuf) -> Result<()
 pub fn prune_history(entries: &mut Vec<HistoryEntry>, max: usize) {
     if entries.len() > max {
         // Sort by (last_used descending, count descending) to keep most recent and frequent
-        entries.sort_by(|a, b| {
-            match b.last_used.cmp(&a.last_used) {
-                std::cmp::Ordering::Equal => b.count.cmp(&a.count),
-                other => other,
-            }
+        entries.sort_by(|a, b| match b.last_used.cmp(&a.last_used) {
+            std::cmp::Ordering::Equal => b.count.cmp(&a.count),
+            other => other,
         });
         entries.truncate(max);
     }

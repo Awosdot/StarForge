@@ -531,13 +531,7 @@ fn multisig_create_and_sign_workflow() {
     let created_path = entries[0].path();
 
     let sign_alice = starforge(home.path())
-        .args([
-            "multisig",
-            "sign",
-            created_path.to_str().unwrap(),
-            "--wallet",
-            "alice",
-        ])
+        .args(["multisig", "sign", created_path.to_str().unwrap(), "alice"])
         .output()
         .expect("spawn multisig sign alice");
     assert_success(&sign_alice, "starforge multisig sign alice");
@@ -552,13 +546,7 @@ fn multisig_create_and_sign_workflow() {
     assert!(status_out.contains("50%"));
 
     let sign_bob = starforge(home.path())
-        .args([
-            "multisig",
-            "sign",
-            created_path.to_str().unwrap(),
-            "--wallet",
-            "bob",
-        ])
+        .args(["multisig", "sign", created_path.to_str().unwrap(), "bob"])
         .output()
         .expect("spawn multisig sign bob");
     assert_success(&sign_bob, "starforge multisig sign bob");
@@ -576,7 +564,6 @@ fn multisig_create_and_sign_workflow() {
             "multisig",
             "export",
             created_path.to_str().unwrap(),
-            "--output",
             export_path.to_str().unwrap(),
         ])
         .output()
@@ -589,7 +576,6 @@ fn multisig_create_and_sign_workflow() {
             "multisig",
             "import",
             export_path.to_str().unwrap(),
-            "--output",
             import_path.to_str().unwrap(),
         ])
         .output()
@@ -633,7 +619,6 @@ fn multisig_from_template_creates_proposal() {
             "multisig",
             "from-template",
             "escrow",
-            "--output",
             output_path.to_str().unwrap(),
         ])
         .output()

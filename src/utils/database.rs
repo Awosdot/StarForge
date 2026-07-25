@@ -38,7 +38,9 @@ impl Database {
     }
 
     fn ensure_column(&self, table: &str, column: &str, definition: &str) -> Result<()> {
-        let mut stmt = self.conn.prepare(&format!("PRAGMA table_info({})", table))?;
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
         let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
         for existing in columns {
             if existing? == column {
@@ -623,11 +625,11 @@ pub fn migrate_from_toml(db: &Database) -> Result<MigrationReport> {
     cfg = crate::utils::config::migrate_config(cfg)?;
     crate::utils::config::ensure_default_networks(&mut cfg);
     db.save_config(&cfg)?;
-    let mut report = MigrationReport::default();
-
-    report.wallets_migrated = cfg.wallets.len();
-    report.networks_migrated = cfg.networks.len();
-    report.config_keys_migrated = db.list_config_kv()?.len();
+    let report = MigrationReport {
+        wallets_migrated: cfg.wallets.len(),
+        networks_migrated: cfg.networks.len(),
+        config_keys_migrated: db.list_config_kv()?.len(),
+    };
 
     db.set_meta("migrated_from_toml", "true")?;
     db.set_meta("migration_timestamp", &chrono::Utc::now().to_rfc3339())?;

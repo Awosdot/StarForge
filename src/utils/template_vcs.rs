@@ -75,6 +75,15 @@ pub fn init_vcs(template_path: &Path, template_name: &str) -> Result<()> {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("git init failed: {}", stderr);
         }
+
+        let _ = Command::new("git")
+            .current_dir(template_path)
+            .args(["config", "user.name", "StarForge VCS"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(template_path)
+            .args(["config", "user.email", "vcs@starforge.test"])
+            .output();
     }
 
     Ok(())

@@ -70,7 +70,7 @@ fn read_contract_code(path: &PathBuf) -> Result<String> {
             "No src/lib.rs or src/main.rs found in {}",
             path.display()
         ))
-    } else if path.is_file() && path.extension().map_or(false, |ext| ext == "rs") {
+    } else if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
         fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", path.display(), e))
     } else {
@@ -82,7 +82,7 @@ fn read_contract_code(path: &PathBuf) -> Result<String> {
 }
 
 /// Get contract name from path or use provided name.
-fn get_contract_name(path: &PathBuf, provided_name: Option<String>) -> String {
+fn get_contract_name(path: &std::path::Path, provided_name: Option<String>) -> String {
     if let Some(name) = provided_name {
         return name;
     }
@@ -128,8 +128,14 @@ fn print_text_report(report: &crate::utils::security::SecurityAuditReport) {
 
     p::kv("Contract", &report.contract_name);
     p::kv("Audit Date", &report.audit_date);
-    p::kv("Overall Risk", &risk_color(&report.overall_risk).to_string());
-    p::kv("Security Score", &score_color(report.security_score).to_string());
+    p::kv(
+        "Overall Risk",
+        &risk_color(&report.overall_risk).to_string(),
+    );
+    p::kv(
+        "Security Score",
+        &score_color(report.security_score).to_string(),
+    );
     p::kv("Tools Used", &report.tools_used.join(", "));
 
     println!();
@@ -242,7 +248,7 @@ fn print_text_report(report: &crate::utils::security::SecurityAuditReport) {
 
     println!();
     println!("{}", "─".repeat(80));
-    p::warning(&report.false_positive_warning);
+    p::warn(&report.false_positive_warning);
 }
 
 /// Format audit report as JSON.
@@ -370,10 +376,11 @@ fn format_html_report(report: &crate::utils::security::SecurityAuditReport) -> S
 /// Handle the `starforge ai-audit` command.
 pub async fn handle(args: AiAuditArgs) -> Result<()> {
     // Get API key
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!(
+    let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+        anyhow::anyhow!(
             "ANTHROPIC_API_KEY environment variable not set. Set it to your Anthropic API key."
-        ))?;
+        )
+    })?;
 
     // Read contract code
     let contract_code = read_contract_code(&args.path)?;
@@ -392,7 +399,10 @@ pub async fn handle(args: AiAuditArgs) -> Result<()> {
         p::header("AI-Powered Soroban Security Audit");
         p::kv("Contract", &contract_name);
         p::kv("Level", &args.level);
-        p::kv("Attack Simulation", if args.attack_simulation { "on" } else { "off" });
+        p::kv(
+            "Attack Simulation",
+            if args.attack_simulation { "on" } else { "off" },
+        );
         println!();
         eprintln!("{}  Running AI security analysis…", "→".cyan());
     }
@@ -422,11 +432,7 @@ pub async fn handle(args: AiAuditArgs) -> Result<()> {
     if !output.is_empty() {
         if let Some(out_path) = args.out {
             fs::write(&out_path, &output).map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to write output to {}: {}",
-                    out_path.display(),
-                    e
-                )
+                anyhow::anyhow!("Failed to write output to {}: {}", out_path.display(), e)
             })?;
             if !args.quiet {
                 p::success(&format!("Report written to {}", out_path.display()));
@@ -444,9 +450,15 @@ pub async fn handle(args: AiAuditArgs) -> Result<()> {
             "Overall Risk",
             &risk_color(&report.overall_risk).to_string(),
         );
-        p::kv("Security Score", &score_color(report.security_score).to_string());
+        p::kv(
+            "Security Score",
+            &score_color(report.security_score).to_string(),
+        );
         p::kv("Vulnerabilities", &report.vulnerabilities.len().to_string());
-        p::kv("Attack Scenarios", &report.attack_scenarios.len().to_string());
+        p::kv(
+            "Attack Scenarios",
+            &report.attack_scenarios.len().to_string(),
+        );
     } else {
         // Quiet mode: just output score
         println!("{:.1}", report.security_score);

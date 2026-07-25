@@ -143,7 +143,7 @@ impl SecurityPatterns {
         let mut violations = Vec::new();
 
         for (i, line) in lines.iter().enumerate() {
-            if (line.contains("transfer") || line.contains("invoke_contract"))
+            if (line.contains(".transfer") || line.contains(".invoke_contract"))
                 && !line.trim().starts_with("//")
             {
                 // Look ahead for storage operations
@@ -155,7 +155,7 @@ impl SecurityPatterns {
                     }
                 }
 
-                if !found_storage_after {
+                if found_storage_after {
                     violations.push((i + 1, line.to_string()));
                 }
             }
@@ -164,7 +164,8 @@ impl SecurityPatterns {
         if !violations.is_empty() {
             return Some(StaticCheckResult {
                 pattern_name: "reentrancy_risk".to_string(),
-                description: "Token transfer before state update (CEI violation)".to_string(),
+                description: "Token transfer before state update (reentrancy and CEI violation)"
+                    .to_string(),
                 severity: "critical".to_string(),
                 line_numbers: violations.iter().map(|(n, _)| n).copied().collect(),
                 snippets: violations.iter().map(|(_, s)| s.clone()).collect(),
@@ -187,7 +188,7 @@ impl SecurityPatterns {
                 {
                     // Look for require_auth in next 20 lines
                     let mut has_auth = false;
-                    for j in i..std::cmp::min(i + 20, lines.len()) {
+                    for j in (i + 1)..std::cmp::min(i + 20, lines.len()) {
                         if lines[j].contains("require_auth") {
                             has_auth = true;
                             break;
@@ -237,6 +238,7 @@ impl SecurityPatterns {
                 if line.contains(op)
                     && !line.contains(checked_fn)
                     && !line.contains(&format!("{}{}", op, op))
+                    && !line.contains("->")
                 {
                     // Avoid false positives on operators like +=, -=, etc in checked context
                     if !line.contains("//") && !line.contains("string") {
@@ -250,7 +252,8 @@ impl SecurityPatterns {
         if !violations.is_empty() {
             return Some(StaticCheckResult {
                 pattern_name: "unchecked_arithmetic".to_string(),
-                description: "Arithmetic without checked_ operations".to_string(),
+                description: "potential arithmetic overflow without checked_ operations"
+                    .to_string(),
                 severity: "medium".to_string(),
                 line_numbers: violations.iter().map(|(n, _)| n).copied().collect(),
                 snippets: violations.iter().map(|(_, s)| s.clone()).collect(),
@@ -279,7 +282,7 @@ impl SecurityPatterns {
         if !violations.is_empty() {
             return Some(StaticCheckResult {
                 pattern_name: "privacy_leak".to_string(),
-                description: "Sensitive data stored on-chain (not private)".to_string(),
+                description: "sensitive data stored on-chain (not private)".to_string(),
                 severity: "high".to_string(),
                 line_numbers: violations.iter().map(|(n, _)| n).copied().collect(),
                 snippets: violations.iter().map(|(_, s)| s.clone()).collect(),
@@ -297,8 +300,7 @@ impl SecurityPatterns {
             if line.contains("persistent()") && line.contains("set") {
                 // Look for extend_ttl in nearby lines
                 let mut has_ttl = false;
-                for j in std::cmp::max(0, i.saturating_sub(5))..std::cmp::min(i + 5, lines.len())
-                {
+                for j in std::cmp::max(0, i.saturating_sub(5))..std::cmp::min(i + 5, lines.len()) {
                     if lines[j].contains("extend_ttl") {
                         has_ttl = true;
                         break;

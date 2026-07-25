@@ -112,11 +112,7 @@ pub async fn handle(args: AuditArgs) -> Result<()> {
             }
             Err(e) => {
                 if !args.quiet {
-                    eprintln!(
-                        "  {} cargo-audit skipped: {}",
-                        "⚠".yellow(),
-                        e
-                    );
+                    eprintln!("  {} cargo-audit skipped: {}", "⚠".yellow(), e);
                 }
             }
         }
@@ -497,6 +493,7 @@ mod tests {
             score: 75.0,
             findings: vec![],
             tools_used: vec!["builtin".to_string()],
+            tool_statuses: vec![],
             summary: AuditSummary {
                 critical: 0,
                 high: 0,
@@ -504,6 +501,7 @@ mod tests {
                 low: 0,
                 info: 0,
             },
+            ci_passed: true,
         };
         let html = render_html_report(&result);
         assert!(html.contains("75.0/100"));

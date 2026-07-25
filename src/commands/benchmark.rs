@@ -256,7 +256,7 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
     for r in &shown {
         println!(
             "  {:<10}  {:<10}  {:<10.1}  {:<6}  {:<18}  {}",
-            &r.id[..8.min(r.id.len())].cyan(),
+            r.id[..8.min(r.id.len())].cyan(),
             r.category,
             r.overall_score,
             r.grade,

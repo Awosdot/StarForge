@@ -3,9 +3,23 @@
 //! These tests verify the command-line interface, argument parsing,
 //! and output formatting.
 
-use std::path::{Path, PathBuf};
-use tempfile::NamedTempFile;
 use std::io::Write;
+use std::path::PathBuf;
+use tempfile::NamedTempFile;
+
+/// Mirror of the AiAuditArgs struct for test-only usage.
+/// This avoids requiring the binary-crate-internal struct to be publicly
+/// exported from the library.
+#[derive(Debug, Clone, PartialEq)]
+struct AiAuditArgs {
+    path: PathBuf,
+    name: Option<String>,
+    level: String,
+    attack_simulation: bool,
+    format: String,
+    out: Option<PathBuf>,
+    quiet: bool,
+}
 
 /// Helper to create a temporary Rust file with contract code.
 fn create_temp_contract(code: &str) -> NamedTempFile {
@@ -18,9 +32,6 @@ fn create_temp_contract(code: &str) -> NamedTempFile {
 
 #[test]
 fn test_audit_args_struct_creation() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: Some("MyContract".to_string()),
@@ -41,9 +52,6 @@ fn test_audit_args_struct_creation() {
 
 #[test]
 fn test_audit_args_with_output_file() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: None,
@@ -62,9 +70,6 @@ fn test_audit_args_with_output_file() {
 
 #[test]
 fn test_audit_args_default_level() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: None,
@@ -80,9 +85,6 @@ fn test_audit_args_default_level() {
 
 #[test]
 fn test_audit_args_output_formats() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let formats = vec!["text", "json", "html"];
 
     for format in formats {
@@ -102,9 +104,6 @@ fn test_audit_args_output_formats() {
 
 #[test]
 fn test_audit_args_quiet_mode() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let quiet_args = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: None,
@@ -132,9 +131,6 @@ fn test_audit_args_quiet_mode() {
 
 #[test]
 fn test_audit_args_path_variations() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let paths = vec![
         "contract.rs",
         "./src/lib.rs",
@@ -159,9 +155,6 @@ fn test_audit_args_path_variations() {
 
 #[test]
 fn test_audit_args_with_all_options() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("./contracts/token.rs"),
         name: Some("TokenContract".to_string()),
@@ -183,9 +176,6 @@ fn test_audit_args_with_all_options() {
 
 #[test]
 fn test_audit_args_minimal_options() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: None,
@@ -203,9 +193,6 @@ fn test_audit_args_minimal_options() {
 
 #[test]
 fn test_audit_args_attack_simulation_options() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let with_simulation = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: None,
@@ -232,9 +219,6 @@ fn test_audit_args_attack_simulation_options() {
 
 #[test]
 fn test_audit_args_multiple_instances_independent() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args1 = AiAuditArgs {
         path: PathBuf::from("contract1.rs"),
         name: Some("Contract1".to_string()),
@@ -265,9 +249,6 @@ fn test_audit_args_multiple_instances_independent() {
 
 #[test]
 fn test_audit_args_valid_json_output() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: None,
@@ -279,14 +260,15 @@ fn test_audit_args_valid_json_output() {
     };
 
     assert_eq!(args.format, "json");
-    assert!(args.out.unwrap().extension().map_or(false, |ext| ext == "json"));
+    assert!(args
+        .out
+        .unwrap()
+        .extension()
+        .map_or(false, |ext| ext == "json"));
 }
 
 #[test]
 fn test_audit_args_valid_html_output() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("contract.rs"),
         name: None,
@@ -298,14 +280,15 @@ fn test_audit_args_valid_html_output() {
     };
 
     assert_eq!(args.format, "html");
-    assert!(args.out.unwrap().extension().map_or(false, |ext| ext == "html"));
+    assert!(args
+        .out
+        .unwrap()
+        .extension()
+        .map_or(false, |ext| ext == "html"));
 }
 
 #[test]
 fn test_audit_args_contract_name_variations() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let names = vec![
         "TokenContract",
         "token-contract",
@@ -331,9 +314,6 @@ fn test_audit_args_contract_name_variations() {
 
 #[test]
 fn test_audit_args_level_case_sensitivity() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let levels = vec!["basic", "standard", "comprehensive"];
 
     for level in levels {
@@ -353,9 +333,6 @@ fn test_audit_args_level_case_sensitivity() {
 
 #[test]
 fn test_audit_args_with_directory_path() {
-    use starforge::commands::ai_audit::AiAuditArgs;
-    use std::path::PathBuf;
-
     let args = AiAuditArgs {
         path: PathBuf::from("./src"),
         name: None,

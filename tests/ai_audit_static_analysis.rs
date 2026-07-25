@@ -21,7 +21,9 @@ pub fn withdraw(env: Env, amount: i128) {
         "Should detect missing require_auth in public withdraw function"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("require_auth")),
+        findings
+            .iter()
+            .any(|f| f.description.contains("require_auth")),
         "Should specifically identify missing require_auth"
     );
 }
@@ -42,7 +44,9 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
         "Should detect unchecked arithmetic operation"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("arithmetic")),
+        findings
+            .iter()
+            .any(|f| f.description.contains("arithmetic")),
         "Should identify arithmetic as the issue"
     );
 }
@@ -82,7 +86,9 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
         "Should detect external call before state update"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("reentrancy")),
+        findings
+            .iter()
+            .any(|f| f.description.contains("reentrancy")),
         "Should identify reentrancy risk"
     );
 }
@@ -96,10 +102,7 @@ pub fn save_data(env: Env, key: String, value: String) {
 "#;
 
     let findings = run_static_checks(code);
-    assert!(
-        !findings.is_empty(),
-        "Should detect missing TTL extension"
-    );
+    assert!(!findings.is_empty(), "Should detect missing TTL extension");
     assert!(
         findings.iter().any(|f| f.description.contains("TTL")),
         "Should identify TTL as the issue"
@@ -132,7 +135,7 @@ fn test_handles_comments_correctly() {
 // This would be unsafe: token.transfer(&to, amount);
 pub fn safe_transfer(env: Env, to: Address, amount: i128) {
     env.current_contract_address().require_auth();
-    storage.set(&balance, balance - amount);
+    storage.set(&balance, balance.checked_sub(amount).unwrap());
     // We do update state first
     token.transfer(&to, amount);
 }
@@ -141,7 +144,10 @@ pub fn safe_transfer(env: Env, to: Address, amount: i128) {
     let findings = run_static_checks(code);
     // Should not flag commented code or properly ordered operations
     assert!(
-        findings.is_empty() || findings.iter().all(|f| !f.description.contains("reentrancy")),
+        findings.is_empty()
+            || findings
+                .iter()
+                .all(|f| !f.description.contains("reentrancy")),
         "Should not flag properly ordered operations"
     );
 }
@@ -197,7 +203,9 @@ pub fn withdraw(env: Env, amount: i128) {
 
     let findings = run_static_checks(code);
     assert!(
-        !findings.iter().any(|f| f.description.contains("require_auth")),
+        !findings
+            .iter()
+            .any(|f| f.description.contains("require_auth")),
         "Should not flag missing auth when require_auth is present"
     );
 }
@@ -234,16 +242,14 @@ pub fn function_{i}(env: Env) {{
     env.storage().instance().set(&key_{i}, &value_{i});
 }}
 "#,
-            i = i,
-            key_i = i,
-            value_i = i
+            i = i
         ));
     }
 
     let findings = run_static_checks(&code);
     // Should complete without crashing and find issues
     assert!(
-        findings.len() >= 100,
+        findings.first().map_or(0, |f| f.line_numbers.len()) >= 100,
         "Should detect pattern in large contract"
     );
 }

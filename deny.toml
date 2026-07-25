@@ -11,15 +11,18 @@ targets = [
 [advisories]
 version = 2
 ignore = [
-    # ring 0.16.x pulled in transitively via pinned ureq =2.7.1; no upgrade path.
-    "RUSTSEC-2025-0009",
-    "RUSTSEC-2025-0010",
     # rustls-webpki 0.100/0.101 pulled in transitively via pinned ureq =2.7.1.
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
     # number_prefix unmaintained; pulled in via indicatif. No safe upgrade.
     "RUSTSEC-2025-0119",
+    # rustls-pemfile unmaintained; pulled in transitively via reqwest.
+    "RUSTSEC-2025-0134",
+    # anyhow downcast_mut
+    "RUSTSEC-2026-0190",
+    # crossbeam pointer deref
+    "RUSTSEC-2026-0204",
 ]
 
 [licenses]

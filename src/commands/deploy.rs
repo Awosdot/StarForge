@@ -1,3 +1,4 @@
+use crate::commands::analytics as analytics_cmds;
 use crate::utils::{
     config, confirmation,
     deploy_history::{
@@ -6,12 +7,11 @@ use crate::utils::{
     },
     horizon, optimizer, print as p, soroban, wallet_signer,
 };
-use crate::commands::analytics as analytics_cmds;
 
+use crate::utils::hardware_wallet::HardwareWalletKind;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
-use crate::utils::hardware_wallet::HardwareWalletKind;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
@@ -524,10 +524,9 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             // Record deployment analytics event (execute attempt failed).
             // Try to parse a contract id, even though the command failed.
             let contract_id_for_analytics = parse_contract_id_from_stdout(&stderr);
-            let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
-                analytics_cmds::TrackArgs {
+            tokio::spawn(analytics_cmds::handle(
+                analytics_cmds::AnalyticsCommands::Track(analytics_cmds::TrackArgs {
                     contract_id: contract_id_for_analytics.unwrap_or_default(),
-
 
                     network: args.network.clone(),
                     wasm_hash: Some(wasm_hash.clone()),
@@ -538,9 +537,8 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     duration_secs: None,
                     success: false,
                     error: Some(stderr.clone()),
-                },
-            )) ;
-
+                }),
+            ));
 
             // Automatic rollback safety net: revert to the last good deployment.
             handle_failed_deploy_rollback(
@@ -563,8 +561,8 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         update_status(&record_id, DeployStatus::Success, None)?;
 
         // Record deployment analytics event (execute attempt succeeded).
-        let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
-            analytics_cmds::TrackArgs {
+        tokio::spawn(analytics_cmds::handle(
+            analytics_cmds::AnalyticsCommands::Track(analytics_cmds::TrackArgs {
                 contract_id: parsed_contract_id.clone().unwrap_or_default(),
                 network: args.network.clone(),
                 wasm_hash: Some(wasm_hash.clone()),
@@ -575,9 +573,8 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 duration_secs: None,
                 success: true,
                 error: None,
-            },
+            }),
         ));
-
 
         p::success("Deployment executed successfully!");
         p::kv("Recorded deployment", &record_id[..8.min(record_id.len())]);
