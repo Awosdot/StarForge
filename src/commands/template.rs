@@ -30,7 +30,7 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Install a template from a directory or .zip archive into the local registry
+    /// Install a template package into the local registry
     Install {
         /// Path to template directory or .zip package
         path: PathBuf,
@@ -106,8 +106,8 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Install a template from a Git URL, local path, or marketplace registry name
-    Install {
+    /// Fetch and install a template from a Git URL, local path, or marketplace registry name
+    Fetch {
         /// Source: git URL (https://...), local filesystem path, or registry template name
         source: String,
         /// Override the installed template name (defaults to the template name or URL basename)
@@ -191,12 +191,12 @@ pub fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Remove { name } => remove(name),
         TemplateCommands::Init => init(),
         TemplateCommands::Info { name } => info(name),
-        TemplateCommands::Install {
+        TemplateCommands::Fetch {
             source,
             name,
             version,
             force,
-        } => install(source, name, version, force),
+        } => fetch(source, name, version, force),
         TemplateCommands::Update { name, all } => update(name, all),
     }
 }
@@ -297,7 +297,7 @@ fn publish(
     if let Some(lic) = template.license.as_ref() {
         p::kv("License", lic);
     }
-    if let Some(repo) = template.repository.as_ref() {
+    if let Some(repo) = template.repository_url.as_ref() {
         p::kv("Repository", repo);
     }
     if let Some(path) = template.path.as_ref() {
@@ -368,7 +368,10 @@ fn search(
 
     let filters = templates::SearchFilters {
         tags: tag_list,
+        categories: Vec::new(),
         verified_only: verified,
+        featured_only: false,
+        hide_spam: false,
         min_quality,
     };
 
@@ -473,7 +476,7 @@ fn show(name: String) -> Result<()> {
     if let Some(ref license) = template.license {
         p::kv("License", license);
     }
-    if let Some(ref repo) = template.repository {
+    if let Some(ref repo) = template.repository_url {
         p::kv("Repository", repo);
     }
     if let Some(ref hp) = template.homepage {
@@ -650,7 +653,7 @@ fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-fn install(
+fn fetch(
     source: String,
     name: Option<String>,
     version: Option<String>,

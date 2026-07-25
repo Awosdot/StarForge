@@ -415,6 +415,7 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                         &pl.source,
                         &pl.starforge_version,
                         &pl.plugin_version,
+                        pl.commands.clone(),
                     )?;
                     p::success(&format!("  '{}' updated via cargo install", pl.name));
                     updated += 1;
@@ -459,6 +460,7 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                             &pl.source,
                             &pl.starforge_version,
                             &pl.plugin_version,
+                            cmds,
                         )?;
                         p::success(&format!(
                             "  '{}' library on disk is newer — registry refreshed.",

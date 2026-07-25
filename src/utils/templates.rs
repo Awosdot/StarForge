@@ -114,6 +114,18 @@ pub struct TemplateEntry {
     /// URL of the template's source repository (e.g. GitHub link).
     #[serde(default)]
     pub repository_url: Option<String>,
+    /// Optional homepage for the template project.
+    #[serde(default)]
+    pub homepage: Option<String>,
+    /// Optional documentation URL for the template.
+    #[serde(default)]
+    pub documentation: Option<String>,
+    /// Categories that describe the template's purpose or domain.
+    #[serde(default)]
+    pub categories: Vec<String>,
+    /// Whether this template has been selected as featured by curators.
+    #[serde(default)]
+    pub featured: bool,
 }
 
 /// Outcome of a template-vs-CLI compatibility check.
@@ -308,8 +320,72 @@ impl TemplateEntry {
         if self.downloads >= 1000 {
             badges.push("[POPULAR]".to_string());
         }
+        if self.featured {
+            badges.push("[FEATURED]".to_string());
+        }
+        if self.is_trending() {
+            badges.push("[TRENDING]".to_string());
+        }
+        if self.is_spam_suspected() {
+            badges.push("[SUSPECT]".to_string());
+        }
 
         badges
+    }
+
+    /// Estimate whether the template is likely a low-quality or spammy submission.
+    pub fn is_spam_suspected(&self) -> bool {
+        if self.verified {
+            return false;
+        }
+
+        let low_confidence = self.description.len() < 50 || self.tags.is_empty();
+        let poor_quality = self.quality_score() < 30;
+        let deprecated = self.maintenance == MaintenanceStatus::Deprecated;
+
+        poor_quality && (low_confidence || deprecated)
+    }
+
+    /// Return whether the template has recently shown activity or popularity.
+    pub fn is_trending(&self) -> bool {
+        if self.downloads >= 500 {
+            return true;
+        }
+        self.updated_recently()
+    }
+
+    pub fn updated_recently(&self) -> bool {
+        if self.updated_at.trim().is_empty() {
+            return false;
+        }
+
+        if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(&self.updated_at) {
+            let age = chrono::Utc::now().signed_duration_since(timestamp.with_timezone(&chrono::Utc));
+            age.num_days() <= 30
+        } else {
+            false
+        }
+    }
+
+    /// A broad health score reflecting quality, maintenance, trending, and
+    /// featured status.
+    pub fn health_score(&self) -> u8 {
+        let mut score = self.quality_score() as i32;
+
+        if self.is_trending() {
+            score += 5;
+        }
+        if self.featured {
+            score += 5;
+        }
+        if self.is_spam_suspected() {
+            score -= 15;
+        }
+        if self.maintenance == MaintenanceStatus::Deprecated {
+            score -= 10;
+        }
+
+        score.clamp(0, 100) as u8
     }
 }
 
@@ -601,8 +677,14 @@ fn fetch_and_cache_remote(url: &str) -> Result<TemplateRegistry> {
 pub struct SearchFilters {
     /// Templates must carry all of these tags (case-insensitive).
     pub tags: Vec<String>,
+    /// Templates must carry all of these categories.
+    pub categories: Vec<String>,
     /// Only include templates flagged as verified.
     pub verified_only: bool,
+    /// Only include only featured templates.
+    pub featured_only: bool,
+    /// Hide templates that are likely low-quality or spammy.
+    pub hide_spam: bool,
     /// Only include templates whose quality score is at least this value.
     pub min_quality: u8,
 }
@@ -683,7 +765,22 @@ pub fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<V
             if !has_all_tags {
                 return None;
             }
+            let has_all_categories = filters.categories.iter().all(|fc| {
+                entry
+                    .categories
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(fc))
+            });
+            if !has_all_categories {
+                return None;
+            }
             if filters.verified_only && !entry.verified {
+                return None;
+            }
+            if filters.featured_only && !entry.featured {
+                return None;
+            }
+            if filters.hide_spam && entry.is_spam_suspected() {
                 return None;
             }
             if entry.quality_score() < filters.min_quality {
@@ -704,13 +801,12 @@ pub fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<V
         })
         .collect();
 
-    // Rank by relevance, then quality, then downloads. This keeps the most
-    // pertinent matches at the top while still favouring trusted, well-
-    // documented and well-maintained templates.
+    // Rank by relevance, then quality, then trending, then downloads.
     results.sort_by(|a, b| {
         b.relevance
             .cmp(&a.relevance)
             .then_with(|| b.entry.quality_score().cmp(&a.entry.quality_score()))
+            .then_with(|| b.entry.is_trending().cmp(&a.entry.is_trending()))
             .then_with(|| b.entry.downloads.cmp(&a.entry.downloads))
     });
 
@@ -1023,8 +1119,12 @@ pub fn publish_template_versioned(
         cli_version_max,
         documented: source_root.join("README.md").exists(),
         maintenance: MaintenanceStatus::Active,
-        license: None,
-        repository_url: None,
+        license,
+        repository_url: repository,
+        homepage,
+        documentation,
+        categories: Vec::new(),
+        featured: false,
     };
 
     add_template(entry)?;
@@ -1032,6 +1132,7 @@ pub fn publish_template_versioned(
     Ok(())
 }
 
+/// Validate template metadata and structure without CLI version constraints.
 pub fn validate_template_structure(
     path: &Path,
     name: &str,
@@ -1254,6 +1355,10 @@ fn install_from_git_url(
         maintenance: MaintenanceStatus::Unknown,
         license: None,
         repository_url: Some(url.to_string()),
+        homepage: None,
+        documentation: None,
+        categories: Vec::new(),
+        featured: false,
     };
 
     registry.templates.retain(|t| t.name != name);
@@ -1319,6 +1424,10 @@ fn install_from_local_path(
         maintenance: MaintenanceStatus::Unknown,
         license: None,
         repository_url: None,
+        homepage: None,
+        documentation: None,
+        categories: Vec::new(),
+        featured: false,
     };
 
     registry.templates.retain(|t| t.name != name);
@@ -1439,6 +1548,10 @@ mod tests {
             maintenance: MaintenanceStatus::Unknown,
             license: None,
             repository_url: None,
+            homepage: None,
+            documentation: None,
+            categories: Vec::new(),
+            featured: false,
         }
     }
 
@@ -1671,6 +1784,10 @@ mod tests {
             maintenance: MaintenanceStatus::Active,
             license: None,
             repository_url: None,
+            homepage: None,
+            documentation: None,
+            categories: Vec::new(),
+            featured: false,
         });
 
         // Test name search
@@ -1718,6 +1835,10 @@ mod tests {
             maintenance: MaintenanceStatus::Unknown,
             license: None,
             repository_url: None,
+            homepage: None,
+            documentation: None,
+            categories: Vec::new(),
+            featured: false,
         };
 
         let dest = tmp.path().join(&entry.name);
@@ -1767,6 +1888,10 @@ mod tests {
             maintenance: MaintenanceStatus::Unknown,
             license: None,
             repository_url: None,
+            homepage: None,
+            documentation: None,
+            categories: Vec::new(),
+            featured: false,
         }
     }
 

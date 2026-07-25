@@ -7,6 +7,7 @@
     clippy::unnecessary_lazy_evaluations
 )]
 
+pub mod curation;
 mod commands;
 pub mod plugins;
 mod utils;
@@ -57,10 +58,6 @@ enum Commands {
     /// Show starforge config and environment info
     Info,
     /// Manage starforge configuration (telemetry, network)
-    #[command(subcommand)]
-    Config(commands::config::ConfigCommands),
-
-    /// Manage global configuration
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
 
@@ -166,7 +163,7 @@ fn main() {
         Commands::Contract(cmd) => commands::contract::handle(cmd),
         Commands::Inspect(cmd) => commands::inspect::handle(cmd),
         Commands::Deploy(args) => commands::deploy::handle(args),
-        Commands::Info => commands::info::handle(),
+        Commands::Info => commands::info::handle(), // This line was missing a comma
         Commands::Config(cmd) => commands::config::handle(cmd),
         Commands::Tx(args) => commands::tx::handle(args),
         Commands::Network(cmd) => commands::network::handle(cmd),

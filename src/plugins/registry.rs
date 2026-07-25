@@ -78,6 +78,9 @@ pub struct InstalledPlugin {
     /// RFC3339 timestamp of when the plugin was installed.
     #[serde(default)]
     pub installed_at: Option<String>,
+    /// Commands this plugin registers.
+    #[serde(default)]
+    pub commands: Vec<RegisteredCommand>,
 }
 
 fn registry_path() -> Result<PathBuf> {
@@ -115,6 +118,13 @@ pub struct UninstallOptions {
     pub purge_files: bool,
     /// Skip interactive confirmation for destructive removal.
     pub assume_yes: bool,
+}
+
+/// A command registered by a plugin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisteredCommand {
+    pub name: String,
+    pub description: String,
 }
 
 /// Report returned after uninstalling a plugin.
@@ -156,7 +166,7 @@ pub fn install_plugin(
     source: &str,
     starforge_version: &str,
     plugin_version: &str,
-    commands: Vec<RegisteredCommand>,
+    commands: Vec<RegisteredCommand>
 ) -> Result<()> {
     if !library_path.exists() {
         anyhow::bail!("Plugin library not found: {}", library_path.display());
@@ -175,6 +185,7 @@ pub fn install_plugin(
         starforge_version: starforge_version.to_string(),
         plugin_version: plugin_version.to_string(),
         installed_at: Some(now),
+        commands,
     });
     reg.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     save_registry(&reg)?;

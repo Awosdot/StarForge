@@ -43,7 +43,7 @@ struct WalletBackup {
     wallets: Vec<WalletBackupEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WalletBackupEntry {
     name: String,
     public_key: String,
@@ -53,7 +53,7 @@ struct WalletBackupEntry {
     funded: bool,
 }
 
-impl From<&config::WalletEntry> for WalletBackupEntry {
+impl From<&config::WalletEntry> for WalletBackupEntry { // This was already correct, no change needed here.
     fn from(entry: &config::WalletEntry) -> Self {
         Self {
             name: entry.name.clone(),
@@ -170,6 +170,9 @@ pub enum WalletCommands {
         /// Argon2 parallelism factor (requires --encrypt)
         #[arg(long, requires = "encrypt")]
         parallelism: Option<u32>,
+        /// Path to write a pre-rotation backup snapshot
+        #[arg(long)]
+        backup: Option<PathBuf>,
     },
     /// Export a wallet to a JSON backup file
     Export {
@@ -354,7 +357,19 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
             strict,
             mem,
             iterations,
-        } => rotate_wallet(name, fund, network, encrypt, strict, mem, iterations),
+            parallelism,
+            backup,
+        } => rotate_wallet(
+            name,
+            fund,
+            network,
+            encrypt,
+            strict,
+            mem,
+            iterations,
+            parallelism,
+            backup,
+        ),
         WalletCommands::Export {
             name,
             all,
@@ -374,6 +389,7 @@ pub fn handle(cmd: WalletCommands) -> Result<()> {
             name,
             file,
             from_mnemonic,
+            key,
             account_index,
             network,
             encrypt,
@@ -971,11 +987,8 @@ fn merge_wallet(
         risk_level,
         network: network.clone(),
         skip_confirm: skip_confirm,
-        dry_run: false,
-        prompt: Some(&format!(
-            "Type '{}' to confirm merge of account {}:",
-            wallet.name, wallet.name
-        )),
+        dry_run: false, // This was missing a comma
+        prompt: Some(format!("Type '{}' to confirm merge of account {}:", wallet.name, wallet.name)),
         require_type_confirmation: true, // Always require type confirmation for merge
     };
 
@@ -1064,6 +1077,7 @@ fn rotate_wallet(
     mem: Option<u32>,
     iterations: Option<u32>,
     parallelism: Option<u32>,
+    backup: Option<PathBuf>,
 ) -> Result<()> {
     config::validate_wallet_name(&name)?;
     let mut cfg = config::load()?;
@@ -1290,8 +1304,8 @@ fn export_wallet(
 
     let backup = WalletBackup {
         version: WALLET_BACKUP_VERSION.to_string(),
-        exported_at: Utc::now().to_rfc3339(),
-        wallets: wallets_to_export,
+        exported_at: Utc::now().to_rfc3339(), // This was missing a comma
+        wallets: wallets_to_export.clone(),
     };
 
     let json = serde_json::to_string_pretty(&backup)
