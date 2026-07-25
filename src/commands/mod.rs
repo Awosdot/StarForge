@@ -36,6 +36,7 @@ pub mod perf;
 pub mod pipeline_builder;
 pub mod plugin;
 pub mod privacy;
+pub mod recommend;
 pub mod registry;
 pub mod schedule;
 pub mod security;
