@@ -37,6 +37,8 @@ pub enum SecurityCommands {
     Pentest(PentestArgs),
     /// Track remediation of findings from audit/pentest/checklist runs
     Remediation(RemediationArgs),
+    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
+    Dashboard,
 }
 
 #[derive(Args)]
@@ -662,8 +664,9 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             Ok(())
         }
     }
+}
 
-    fn handle_dashboard() -> Result<()> {
+fn handle_dashboard() -> Result<()> {
     p::header("Security Dashboard");
 
     let mut incidents = IncidentStore::load_all()?;
@@ -735,10 +738,3 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
     Ok(())
 }
 
-    /// Track remediation of findings from audit/pentest/checklist runs
-    Remediation(RemediationArgs),
-    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
-    Dashboard,
-}
-
-}
