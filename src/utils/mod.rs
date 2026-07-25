@@ -71,3 +71,6 @@ pub mod testnet_integration;
 pub mod tutorial_engine;
 pub mod tx_batch;
 pub mod ai_gas_estimation;
+
+// AI Deployment Planner
+pub mod ai_deployment_planner;
