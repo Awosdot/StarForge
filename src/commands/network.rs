@@ -1,6 +1,7 @@
-use crate::utils::{config, print as p};
+use crate::utils::{config, http_client, print as p};
 use anyhow::Result;
 use clap::Subcommand;
+use std::time::Duration;
 
 #[derive(Subcommand)]
 pub enum NetworkCommands {
@@ -48,7 +49,7 @@ pub enum NetworkCommands {
     },
 }
 
-pub fn handle(cmd: NetworkCommands) -> Result<()> {
+pub async fn handle(cmd: NetworkCommands) -> Result<()> {
     match cmd {
         NetworkCommands::Show => show(),
         NetworkCommands::Switch { network } => switch(network),
@@ -65,7 +66,7 @@ pub fn handle(cmd: NetworkCommands) -> Result<()> {
             friendbot_url,
             passphrase,
         ),
-        NetworkCommands::Test { network } => test_network(network),
+        NetworkCommands::Test { network } => test_network(network).await,
         NetworkCommands::Remove { name } => remove_network(name),
         NetworkCommands::Rename { old_name, new_name } => rename_network(old_name, new_name),
     }
@@ -179,7 +180,7 @@ fn add_network(
     Ok(())
 }
 
-fn test_network(network_name: Option<String>) -> Result<()> {
+async fn test_network(network_name: Option<String>) -> Result<()> {
     let cfg = config::load()?;
     let test_network = network_name.unwrap_or_else(|| cfg.network.clone());
 
@@ -188,8 +189,14 @@ fn test_network(network_name: Option<String>) -> Result<()> {
     p::info(&format!("Testing connectivity to '{}'…", test_network));
     p::info(&format!("Horizon: {}", net_cfg.horizon_url));
 
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .pool_max_idle_per_host(10)
+        .build()?;
+
     // Test Horizon endpoint
-    match ureq::get(&format!("{}/health", net_cfg.horizon_url)).call() {
+    let client = http_client::get_client();
+    match client.get(&format!("{}/health", net_cfg.horizon_url)).send().await {
         Ok(_) => {
             p::success("✓ Horizon endpoint is reachable");
         }
@@ -208,10 +215,7 @@ fn test_network(network_name: Option<String>) -> Result<()> {
             "params": []
         });
 
-        match ureq::post(soroban_url)
-            .set("Content-Type", "application/json")
-            .send_json(&req)
-        {
+        match client.post(soroban_url).json(&req).send().await {
             Ok(_) => {
                 p::success("✓ Soroban RPC endpoint is reachable");
             }

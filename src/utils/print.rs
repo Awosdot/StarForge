@@ -19,6 +19,61 @@ pub fn warn(msg: &str) {
     println!("{} {}", "⚠".yellow().bold(), msg);
 }
 
+/// Print a structured CLI error to stderr with context and recovery hints.
+///
+/// Output format:
+///
+/// ```text
+///
+///   ✗  Error: <message>
+///      Context: <context>      (optional, from anyhow chain)
+///
+///   What to try:
+///     → hint one
+///     → hint two
+///
+/// ```
+///
+/// # Arguments
+/// * `err`   – The `anyhow::Error` returned from a command.
+/// * `hints` – Zero or more recovery hint strings shown under "What to try:".
+///
+/// If `hints` is empty, a generic fallback is printed instead.
+pub fn cli_error(err: &anyhow::Error, hints: &[&str]) {
+    // Primary message (the outermost error in the anyhow chain)
+    eprintln!("\n  {} {}\n", "✗  Error:".red().bold(), err);
+
+    // Walk the anyhow cause chain and print each context layer (skipping the
+    // root which was already printed above).
+    let chain: Vec<_> = err.chain().skip(1).collect();
+    if !chain.is_empty() {
+        for cause in &chain {
+            eprintln!("     {} {}", "Context:".dimmed(), cause.to_string().dimmed());
+        }
+        eprintln!();
+    }
+
+    // Recovery hints
+    eprintln!("  {}", "What to try:".yellow().bold());
+    if hints.is_empty() {
+        eprintln!(
+            "   {} Run the command again with {} for more detail",
+            "→".cyan(),
+            "--verbose".bright_white()
+        );
+        eprintln!(
+            "   {} Check {} for known issues",
+            "→".cyan(),
+            "https://github.com/Nanle-code/StarForge/issues".bright_white()
+        );
+    } else {
+        for hint in hints {
+            eprintln!("   {} {}", "→".cyan(), hint);
+        }
+    }
+    eprintln!();
+}
+
 pub fn header(msg: &str) {
     println!("\n{}", msg.bright_white().bold().underline());
 }
@@ -79,5 +134,72 @@ pub fn verified_badge(verified: bool) -> colored::ColoredString {
         " ✓ verified".green()
     } else {
         "".normal()
+    }
+}
+
+/// Print an aligned table with dimmed headers and bright row values.
+pub fn table(headers: &[&str], rows: &[Vec<String>]) {
+    if headers.is_empty() {
+        return;
+    }
+
+    let ncol = headers.len();
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    for row in rows {
+        for (i, cell) in row.iter().enumerate().take(ncol) {
+            widths[i] = widths[i].max(cell.len());
+        }
+    }
+
+    let header_line = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| format!("{:<width$}", h, width = widths[i]))
+        .collect::<Vec<_>>()
+        .join("  ");
+    println!("  {}", header_line.dimmed());
+
+    for row in rows {
+        let line = (0..ncol)
+            .map(|i| {
+                let val = row.get(i).map(String::as_str).unwrap_or("");
+                format!("{:<width$}", val, width = widths[i])
+            })
+            .collect::<Vec<_>>()
+            .join("  ");
+        println!("  {}", line.bright_white());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    fn column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<usize> {
+        let ncol = headers.len();
+        let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+        for row in rows {
+            for (i, cell) in row.iter().enumerate().take(ncol) {
+                widths[i] = widths[i].max(cell.len());
+            }
+        }
+        widths
+    }
+
+    #[test]
+    fn table_widths_use_header_and_cell_maxima() {
+        let widths = column_widths(
+            &["Name", "Description"],
+            &[vec![
+                "trusted".into(),
+                "Lifecycle integration test plugin".into(),
+            ]],
+        );
+        assert_eq!(widths[0], "trusted".len());
+        assert_eq!(widths[1], "Lifecycle integration test plugin".len());
+    }
+
+    #[test]
+    fn table_widths_handle_empty_rows() {
+        let widths = column_widths(&["Name", "Version"], &[]);
+        assert_eq!(widths, vec![4, 7]);
     }
 }

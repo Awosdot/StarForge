@@ -1,3 +1,5 @@
+use crate::plugins::manifest;
+use crate::utils::config::{self, Config};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -28,23 +30,19 @@ impl TrustLevel {
     }
 }
 
-/// Prefixes of sources that are automatically given `Trusted` status.
-const TRUSTED_SOURCE_PREFIXES: &[&str] = &[
-    "https://github.com/Nanle-code/starforge-",
-    "https://github.com/StarForge-Labs/",
-    "https://crates.io/crates/starforge-plugin-",
-];
-
-/// Classify a source URL/path into a trust level.
-///
-/// - An empty source (i.e., `--path` was used) → `Local`
-/// - A source matching a known trusted prefix → `Trusted`
-/// - Everything else → `Unknown`
+/// Classify a source URL/path into a trust level based on built-in allowlist.
 pub fn classify_source(source: &str) -> TrustLevel {
     if source.is_empty() {
         return TrustLevel::Local;
     }
-    for prefix in TRUSTED_SOURCE_PREFIXES {
+
+    let trusted_prefixes = &[
+        "https://github.com/Nanle-code/starforge-",
+        "https://github.com/StarForge-Labs/",
+        "https://crates.io/crates/starforge-plugin-",
+    ];
+
+    for prefix in trusted_prefixes {
         if source.starts_with(prefix) {
             return TrustLevel::Trusted;
         }
@@ -52,10 +50,158 @@ pub fn classify_source(source: &str) -> TrustLevel {
     TrustLevel::Unknown
 }
 
+/// Classify a source URL using built-in allowlist plus user-configured trusted sources.
+pub fn classify_source_with_config(source: &str, config: &Config) -> TrustLevel {
+    if source.is_empty() {
+        return TrustLevel::Local;
+    }
+
+    for trusted in &config.plugin_trust.trusted_sources {
+        if source_matches_trusted_source(source, trusted) {
+            return TrustLevel::Trusted;
+        }
+    }
+
+    classify_source(source)
+}
+
+pub fn source_matches_trusted_source(source: &str, trusted_source: &str) -> bool {
+    let source = source.trim();
+    let trusted_source = trusted_source.trim();
+    if source.is_empty() || trusted_source.is_empty() {
+        return false;
+    }
+
+    if let Some(trusted_url) = ParsedSourceUrl::parse(trusted_source) {
+        let Some(source_url) = ParsedSourceUrl::parse(source) else {
+            return false;
+        };
+        return trusted_url.matches(&source_url);
+    }
+
+    let trusted_domain = trusted_source
+        .strip_prefix("*.")
+        .unwrap_or(trusted_source)
+        .strip_suffix('*')
+        .unwrap_or_else(|| trusted_source.strip_prefix("*.").unwrap_or(trusted_source))
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+
+    if trusted_domain.is_empty() {
+        return false;
+    }
+
+    let Some(source_host) = extract_host(source) else {
+        return false;
+    };
+
+    source_host == trusted_domain || source_host.ends_with(&format!(".{trusted_domain}"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedSourceUrl {
+    scheme: String,
+    host: String,
+    path: String,
+    prefix_match: bool,
+}
+
+impl ParsedSourceUrl {
+    fn parse(input: &str) -> Option<Self> {
+        let input = input.trim();
+        let (scheme, rest) = input.split_once("://")?;
+        let scheme = scheme.to_ascii_lowercase();
+        let prefix_match = input.ends_with('*') || input.ends_with('/') || input.ends_with('-');
+        let rest = rest.strip_suffix('*').unwrap_or(rest);
+        let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+        let authority = &rest[..authority_end];
+        let host = authority
+            .rsplit('@')
+            .next()
+            .unwrap_or("")
+            .trim_matches(['[', ']'])
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+        if host.is_empty() {
+            return None;
+        }
+
+        let raw_path = if authority_end < rest.len() {
+            &rest[authority_end..]
+        } else {
+            "/"
+        };
+        let path_end = raw_path.find(['?', '#']).unwrap_or(raw_path.len());
+        let path = raw_path[..path_end]
+            .strip_suffix('*')
+            .unwrap_or(&raw_path[..path_end]);
+        let path = if path.is_empty() { "/" } else { path }.to_string();
+
+        Some(Self {
+            scheme,
+            host,
+            path,
+            prefix_match,
+        })
+    }
+
+    fn matches(&self, source: &Self) -> bool {
+        if self.scheme != source.scheme || self.host != source.host {
+            return false;
+        }
+        if self.path == "/" {
+            return true;
+        }
+        if self.prefix_match {
+            return source.path.starts_with(&self.path);
+        }
+        source.path == self.path
+    }
+}
+
+fn extract_host(source: &str) -> Option<String> {
+    if let Some(parsed) = ParsedSourceUrl::parse(source) {
+        return Some(parsed.host);
+    }
+
+    let source = source.trim();
+    if source.is_empty() || source.contains(char::is_whitespace) {
+        return None;
+    }
+    let authority = source
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .trim_matches(['[', ']']);
+    let host = authority
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if host.contains('.') {
+        Some(host)
+    } else {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PluginRegistry {
     #[serde(default)]
     pub plugins: Vec<InstalledPlugin>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegisteredCommand {
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,12 +306,14 @@ pub fn is_managed_plugin_path(path: &Path) -> bool {
 /// `source` is the URL or identifier where the plugin came from; pass an
 /// empty string when the user supplied `--path` directly.
 /// `commands` is the list of commands the plugin advertises (from `Plugin::commands()`).
+/// `description` is the plugin summary from `Plugin::description()`.
 pub fn install_plugin(
     name: &str,
     library_path: &Path,
     source: &str,
     starforge_version: &str,
     plugin_version: &str,
+    description: &str,
     commands: Vec<RegisteredCommand>,
 ) -> Result<()> {
     if !library_path.exists() {
@@ -319,6 +467,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    #[allow(dead_code)]
     fn temp_registry(tmp: &TempDir) -> PathBuf {
         tmp.path().join("registry.json")
     }
@@ -386,7 +535,7 @@ mod tests {
     fn install_missing_library_fails() {
         let tmp = TempDir::new().unwrap();
         let missing = tmp.path().join("nonexistent.so");
-        let result = install_plugin("test", &missing, "", "0.1.0", "1.0.0", vec![]);
+        let result = install_plugin("test", &missing, "", "0.1.0", "1.0.0", "", vec![]);
         assert!(result.is_err(), "installing a missing library must fail");
         assert!(result.unwrap_err().to_string().contains("not found"));
     }
@@ -419,6 +568,14 @@ mod tests {
             plugin.source, "",
             "missing source field should default to empty string"
         );
+        assert!(
+            plugin.commands.is_empty(),
+            "missing commands field should default to an empty list"
+        );
+        assert_eq!(
+            plugin.description, "",
+            "missing description field should default to empty string"
+        );
     }
 
     // ── resolve_plugin_library_path ───────────────────────────────────────────
@@ -435,6 +592,69 @@ mod tests {
     fn missing_implicit_path_returns_error() {
         let result = resolve_plugin_library_path("__no_such_plugin_xyz__", None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_plugin_description_prefers_registry_field() {
+        let plugin = InstalledPlugin {
+            name: "demo".into(),
+            path: "/tmp/demo.so".into(),
+            source: String::new(),
+            trust: TrustLevel::Local,
+            starforge_version: String::new(),
+            plugin_version: String::new(),
+            installed_at: None,
+            commands: vec![RegisteredCommand {
+                name: "demo".into(),
+                description: "from command".into(),
+            }],
+            description: "from plugin".into(),
+        };
+        assert_eq!(resolve_plugin_description(&plugin), "from plugin");
+    }
+
+    #[test]
+    fn resolve_plugin_description_falls_back_to_first_command() {
+        let plugin = InstalledPlugin {
+            name: "demo".into(),
+            path: "/tmp/demo.so".into(),
+            source: String::new(),
+            trust: TrustLevel::Local,
+            starforge_version: String::new(),
+            plugin_version: String::new(),
+            installed_at: None,
+            commands: vec![RegisteredCommand {
+                name: "demo".into(),
+                description: "from command".into(),
+            }],
+            description: String::new(),
+        };
+        assert_eq!(resolve_plugin_description(&plugin), "from command");
+    }
+
+    #[test]
+    fn plugin_list_entries_include_resolved_description() {
+        let reg = PluginRegistry {
+            plugins: vec![InstalledPlugin {
+                name: "trusted".into(),
+                path: "/tmp/trusted.so".into(),
+                source: String::new(),
+                trust: TrustLevel::Trusted,
+                starforge_version: "0.1.0".into(),
+                plugin_version: "1.0.0".into(),
+                installed_at: None,
+                commands: vec![RegisteredCommand {
+                    name: "trusted".into(),
+                    description: "Lifecycle integration test plugin".into(),
+                }],
+                description: "Lifecycle integration test plugin".into(),
+            }],
+        };
+
+        let entries = plugin_list_entries(&reg);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].description, "Lifecycle integration test plugin");
+        assert_eq!(entries[0].commands[0].name, "trusted");
     }
 
     // ── backward compatibility ────────────────────────────────────────────────

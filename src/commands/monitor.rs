@@ -56,7 +56,7 @@ pub struct MonitorArgs {
     pub interval: u64,
 }
 
-pub fn handle(args: MonitorArgs) -> Result<()> {
+pub async fn handle(args: MonitorArgs) -> Result<()> {
     let cfg = config::load()?;
     let network = args.network.as_deref().unwrap_or(&cfg.network);
     config::validate_network(network)?;
@@ -68,28 +68,34 @@ pub fn handle(args: MonitorArgs) -> Result<()> {
     println!();
 
     match (&args.contract, &args.wallet) {
-        (Some(contract_id), None) => monitor_contract(
-            contract_id,
-            args.events.as_deref(),
-            args.event_type.as_deref(),
-            args.topic.as_deref(),
-            args.value.as_deref(),
-            network,
-            args.interval,
-            args.follow,
-        ),
-        (None, Some(wallet_name)) => monitor_wallet(
-            wallet_name,
-            args.threshold,
-            args.balance_alert,
-            network,
-            args.interval,
-        ),
+        (Some(contract_id), None) => {
+            monitor_contract(
+                contract_id,
+                args.events.as_deref(),
+                args.event_type.as_deref(),
+                args.topic.as_deref(),
+                args.value.as_deref(),
+                network,
+                args.interval,
+                args.follow,
+            )
+            .await
+        }
+        (None, Some(wallet_name)) => {
+            monitor_wallet(
+                wallet_name,
+                args.threshold,
+                args.balance_alert,
+                network,
+                args.interval,
+            )
+            .await
+        }
         _ => anyhow::bail!("Specify either --contract or --wallet (but not both)"),
     }
 }
 
-fn monitor_contract(
+async fn monitor_contract(
     contract_id: &str,
     events_filter: Option<&str>,
     event_type: Option<&str>,
@@ -151,7 +157,7 @@ fn monitor_contract(
     let mut printed_any = false;
 
     while running.load(Ordering::SeqCst) {
-        match stream.next_batch() {
+        match stream.next_batch().await {
             Ok(batch) => {
                 for event in batch {
                     let as_text = event.value.to_string();
@@ -178,7 +184,7 @@ fn monitor_contract(
                     }
                     break;
                 }
-                stream.sleep();
+                stream.sleep().await;
             }
             Err(err) => {
                 if !follow && !printed_any {
@@ -188,7 +194,7 @@ fn monitor_contract(
                     "Event stream error: {}. Reconnecting with backoff…",
                     err
                 ));
-                stream.sleep_backoff();
+                stream.sleep_backoff().await;
             }
         }
     }
@@ -196,7 +202,7 @@ fn monitor_contract(
     Ok(())
 }
 
-fn monitor_wallet(
+async fn monitor_wallet(
     wallet_name: &str,
     threshold: Option<f64>,
     balance_alert: Option<f64>,
@@ -244,7 +250,7 @@ fn monitor_wallet(
     }
 
     while running.load(Ordering::SeqCst) {
-        let account = horizon::fetch_account(&wallet.public_key, network)?;
+        let account = horizon::fetch_account(&wallet.public_key, network).await?;
         let native = account
             .balances
             .iter()
@@ -281,7 +287,7 @@ fn monitor_wallet(
             }
         }
 
-        std::thread::sleep(std::time::Duration::from_secs(interval.max(1)));
+        tokio::time::sleep(std::time::Duration::from_secs(interval.max(1))).await;
     }
 
     Ok(())

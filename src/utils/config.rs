@@ -1,4 +1,7 @@
+#![allow(clippy::items_after_test_module)]
+
 use crate::utils::crypto;
+use crate::utils::database;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
@@ -112,10 +115,10 @@ pub fn validate_secret_key(secret: &str) -> Result<()> {
         }
 
         // Validate base64 parts (first 3 parts are always base64)
-        for i in 0..3 {
-            BASE64.decode(parts[i]).map_err(|_| {
-                anyhow::anyhow!("Invalid base64 in encrypted secret bundle at part {}", i)
-            })?;
+        for part in parts.iter().take(3) {
+            BASE64
+                .decode(part)
+                .map_err(|_| anyhow::anyhow!("Invalid base64 in encrypted secret bundle"))?;
         }
 
         // If 5 or 6-part bundle, validate KDF parameters are valid u32
@@ -188,6 +191,63 @@ pub fn validate_wallet_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Validates the full configuration schema and wallet entries.
+pub fn validate_config(cfg: &Config) -> Result<()> {
+    if cfg.version.is_empty() {
+        anyhow::bail!("Config version is missing");
+    }
+
+    if cfg.network.trim().is_empty() {
+        anyhow::bail!("Active network is not set");
+    }
+
+    validate_network_exists(cfg, &cfg.network)?;
+
+    if cfg.networks.is_empty() {
+        anyhow::bail!("No networks configured");
+    }
+
+    for (name, net_cfg) in &cfg.networks {
+        validate_endpoint_url(
+            &net_cfg.horizon_url,
+            &format!("network '{}'.horizon_url", name),
+        )?;
+        if let Some(ref soroban_url) = net_cfg.soroban_rpc_url {
+            validate_endpoint_url(soroban_url, &format!("network '{}'.soroban_rpc_url", name))?;
+        }
+        if let Some(ref friendbot_url) = net_cfg.friendbot_url {
+            validate_endpoint_url(friendbot_url, &format!("network '{}'.friendbot_url", name))?;
+        }
+    }
+
+    for wallet in &cfg.wallets {
+        validate_wallet_name(&wallet.name)?;
+        validate_public_key(&wallet.public_key)?;
+        if let Some(ref secret) = wallet.secret_key {
+            validate_secret_key(secret)?;
+        }
+        validate_network_exists(cfg, &wallet.network)?;
+    }
+
+    for source in &cfg.plugin_trust.trusted_sources {
+        validate_plugin_trust_source(source)?;
+    }
+
+    Ok(())
+}
+
+fn validate_endpoint_url(url: &str, label: &str) -> Result<()> {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "Invalid {}: must start with http:// or https:// (got '{}')",
+            label,
+            url
+        )
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     #[serde(default = "default_version")]
@@ -196,6 +256,8 @@ pub struct Config {
     pub wallets: Vec<WalletEntry>,
     #[serde(default)]
     pub networks: std::collections::HashMap<String, NetworkConfig>,
+    #[serde(default)]
+    pub plugin_trust: PluginTrustConfig,
     pub telemetry_enabled: Option<bool>,
     pub wallet_encryption: Option<crypto::KdfOptions>,
 }
@@ -211,6 +273,126 @@ pub struct NetworkConfig {
     pub friendbot_url: Option<String>,
     #[serde(default)]
     pub passphrase: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct PluginTrustConfig {
+    /// Trusted plugin source allowlist entries. Entries may be domains
+    /// (`plugins.example.com`) or URL prefixes (`https://plugins.example.com/releases/`).
+    #[serde(default = "default_trusted_plugin_sources")]
+    pub trusted_sources: Vec<String>,
+}
+
+impl Default for PluginTrustConfig {
+    fn default() -> Self {
+        Self {
+            trusted_sources: default_trusted_plugin_sources(),
+        }
+    }
+}
+
+pub fn default_trusted_plugin_sources() -> Vec<String> {
+    vec![
+        "https://github.com/Nanle-code/starforge-*".to_string(),
+        "https://github.com/StarForge-Labs/*".to_string(),
+        "https://crates.io/crates/starforge-plugin-*".to_string(),
+    ]
+}
+
+pub fn validate_plugin_trust_source(source: &str) -> Result<()> {
+    let source = source.trim();
+    if source.is_empty() {
+        anyhow::bail!("Trusted plugin source cannot be empty");
+    }
+    if source.chars().any(char::is_whitespace) {
+        anyhow::bail!("Trusted plugin source cannot contain whitespace");
+    }
+
+    let wildcard_count = source.matches('*').count();
+    if wildcard_count > 1 || (wildcard_count == 1 && !source.ends_with('*')) {
+        anyhow::bail!("Trusted plugin source may only use '*' as a trailing wildcard");
+    }
+
+    let without_wildcard = source.strip_suffix('*').unwrap_or(source);
+    if without_wildcard.contains("://") {
+        let scheme = without_wildcard
+            .split_once("://")
+            .map(|(scheme, _)| scheme.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !matches!(scheme.as_str(), "http" | "https" | "git+https") {
+            anyhow::bail!("Trusted plugin source URL must use http, https, or git+https scheme");
+        }
+        let after_scheme = without_wildcard
+            .split_once("://")
+            .map(|(_, rest)| rest)
+            .unwrap_or("");
+        let host = after_scheme
+            .split(['/', '?', '#'])
+            .next()
+            .unwrap_or("")
+            .rsplit('@')
+            .next()
+            .unwrap_or("")
+            .split(':')
+            .next()
+            .unwrap_or("");
+        if host.is_empty() || host.starts_with('.') || host.ends_with('.') {
+            anyhow::bail!("Trusted plugin source URL must include a valid host");
+        }
+        return Ok(());
+    }
+
+    let domain = without_wildcard.trim_start_matches("*.");
+    if domain.contains('/')
+        || domain.contains(':')
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+    {
+        anyhow::bail!("Trusted plugin domain must be a domain name, not a path or URL fragment");
+    }
+    if domain.is_empty() || !domain.contains('.') {
+        anyhow::bail!("Trusted plugin domain must include a dot, such as plugins.example.com");
+    }
+    if !domain
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+    {
+        anyhow::bail!("Trusted plugin domain contains invalid characters");
+    }
+
+    Ok(())
+}
+
+pub fn add_trusted_plugin_source(config: &mut Config, source: String) -> Result<bool> {
+    validate_plugin_trust_source(&source)?;
+    let source = source.trim().to_string();
+    if config
+        .plugin_trust
+        .trusted_sources
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(&source))
+    {
+        return Ok(false);
+    }
+    config.plugin_trust.trusted_sources.push(source);
+    config
+        .plugin_trust
+        .trusted_sources
+        .sort_by_key(|entry| entry.to_ascii_lowercase());
+    Ok(true)
+}
+
+pub fn remove_trusted_plugin_source(config: &mut Config, source: &str) -> bool {
+    let before = config.plugin_trust.trusted_sources.len();
+    config
+        .plugin_trust
+        .trusted_sources
+        .retain(|existing| !existing.eq_ignore_ascii_case(source.trim()));
+    before != config.plugin_trust.trusted_sources.len()
+}
+
+pub fn reset_trusted_plugin_sources(config: &mut Config) {
+    config.plugin_trust.trusted_sources = default_trusted_plugin_sources();
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -273,6 +455,7 @@ impl Default for Config {
             network: "testnet".to_string(),
             wallets: vec![],
             networks,
+            plugin_trust: PluginTrustConfig::default(),
             telemetry_enabled: Some(true),
             wallet_encryption: None,
         }
@@ -378,27 +561,221 @@ pub fn config_path() -> PathBuf {
 }
 
 pub fn load() -> Result<Config> {
+    let db = database::Database::open()?;
+    db.initialize()?;
+
+    let mut config = if db.has_config()? {
+        db.load_config()?
+    } else {
+        let path = config_path();
+        let cfg = if path.exists() {
+            let mut toml_cfg = parse_config_file()?;
+            toml_cfg = migrate_config(toml_cfg)?;
+            toml_cfg
+        } else {
+            Config::default()
+        };
+        db.save_config(&cfg)?;
+        cfg
+    };
+
+    config = migrate_config(config)?;
+
+    ensure_default_networks(&mut config);
+
+    if config.version != CURRENT_CONFIG_VERSION {
+        save(&config)?;
+    } else {
+        db.save_config(&config)?;
+    }
+
+    Ok(config)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DoctorStatus {
+    Pass,
+    Fail,
+}
+
+#[derive(Debug, Clone)]
+pub struct DoctorFinding {
+    pub category: &'static str,
+    pub status: DoctorStatus,
+    pub message: String,
+}
+
+impl DoctorFinding {
+    pub fn pass(category: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            category,
+            status: DoctorStatus::Pass,
+            message: message.into(),
+        }
+    }
+
+    pub fn fail(category: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            category,
+            status: DoctorStatus::Fail,
+            message: message.into(),
+        }
+    }
+}
+
+/// Read and parse `config.toml` without migration or default-network injection.
+pub fn parse_config_file() -> Result<Config> {
     let path = config_path();
     if !path.exists() {
         return Ok(Config::default());
     }
     let contents = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read config at {:?}", path))?;
-    let mut config: Config =
-        toml::from_str(&contents).with_context(|| "Failed to parse config file")?;
+        .with_context(|| format!("Failed to read config at {}", path.display()))?;
+    toml::from_str(&contents).with_context(|| "Failed to parse config.toml")
+}
 
-    // Migrate config if needed
-    config = migrate_config(config)?;
+fn validate_service_url(url: &str, label: &str) -> Result<()> {
+    if url.trim().is_empty() {
+        anyhow::bail!("{label} cannot be empty");
+    }
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        anyhow::bail!("{label} must use http or https");
+    }
+    Ok(())
+}
 
-    // Guarantee built-in networks are always present
-    ensure_default_networks(&mut config);
+/// Run structural validation checks against a loaded configuration.
+pub fn validate_config_integrity(cfg: &Config) -> Vec<DoctorFinding> {
+    let mut findings = Vec::new();
 
-    // Save migrated config
-    if config.version != CURRENT_CONFIG_VERSION {
-        save(&config)?;
+    if cfg.version == CURRENT_CONFIG_VERSION {
+        findings.push(DoctorFinding::pass(
+            "schema",
+            format!("config version is {}", cfg.version),
+        ));
+    } else {
+        findings.push(DoctorFinding::fail(
+            "schema",
+            format!(
+                "unsupported config version '{}' (expected {})",
+                cfg.version, CURRENT_CONFIG_VERSION
+            ),
+        ));
     }
 
-    Ok(config)
+    match validate_network_exists(cfg, &cfg.network) {
+        Ok(()) => findings.push(DoctorFinding::pass(
+            "network",
+            format!("active network '{}' is configured", cfg.network),
+        )),
+        Err(e) => findings.push(DoctorFinding::fail("network", e.to_string())),
+    }
+
+    if cfg.wallets.is_empty() {
+        findings.push(DoctorFinding::pass("wallet", "no wallets configured"));
+    } else {
+        let mut wallet_ok = true;
+        let mut wallet_errors = Vec::new();
+        for wallet in &cfg.wallets {
+            let label = format!("wallet '{}'", wallet.name);
+            if let Err(e) = validate_wallet_name(&wallet.name) {
+                wallet_ok = false;
+                wallet_errors.push(format!("{label}: {e}"));
+            }
+            if let Err(e) = validate_public_key(&wallet.public_key) {
+                wallet_ok = false;
+                wallet_errors.push(format!("{label} public key: {e}"));
+            }
+            if let Some(ref secret) = wallet.secret_key {
+                if let Err(e) = validate_secret_key(secret) {
+                    wallet_ok = false;
+                    wallet_errors.push(format!("{label} secret key: {e}"));
+                }
+            }
+            if let Err(e) = validate_network_exists(cfg, &wallet.network) {
+                wallet_ok = false;
+                wallet_errors.push(format!("{label} network: {e}"));
+            }
+        }
+        if wallet_ok {
+            findings.push(DoctorFinding::pass(
+                "wallet",
+                format!("{} wallet(s) validated", cfg.wallets.len()),
+            ));
+        } else {
+            findings.push(DoctorFinding::fail("wallet", wallet_errors.join("; ")));
+        }
+    }
+
+    let mut network_ok = true;
+    let mut network_errors = Vec::new();
+    for (name, net) in &cfg.networks {
+        if let Err(e) = validate_service_url(&net.horizon_url, "horizon_url") {
+            network_ok = false;
+            network_errors.push(format!("network '{name}': {e}"));
+        }
+        if let Some(ref rpc) = net.soroban_rpc_url {
+            if let Err(e) = validate_service_url(rpc, "soroban_rpc_url") {
+                network_ok = false;
+                network_errors.push(format!("network '{name}' soroban RPC: {e}"));
+            }
+        }
+    }
+    if network_ok {
+        findings.push(DoctorFinding::pass(
+            "network",
+            format!("{} network(s) have valid endpoint URLs", cfg.networks.len()),
+        ));
+    } else {
+        findings.push(DoctorFinding::fail("network", network_errors.join("; ")));
+    }
+
+    let mut trust_ok = true;
+    let mut trust_errors = Vec::new();
+    for source in &cfg.plugin_trust.trusted_sources {
+        if let Err(e) = validate_plugin_trust_source(source) {
+            trust_ok = false;
+            trust_errors.push(format!("'{source}': {e}"));
+        }
+    }
+    if trust_ok {
+        findings.push(DoctorFinding::pass(
+            "plugin_trust",
+            format!(
+                "{} trusted plugin source(s) validated",
+                cfg.plugin_trust.trusted_sources.len()
+            ),
+        ));
+    } else {
+        findings.push(DoctorFinding::fail("plugin_trust", trust_errors.join("; ")));
+    }
+
+    if let Some(ref kdf) = cfg.wallet_encryption {
+        let mut enc_ok = true;
+        let mut enc_errors = Vec::new();
+        for (field, value) in [
+            ("mem", kdf.mem),
+            ("iterations", kdf.iterations),
+            ("parallelism", kdf.parallelism),
+        ] {
+            if let Some(v) = value {
+                if v == 0 {
+                    enc_ok = false;
+                    enc_errors.push(format!("{field} must be > 0"));
+                }
+            }
+        }
+        if enc_ok {
+            findings.push(DoctorFinding::pass(
+                "encryption",
+                "wallet encryption parameters are valid",
+            ));
+        } else {
+            findings.push(DoctorFinding::fail("encryption", enc_errors.join("; ")));
+        }
+    }
+
+    findings
 }
 
 #[cfg(test)]
@@ -511,6 +888,132 @@ mod tests {
         assert!(validate_secret_key("S123").is_err());
         assert!(validate_secret_key("bad:bundle").is_err());
     }
+
+    #[test]
+    fn validate_config_accepts_default_config() {
+        let cfg = Config::default();
+        assert!(validate_config(&cfg).is_ok());
+    }
+
+    #[test]
+    fn validate_config_rejects_missing_active_network() {
+        let cfg = Config {
+            network: "unknown-net".to_string(),
+            ..Default::default()
+        };
+        let err = validate_config(&cfg).unwrap_err();
+        assert!(err.to_string().contains("unknown-net"));
+    }
+
+    #[test]
+    fn validate_config_rejects_invalid_horizon_url() {
+        let mut cfg = Config::default();
+        cfg.networks.get_mut("testnet").unwrap().horizon_url = "ftp://bad.example.com".to_string();
+        let err = validate_config(&cfg).unwrap_err();
+        assert!(err.to_string().contains("horizon_url"));
+    }
+
+    #[test]
+    fn default_config_includes_plugin_trust_sources() {
+        let cfg = Config::default();
+        assert_eq!(
+            cfg.plugin_trust.trusted_sources,
+            default_trusted_plugin_sources()
+        );
+    }
+
+    #[test]
+    fn config_without_plugin_trust_deserializes_with_defaults() {
+        let toml = r#"
+version = "1"
+network = "testnet"
+wallets = []
+telemetry_enabled = true
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(
+            cfg.plugin_trust.trusted_sources,
+            default_trusted_plugin_sources()
+        );
+    }
+
+    #[test]
+    fn trusted_plugin_source_management_deduplicates_and_resets() {
+        let mut cfg = Config::default();
+        assert!(add_trusted_plugin_source(&mut cfg, "plugins.example.com".to_string()).unwrap());
+        assert!(!add_trusted_plugin_source(&mut cfg, "PLUGINS.EXAMPLE.COM".to_string()).unwrap());
+        assert!(cfg
+            .plugin_trust
+            .trusted_sources
+            .contains(&"plugins.example.com".to_string()));
+
+        assert!(remove_trusted_plugin_source(
+            &mut cfg,
+            "plugins.example.com"
+        ));
+        assert!(!remove_trusted_plugin_source(
+            &mut cfg,
+            "plugins.example.com"
+        ));
+
+        cfg.plugin_trust.trusted_sources.clear();
+        reset_trusted_plugin_sources(&mut cfg);
+        assert_eq!(
+            cfg.plugin_trust.trusted_sources,
+            default_trusted_plugin_sources()
+        );
+    }
+
+    #[test]
+    fn invalid_trusted_plugin_sources_are_rejected() {
+        for source in [
+            "",
+            "plugins example.com",
+            "https://",
+            "ftp://example.com",
+            "example",
+            "example.com/path",
+            "https://example.com/*/bad",
+        ] {
+            assert!(
+                validate_plugin_trust_source(source).is_err(),
+                "{source} should be invalid"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_config_integrity_passes_default_config() {
+        let cfg = Config::default();
+        let findings = validate_config_integrity(&cfg);
+        assert!(
+            findings.iter().all(|f| f.status == DoctorStatus::Pass),
+            "expected all pass, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn validate_config_integrity_catches_bad_wallet_key() {
+        let mut cfg = Config::default();
+        cfg.wallets.push(WalletEntry {
+            name: "bad".to_string(),
+            public_key: "not-a-key".to_string(),
+            secret_key: None,
+            network: "testnet".to_string(),
+            created_at: String::new(),
+            funded: false,
+            rotation_history: Vec::new(),
+        });
+        let findings = validate_config_integrity(&cfg);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.category == "wallet" && f.status == DoctorStatus::Fail),
+            "expected wallet failure, got: {:?}",
+            findings
+        );
+    }
 }
 
 /// Returns the network passphrase for transaction signing.
@@ -559,13 +1062,9 @@ pub fn ensure_default_networks(cfg: &mut Config) {
 }
 
 pub fn save(config: &Config) -> Result<()> {
-    let dir = config_dir();
-    if !dir.exists() {
-        fs::create_dir_all(&dir)
-            .with_context(|| format!("Failed to create config dir {:?}", dir))?;
-    }
-    let contents = toml::to_string_pretty(config).with_context(|| "Failed to serialize config")?;
-    fs::write(config_path(), contents).with_context(|| "Failed to write config file")?;
+    validate_config(config)?;
+    let db = database::Database::open()?;
+    db.save_config(config)?;
     Ok(())
 }
 

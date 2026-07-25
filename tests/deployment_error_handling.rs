@@ -1,3 +1,10 @@
+#![allow(
+    dead_code,
+    unused_imports,
+    clippy::empty_line_after_doc_comments,
+    clippy::useless_vec
+)]
+
 /// Error handling and edge case tests for deployment preparation
 /// Tests failure scenarios, invalid inputs, and error recovery
 #[cfg(test)]

@@ -1,6 +1,5 @@
 /// End-to-end tests for deployment preparation
 /// Tests WASM validation, wallet resolution, account checks, and deployment planning
-
 #[cfg(test)]
 mod deployment_preparation_tests {
 

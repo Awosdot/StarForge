@@ -137,8 +137,8 @@ fn test_hardware_wallet_api_consistency() {
         .output()
         .expect("Wallet import help should be available");
 
-    let wallet_help_text = String::from_utf8_lossy(&wallet_help.stdout);
-    let import_help_text = String::from_utf8_lossy(&import_help.stdout);
+    let _wallet_help_text = String::from_utf8_lossy(&wallet_help.stdout);
+    let _import_help_text = String::from_utf8_lossy(&import_help.stdout);
 
     assert!(
         wallet_help.status.success(),
@@ -184,6 +184,88 @@ fn test_hardware_wallet_offline_behavior() {
 }
 
 #[test]
+fn test_hardware_wallet_deploy_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("deploy")
+        .arg("--help")
+        .output()
+        .expect("Failed to get deploy help");
+
+    assert!(output.status.success(), "Deploy help should be available");
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("hardware"),
+        "Deploy command should document --hardware flag"
+    );
+}
+
+#[test]
+fn test_hardware_wallet_tx_send_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("tx")
+        .arg("send")
+        .arg("--help")
+        .output()
+        .expect("Failed to get tx send help");
+
+    assert!(output.status.success(), "Tx send help should be available");
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("hardware"),
+        "Tx send command should document --hardware flag"
+    );
+}
+
+#[test]
+fn test_hardware_wallet_multisig_sign_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("wallet")
+        .arg("multisig")
+        .arg("sign")
+        .arg("--help")
+        .output()
+        .expect("Failed to get multisig sign help");
+
+    assert!(
+        output.status.success(),
+        "Multisig sign help should be available"
+    );
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("hardware"),
+        "Multisig sign should document --hardware flag"
+    );
+}
+
+#[test]
+fn test_hardware_wallet_connect_timeout_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("wallet")
+        .arg("connect")
+        .arg("--help")
+        .output()
+        .expect("Failed to get wallet connect help");
+
+    assert!(
+        output.status.success(),
+        "Wallet connect help should be available"
+    );
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("timeout"),
+        "Wallet connect should document --timeout flag"
+    );
+}
+
+#[test]
 fn test_hardware_wallet_timeout_behavior() {
     let starforge_binary = env!("CARGO_BIN_EXE_starforge");
 
@@ -194,21 +276,18 @@ fn test_hardware_wallet_timeout_behavior() {
         .arg("1s")
         .output();
 
-    match output {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let combined = format!("{}{}", stderr, stdout);
+    if let Ok(output) = output {
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let combined = format!("{}{}", stderr, stdout);
 
-                assert!(
-                    combined.contains("timeout")
-                        || combined.contains("unavailable")
-                        || combined.contains("error"),
-                    "Timeout behavior should be clear and predictable"
-                );
-            }
+            assert!(
+                combined.contains("timeout")
+                    || combined.contains("unavailable")
+                    || combined.contains("error"),
+                "Timeout behavior should be clear and predictable"
+            );
         }
-        Err(_) => {}
     }
 }

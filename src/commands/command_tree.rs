@@ -186,8 +186,9 @@ const COMMANDS: &[CmdEntry] = &[
     },
     CmdEntry {
         name: "upgrade",
-        about: "Contract upgrade management (propose, approve, execute, rollback)",
+        about: "Contract upgrade management, compatibility checks, and rollback",
         subs: &[
+            ("auto", "Run upgrade compatibility checks and migration planning"),
             ("propose", "Propose a contract upgrade"),
             ("approve", "Approve a pending upgrade"),
             ("execute", "Execute an approved upgrade"),
@@ -209,6 +210,17 @@ const COMMANDS: &[CmdEntry] = &[
         ],
     },
     CmdEntry {
+        name: "config",
+        about: "Manage starforge configuration",
+        subs: &[
+            ("show", "Show current global configuration"),
+            ("set", "Set a scalar configuration value"),
+            ("doctor", "Validate config and check connectivity"),
+            ("plugin-trust", "Manage trusted plugin source allowlist"),
+            ("set-encryption", "Set global wallet encryption parameters"),
+        ],
+    },
+    CmdEntry {
         name: "info",
         about: "Show starforge config and environment info",
         subs: &[],
@@ -220,7 +232,7 @@ const COMMANDS: &[CmdEntry] = &[
     },
 ];
 
-pub fn handle() -> Result<()> {
+pub async fn handle() -> Result<()> {
     p::header("StarForge Command Tree");
     println!();
 

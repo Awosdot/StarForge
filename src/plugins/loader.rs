@@ -48,6 +48,7 @@ impl PluginLoadError {
             Self::AbiBuildMismatch { .. } => "abi_mismatch",
             Self::UnsupportedCoreVersion { .. } => "unsupported_core_version",
             Self::ManifestIncompatible { .. } => "manifest_incompatible",
+            Self::RegistrationRuntimePanic { .. } => "runtime_panic",
         }
     }
 
@@ -85,6 +86,11 @@ impl PluginLoadError {
                  Detail: {detail}\n  \
                  Fix: Update 'starforge-plugin.toml' to match the running StarForge version.",
             ),
+            Self::RegistrationRuntimePanic { path, detail } => format!(
+                "Plugin crashed during registration for '{path}'.\n  \
+                 Detail: {detail}\n  \
+                 Fix: Review third-party plugin internal setup safety rules or contact the maintainer.",
+            ),
         }
     }
 }
@@ -120,7 +126,7 @@ impl PluginManager {
     /// # Safety
     /// The caller must ensure the plugin at `path` is a valid StarForge plugin
     /// compiled with a compatible Rust toolchain and ABI.
-    pub unsafe fn load_plugin<P: AsRef<OsStr>>(&mut self, path: P) -> Result<()> {
+    pub unsafe fn load_plugin<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.load_plugin_diagnosed(path)
             .map_err(|e| anyhow::anyhow!("{}", e))
     }
@@ -130,7 +136,7 @@ impl PluginManager {
     ///
     /// # Safety
     /// Same contract as [`load_plugin`].
-    pub unsafe fn load_plugin_diagnosed<P: AsRef<OsStr>>(
+    pub unsafe fn load_plugin_diagnosed<P: AsRef<Path>>(
         &mut self,
         path: P,
     ) -> std::result::Result<(), PluginLoadError> {
@@ -138,7 +144,7 @@ impl PluginManager {
         let path_display = path_ref.to_string_lossy().to_string();
 
         // ── Open the shared library ──────────────────────────────────────────
-        let library = Library::new(path_ref).map_err(|e| PluginLoadError::InvalidLibrary {
+        let library = Library::new(path_ref.as_os_str()).map_err(|e| PluginLoadError::InvalidLibrary {
             path: path_display.clone(),
             detail: e.to_string(),
         })?;
@@ -183,7 +189,25 @@ impl PluginManager {
         }
 
         let mut registrar = ProxyRegistrar::new();
-        (decl.register)(&mut registrar);
+        
+        // Protect the system execution loop from third-party registration panics
+        let register_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            (decl.register)(&mut registrar);
+        }));
+
+        if let Err(panic_payload) = register_result {
+            let detail = if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "Unknown closure panic origin".to_string()
+            };
+            return Err(PluginLoadError::RegistrationRuntimePanic {
+                path: path_display,
+                detail,
+            });
+        }
 
         let plugin_core_version = decl.core_version.to_string();
         for plugin in registrar.plugins {
@@ -218,7 +242,7 @@ impl PluginManager {
         if let Some((plugin, _)) = self.plugins.get(name) {
             plugin.execute(args)
         } else {
-            Err(format!("Plugin '{}' not found", name))
+            return Err(format!("Plugin '{}' not found", name));
         }
     }
 }
@@ -294,6 +318,15 @@ mod tests {
         assert_eq!(e.category(), "manifest_incompatible");
     }
 
+    #[test]
+    fn registration_runtime_panic_category() {
+        let e = PluginLoadError::RegistrationRuntimePanic {
+            path: "/tmp/plugin.so".into(),
+            detail: "poisoned pointer access".into(),
+        };
+        assert_eq!(e.category(), "runtime_panic");
+    }
+
     // ── Diagnostic messages contain actionable guidance ──────────────────────
 
     #[test]
@@ -358,6 +391,17 @@ mod tests {
     }
 
     #[test]
+    fn registration_runtime_panic_diagnostic_mentions_rules() {
+        let e = PluginLoadError::RegistrationRuntimePanic {
+            path: "/tmp/plugin.so".into(),
+            detail: "forced assertion failure".into(),
+        };
+        let msg = e.diagnostic();
+        assert!(msg.contains("crashed during registration"));
+        assert!(msg.contains("forced assertion failure"));
+    }
+
+    #[test]
     fn display_matches_diagnostic() {
         let e = PluginLoadError::InvalidLibrary {
             path: "/tmp/bad.so".into(),
@@ -371,7 +415,7 @@ mod tests {
     #[test]
     fn nonexistent_path_returns_invalid_library() {
         let mut pm = PluginManager::new();
-        let result = unsafe { pm.load_plugin_diagnosed("/nonexistent/path/plugin.so") };
+        let result = unsafe { pm.load_plugin_diagnosed(Path::new("/nonexistent/path/plugin.so")) };
         match result {
             Err(PluginLoadError::InvalidLibrary { path, .. }) => {
                 assert!(path.contains("plugin.so"));

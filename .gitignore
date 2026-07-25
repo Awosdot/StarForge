@@ -1,5 +1,6 @@
 # Rust build artifacts
 /target/
+crates/*/target/
 Cargo.lock
 
 # IDE and editor files

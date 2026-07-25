@@ -1,3 +1,10 @@
+#![allow(
+    dead_code,
+    unused_imports,
+    clippy::empty_line_after_doc_comments,
+    clippy::useless_vec
+)]
+
 /// Error handling and edge case tests for wallet operations
 /// Tests failure scenarios, invalid inputs, and error recovery
 
@@ -9,6 +16,7 @@ mod wallet_error_handling_tests {
 
     // Mock structures
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct WalletEntry {
         name: String,
         public_key: String,
@@ -159,7 +167,7 @@ mod wallet_error_handling_tests {
     fn test_create_wallet_with_valid_name_characters() {
         let mut config = WalletConfig::new();
 
-        let valid_names = vec!["alice", "bob-wallet", "charlie_wallet", "dave123"];
+        let valid_names = ["alice", "bob-wallet", "charlie_wallet", "dave123"];
 
         for (i, name) in valid_names.iter().enumerate() {
             let public_key = format!("G{:0>55}", i);

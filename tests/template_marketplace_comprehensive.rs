@@ -313,7 +313,7 @@ mod template_marketplace_tests {
         let query = "";
         let results: Vec<_> = templates
             .iter()
-            .filter(|_| query.trim().is_empty() || true) // Empty query matches all
+            .filter(|_| query.trim().is_empty()) // Empty query matches all
             .collect();
 
         assert_eq!(results.len(), 2);
