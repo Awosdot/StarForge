@@ -369,11 +369,8 @@ fn format_html_report(report: &crate::utils::security::SecurityAuditReport) -> S
 
 /// Handle the `starforge ai-audit` command.
 pub async fn handle(args: AiAuditArgs) -> Result<()> {
-    // Get API key
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!(
-            "ANTHROPIC_API_KEY environment variable not set. Set it to your Anthropic API key."
-        ))?;
+    // Get API key when available; otherwise fall back to local offline analysis.
+    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
 
     // Read contract code
     let contract_code = read_contract_code(&args.path)?;
