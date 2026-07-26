@@ -18,6 +18,7 @@ pub mod deployments;
 pub mod diagnostics;
 pub mod docs;
 pub mod doctor;
+pub mod cost;
 pub mod gas;
 pub mod generate;
 pub mod governance;

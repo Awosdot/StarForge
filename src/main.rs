@@ -132,6 +132,11 @@ enum Commands {
     #[command(subcommand)]
     Gas(commands::gas::GasCommands),
 
+    /// AI-assisted deployment cost management: budgets, forecasting,
+    /// cross-network comparison, and reporting
+    #[command(subcommand)]
+    Cost(commands::cost::CostCommands),
+
     /// Manage third-party plugins
     #[command(subcommand)]
     Plugin(commands::plugin::PluginCommands),
@@ -275,6 +280,7 @@ async fn main() {
         Commands::Benchmark(_) => "benchmark",
         Commands::Test(_) => "test",
         Commands::Gas(_) => "gas",
+        Commands::Cost(_) => "cost",
         Commands::Plugin(_) => "plugin",
         Commands::Privacy(_) => "privacy",
         Commands::Template(_) => "template",
@@ -332,6 +338,7 @@ async fn main() {
         Commands::Benchmark(args) => commands::benchmark::handle(args).await,
         Commands::Test(args) => commands::test::handle(args).await,
         Commands::Gas(args) => commands::gas::handle(args).await,
+        Commands::Cost(args) => commands::cost::handle(args).await,
         Commands::Plugin(args) => commands::plugin::handle(args).await,
         Commands::Privacy(cmd) => commands::privacy::handle(cmd).await,
         Commands::Template(args) => commands::template::handle(args).await,

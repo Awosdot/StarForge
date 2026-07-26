@@ -19,6 +19,7 @@ pub mod contract_test_runner;
 pub mod contract_testing;
 pub mod contract_profiler;
 pub mod cost_estimation;
+pub mod cost_management;
 pub mod crypto;
 pub mod database;
 pub mod debugger;
