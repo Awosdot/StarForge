@@ -228,6 +228,14 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+
+    /// AI Contract Completion Assistant
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+
+    /// Run an external plugin
+    #[command(external_subcommand)]
+    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -296,7 +304,6 @@ async fn main() {
         Commands::Migrate(_) => "migrate",
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
-        Commands::Migrate(_) => "migrate",
     }
     .to_string();
 
@@ -305,14 +312,14 @@ async fn main() {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
-        Commands::Generate(cmd) => commands::generate::handle(cmd).await,
+        Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
         Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
         Commands::Debug(cmd) => commands::debug::handle(cmd).await,
         Commands::Deploy(args) => commands::deploy::handle(args).await,
         Commands::Deployments(cmd) => commands::deployments::handle(cmd).await,
         Commands::Info => commands::info::handle().await,
-        Commands::Prompts(cmd) => commands::prompts::handle(cmd).await,
+        Commands::Prompts(cmd) => commands::prompts::handle(&cmd).await,
         Commands::Config(cmd) => commands::config::handle(cmd).await,
         Commands::Telemetry(cmd) => commands::telemetry::handle(cmd).await,
         Commands::Tx(args) => commands::tx::handle(args).await,

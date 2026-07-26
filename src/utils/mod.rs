@@ -8,6 +8,7 @@ pub mod benchmarking;
 pub mod bindings;
 pub mod bridge;
 pub mod call_graph;
+pub mod completion;
 pub mod compliance;
 pub mod config;
 pub mod confirmation;

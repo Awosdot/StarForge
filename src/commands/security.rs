@@ -676,12 +676,12 @@ fn handle_dashboard() -> Result<()> {
         .iter()
         .filter(|i| {
             i.severity.eq_ignore_ascii_case("critical")
-                && !matches!(i.status, crate::utils::security::IncidentStatus::Resolved)
+                && !matches!(i.status, crate::utils::security::IncidentStatus::Closed)
         })
         .count();
     let open_incidents = incidents
         .iter()
-        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Resolved))
+        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Closed))
         .count();
 
     let remediation_items = crate::utils::security::remediation::load_all()?;

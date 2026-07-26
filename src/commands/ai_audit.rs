@@ -248,7 +248,7 @@ fn print_text_report(report: &crate::utils::security::SecurityAuditReport) {
 
     println!();
     println!("{}", "─".repeat(80));
-    p::warning(&report.false_positive_warning);
+    p::warn(&report.false_positive_warning);
 }
 
 /// Format audit report as JSON.
