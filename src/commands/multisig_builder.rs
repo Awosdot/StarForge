@@ -38,6 +38,7 @@ pub enum MultisigCommands {
         /// Proposal file path
         proposal: PathBuf,
         /// Signer wallet name
+        #[arg(long)]
         wallet: String,
     },
     /// View proposal details and signatures
@@ -68,6 +69,7 @@ pub enum MultisigCommands {
         /// Proposal file path
         proposal: PathBuf,
         /// Output file path
+        #[arg(long)]
         output: Option<PathBuf>,
     },
     /// Import proposal from JSON
@@ -75,6 +77,7 @@ pub enum MultisigCommands {
         /// JSON file path
         input: PathBuf,
         /// Output proposal file path
+        #[arg(long)]
         output: Option<PathBuf>,
     },
     /// Send signature request notifications
@@ -98,6 +101,7 @@ pub enum MultisigCommands {
         /// Template name
         template: String,
         /// Output file path
+        #[arg(long)]
         output: PathBuf,
     },
 }

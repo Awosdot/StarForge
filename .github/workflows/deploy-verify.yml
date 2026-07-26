@@ -29,4 +29,7 @@ jobs:
         run: cargo build --locked
 
       - name: Run deployment verification tests
-        run: cargo test --locked deployment_verify network_sim bridge -- --nocapture
+        run: |
+          cargo test --locked deployment_verify -- --nocapture
+          cargo test --locked network_sim -- --nocapture
+          cargo test --locked bridge -- --nocapture

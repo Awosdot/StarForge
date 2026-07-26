@@ -233,6 +233,10 @@ enum Commands {
     #[command(subcommand)]
     Complete(commands::complete::CompleteCommands),
 
+    /// Run formal verification on a contract
+    #[command(subcommand)]
+    Verify(commands::verify::VerifyCommands),
+
     /// Run an external plugin
     #[command(external_subcommand)]
     External(Vec<String>),
@@ -303,6 +307,7 @@ async fn main() {
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
         Commands::Complete(_) => "complete",
+        Commands::Verify(_) => "verify",
         Commands::External(_) => "external",
     }
     .to_string();
@@ -373,8 +378,8 @@ async fn main() {
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
+        Commands::Verify(cmd) => commands::verify::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
     };
     let duration = start.elapsed();
 
