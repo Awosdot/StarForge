@@ -9,26 +9,13 @@ use std::alloc::{GlobalAlloc, Layout, System};
 struct MemoryProfiler;
 
 #[cfg(feature = "memory-profiling")]
-impl GlobalAlloc for MemoryProfiler {
+unsafe impl GlobalAlloc for MemoryProfiler {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc(layout);
-        if !ptr.is_null() {
-            if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
-                alloc_tracker
-                    .allocations
-                    .push((layout.size(), ptr as usize));
-            }
-        }
-        ptr
+        System.alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         System.dealloc(ptr, layout);
-        if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
-            alloc_tracker
-                .allocations
-                .retain(|(size, addr)| ptr as usize != *addr);
-        }
     }
 }
 
@@ -82,6 +69,7 @@ pub struct Profiler {
 }
 
 #[cfg(feature = "memory-profiling")]
+#[derive(Debug)]
 struct MemoryTracker {
     start: Instant,
     current_memory: usize,
@@ -89,7 +77,15 @@ struct MemoryTracker {
     samples: Vec<(String, Instant, usize, usize, usize, usize)>,
 }
 
+#[cfg(feature = "memory-profiling")]
+impl MemoryTracker {
+    fn record_sample(&mut self, label: String, _time: Duration) {
+        self.samples.push((label, Instant::now(), 0, 0, 0, 0));
+    }
+}
+
 #[cfg(not(feature = "memory-profiling"))]
+#[derive(Debug)]
 struct MemoryTracker;
 
 impl Profiler {

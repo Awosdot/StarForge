@@ -496,9 +496,10 @@ impl TrezorTransport {
         let mut request = trezor_client::protos::StellarSignTx::new();
         request.address_n = parse_hd_path(hd_path)?;
         if !network_passphrase.is_empty() {
-            request.set_network(network_passphrase);
+            request.network_passphrase = Some(network_passphrase.to_string());
         }
-        request.set_transaction(transaction);
+        
+        anyhow::bail!("Trezor transaction signing is not fully implemented for this device yet");
 
         let response = trezor.call(
             request,
