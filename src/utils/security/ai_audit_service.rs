@@ -136,11 +136,7 @@ impl AiAuditService {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "Anthropic API error {}: {}",
-                status,
-                error_text
-            ));
+            return Err(anyhow!("Anthropic API error {}: {}", status, error_text));
         }
 
         let anthropic_response: AnthropicResponse = response
