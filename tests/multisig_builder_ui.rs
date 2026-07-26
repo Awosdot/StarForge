@@ -1,6 +1,6 @@
 use starforge::utils::multisig_builder::{
-    template_definitions, generate_signature, proposal_from_template,
-    render_progress_bar, validate_for_submit, Proposal,
+    generate_signature, proposal_from_template, render_progress_bar, template_definitions,
+    validate_for_submit, Proposal,
 };
 
 #[test]
@@ -62,7 +62,9 @@ fn signature_validation_rejects_invalid_and_duplicate_signatures() {
     proposal.add_signature("bob".to_string(), "not-a-valid-signature".to_string());
 
     let validation_err = validate_for_submit(&proposal).unwrap_err();
-    assert!(validation_err.to_string().contains("Invalid signature format"));
+    assert!(validation_err
+        .to_string()
+        .contains("Invalid signature format"));
 }
 
 #[test]

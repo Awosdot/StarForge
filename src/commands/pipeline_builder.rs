@@ -217,8 +217,7 @@ pub async fn handle(cmd: PipelineCommands) -> Result<()> {
 
 fn handle_create(args: CreateArgs) -> Result<()> {
     p::header("Contract Deployment Pipeline Builder");
-    let pipeline =
-        pipeline_builder::create_pipeline(&args.name, &args.description, &args.network)?;
+    let pipeline = pipeline_builder::create_pipeline(&args.name, &args.description, &args.network)?;
     let path = pipeline_builder::save_pipeline(&pipeline)?;
 
     p::kv("Pipeline ID", &pipeline.id);
