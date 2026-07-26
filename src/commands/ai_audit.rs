@@ -369,8 +369,16 @@ fn format_html_report(report: &crate::utils::security::SecurityAuditReport) -> S
 
 /// Handle the `starforge ai-audit` command.
 pub async fn handle(args: AiAuditArgs) -> Result<()> {
-    // Get API key when available; otherwise fall back to local offline analysis.
-    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+    // Feature-flag gate: the audit pipeline is gated on `ai.audit` so we can
+    // do gradual rollouts and A/B experiments. Admins can flip the flag with
+    // `starforge feature-flags enable ai.audit` / `rollout ai.audit --percent 25`.
+    crate::utils::feature_flags_cmd::require_feature("ai.audit")?;
+
+    // Get API key
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .map_err(|_| anyhow::anyhow!(
+            "ANTHROPIC_API_KEY environment variable not set. Set it to your Anthropic API key."
+        ))?;
 
     // Read contract code
     let contract_code = read_contract_code(&args.path)?;

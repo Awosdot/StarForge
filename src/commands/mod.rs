@@ -19,6 +19,7 @@ pub mod deployments;
 pub mod diagnostics;
 pub mod docs;
 pub mod doctor;
+pub mod feature_flags_cmd;
 pub mod gas;
 pub mod generate;
 pub mod governance;

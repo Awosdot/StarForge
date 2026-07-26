@@ -100,6 +100,10 @@ pub struct InferArgs {
 }
 
 pub async fn handle(cmd: CompleteCommands) -> Result<()> {
+    // Feature-flag gate: the offline completion assistant is on by default
+    // (Stable category), but admins can disable it fleet-wide via:
+    //   starforge feature-flags disable ai.completion
+    crate::utils::feature_flags_cmd::require_feature("ai.completion")?;
     match cmd {
         CompleteCommands::Suggest(args) => handle_suggest(args),
         CompleteCommands::Boilerplate(args) => handle_boilerplate(args),
