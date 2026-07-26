@@ -9,7 +9,7 @@
     clippy::needless_borrow
 )]
 
-mod commands;
+pub use starforge::commands;
 pub use starforge::plugins;
 pub use starforge::utils;
 
