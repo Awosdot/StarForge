@@ -206,7 +206,7 @@ pub fn estimate_deployment_cost(wasm_path: &Path, network: &str) -> Result<CostE
     // Large-contract surcharge
     let surcharge = if report.size_bytes > LARGE_CONTRACT_THRESHOLD_BYTES {
         let raw = gas.total_gas_stroops + storage.total_storage_stroops + BASE_TX_FEE_STROOPS;
-        ((raw as f64 * (LARGE_CONTRACT_SURCHARGE - 1.0)) as u64)
+        (raw as f64 * (LARGE_CONTRACT_SURCHARGE - 1.0)) as u64
     } else {
         0
     };

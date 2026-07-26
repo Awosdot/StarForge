@@ -102,7 +102,7 @@ fn parse_spec_entries(entries: &[ScSpecEntry]) -> ContractMetadata {
     let mut functions = Vec::new();
     let mut structs = Vec::new();
     let mut enums = Vec::new();
-    let mut events = Vec::new();
+    let events = Vec::new();
 
     for entry in entries {
         match entry {

@@ -479,6 +479,7 @@ pub fn get_proposal(proposal_id: &str, network: &str) -> Result<GovernancePropos
         .iter()
         .position(|p| p.id == proposal_id && p.network == network)
         .ok_or_else(|| anyhow::anyhow!("Proposal '{}' not found on {}", proposal_id, network))?;
+    let proposal = &mut proposals[idx];
     refresh_timelock_status(proposal);
     let updated = proposal.clone();
     save_proposals(&proposals)?;
