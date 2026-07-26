@@ -109,10 +109,14 @@ impl Profiler {
     }
 
     pub fn mark(&mut self, label: impl Into<String>) {
-        self.marks.push((label.into(), Instant::now()));
+        let label_str = label.into();
+        #[cfg(feature = "memory-profiling")]
+        let label_for_tracker = label_str.clone();
+
+        self.marks.push((label_str, Instant::now()));
         #[cfg(feature = "memory-profiling")]
         if let Some(tracker) = &mut self.memory_tracker {
-            tracker.record_sample(label.into(), self.start.elapsed());
+            tracker.record_sample(label_for_tracker, self.start.elapsed());
         }
     }
 

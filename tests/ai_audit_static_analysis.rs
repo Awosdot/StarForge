@@ -242,9 +242,7 @@ pub fn function_{i}(env: Env) {{
     env.storage().instance().set(&key_{i}, &value_{i});
 }}
 "#,
-            i = i,
-            key_i = i,
-            value_i = i
+            i = i
         ));
     }
 

@@ -498,21 +498,8 @@ impl TrezorTransport {
         if !network_passphrase.is_empty() {
             request.network_passphrase = Some(network_passphrase.to_string());
         }
-        
-        anyhow::bail!("Trezor transaction signing is not fully implemented for this device yet");
 
-        let response = trezor.call(
-            request,
-            Box::new(|_, message: trezor_client::protos::StellarSignedTx| {
-                Ok(message.signature().to_vec())
-            }),
-        )?;
-        let signature = trezor_client::client::handle_interaction(response)
-            .context("Trezor did not return a transaction signature")?;
-        if signature.len() < 64 {
-            anyhow::bail!("Trezor signature response was too short");
-        }
-        Ok(signature)
+        anyhow::bail!("Trezor transaction signing is not fully implemented for this device yet");
     }
 
     fn connect() -> Result<trezor_client::Trezor> {
