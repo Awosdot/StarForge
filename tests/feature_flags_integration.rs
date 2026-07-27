@@ -5,10 +5,10 @@
 //! real `starforge feature-flags …` invocation does.
 
 use starforge::utils::config;
+use starforge::utils::config::FeatureFlagsConfig;
 use starforge::utils::database::Database;
 use starforge::utils::feature_flags::{
-    self, FeatureFlagsConfig, FlagCategory, FlagDefinition, FlagManager, SegmentRule, UserContext,
-    Variant,
+    self, FlagCategory, FlagDefinition, FlagManager, SegmentRule, UserContext, Variant,
 };
 
 fn fresh_db() -> Database {
@@ -17,7 +17,7 @@ fn fresh_db() -> Database {
     db
 }
 
-fn mgr(db: &Database, which: &str) -> FlagManager<'_> {
+fn mgr<'a>(db: &'a Database, which: &str) -> FlagManager<'a> {
     FlagManager::new(db, UserContext::new(which)).with_exposure_recording(false)
 }
 
@@ -124,7 +124,8 @@ fn override_takes_priority_over_state() {
     let m = mgr(&db, "u-disabled");
     m.set_enabled("ai.audit", false).unwrap();
     assert!(!m.is_enabled("ai.audit"));
-    m.set_override("ai.audit", "u-disabled", true, None).unwrap();
+    m.set_override("ai.audit", "u-disabled", true, None)
+        .unwrap();
     assert!(m.is_enabled("ai.audit"));
     let res = m.evaluate_dry("ai.audit").unwrap();
     assert!(res.from_override);
@@ -181,7 +182,7 @@ fn metrics_summary_groups_by_kind() {
     let m = FlagManager::new(&db, UserContext::new("u")).with_exposure_recording(true);
     m.set_enabled("ai.audit", true).unwrap();
     m.set_rollout("ai.audit", 100).unwrap();
-    let _ = m.is_enabled("ai.audit");     // exposure
+    let _ = m.is_enabled("ai.audit"); // exposure
     m.record_conversion("ai.audit").unwrap();
     m.record_rejection("ai.audit").unwrap();
     let summary = db.metrics_summary("ai.audit").unwrap();

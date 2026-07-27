@@ -631,12 +631,15 @@ pub fn load() -> Result<Config> {
 
     ensure_default_networks(&mut config);
 
-    if config.install_id.is_none() {
-        config.install_id = Some(crate::utils::feature_flags::load_or_create_install_id(&db)?);
-    } else {
-        // Make sure install_id is also persisted to config_kv. If we loaded
-        // from a TOML file (the legacy path) the column will be missing.
-        let _ = db.insert_config_kv("install_id", config.install_id.as_ref().unwrap());
+    match config.install_id.as_deref() {
+        None => {
+            config.install_id = Some(crate::utils::feature_flags::load_or_create_install_id(&db)?);
+        }
+        Some(install_id) => {
+            // Make sure install_id is also persisted to config_kv. If we loaded
+            // from a TOML file (the legacy path) the column will be missing.
+            let _ = db.insert_config_kv("install_id", install_id);
+        }
     }
 
     if config.version != CURRENT_CONFIG_VERSION {

@@ -97,7 +97,8 @@ fn pattern_auth_required() -> DebugFinding {
             "Inspect the `caller` variable before the auth check.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/learn/smart-contract-internals/authorization".into(),
+            "https://developers.stellar.org/docs/learn/smart-contract-internals/authorization"
+                .into(),
         ],
     }
 }
@@ -162,7 +163,8 @@ fn pattern_storage_missing() -> DebugFinding {
             "Use `starforge inspect` to view live storage state.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/learn/smart-contract-internals/persisting-data".into(),
+            "https://developers.stellar.org/docs/learn/smart-contract-internals/persisting-data"
+                .into(),
         ],
     }
 }
@@ -193,9 +195,7 @@ fn pattern_insufficient_balance() -> DebugFinding {
             "Inspect the `balance` variable before the transfer call.".into(),
             "Log sender address and amount to confirm they are correct.".into(),
         ],
-        references: vec![
-            "https://developers.stellar.org/docs/tokens/token-interface".into(),
-        ],
+        references: vec!["https://developers.stellar.org/docs/tokens/token-interface".into()],
     }
 }
 
@@ -259,7 +259,8 @@ fn pattern_wasm_invalid() -> DebugFinding {
             "Run `xxd <file> | head` to verify the \\0asm magic header.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup".into(),
+            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup"
+                .into(),
         ],
     }
 }
@@ -292,7 +293,8 @@ fn pattern_contract_not_found() -> DebugFinding {
             "Use `starforge contract inspect <id>` to verify existence.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/data/rpc/api-reference/methods/getLedgerEntries".into(),
+            "https://developers.stellar.org/docs/data/rpc/api-reference/methods/getLedgerEntries"
+                .into(),
         ],
     }
 }
@@ -324,7 +326,8 @@ fn pattern_ttl_expired() -> DebugFinding {
             "Log TTL values after each extend_ttl call.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/learn/smart-contract-internals/state-archival".into(),
+            "https://developers.stellar.org/docs/learn/smart-contract-internals/state-archival"
+                .into(),
         ],
     }
 }
@@ -402,43 +405,109 @@ fn pattern_type_mismatch() -> DebugFinding {
 fn all_patterns() -> Vec<ErrorPattern> {
     vec![
         ErrorPattern {
-            keywords: &["require_auth", "auth", "unauthorized", "not authorized", "auth failed"],
+            keywords: &[
+                "require_auth",
+                "auth",
+                "unauthorized",
+                "not authorized",
+                "auth failed",
+            ],
             finding: pattern_auth_required,
         },
         ErrorPattern {
-            keywords: &["overflow", "underflow", "attempt to add with overflow", "attempt to subtract with overflow", "attempt to multiply with overflow"],
+            keywords: &[
+                "overflow",
+                "underflow",
+                "attempt to add with overflow",
+                "attempt to subtract with overflow",
+                "attempt to multiply with overflow",
+            ],
             finding: pattern_overflow,
         },
         ErrorPattern {
-            keywords: &["not found", "missing key", "storage", "no entry", "key not found", "missing storage"],
+            keywords: &[
+                "not found",
+                "missing key",
+                "storage",
+                "no entry",
+                "key not found",
+                "missing storage",
+            ],
             finding: pattern_storage_missing,
         },
         ErrorPattern {
-            keywords: &["insufficient", "balance", "not enough", "insufficient funds", "insufficient balance"],
+            keywords: &[
+                "insufficient",
+                "balance",
+                "not enough",
+                "insufficient funds",
+                "insufficient balance",
+            ],
             finding: pattern_insufficient_balance,
         },
         ErrorPattern {
-            keywords: &["panic", "panicked", "unwrap", "called `option::unwrap` on a `none`", "called `result::unwrap` on an `err`"],
+            keywords: &[
+                "panic",
+                "panicked",
+                "unwrap",
+                "called `option::unwrap` on a `none`",
+                "called `result::unwrap` on an `err`",
+            ],
             finding: pattern_panic,
         },
         ErrorPattern {
-            keywords: &["invalid wasm", "wasm", "webassembly", "binary", "magic", "malformed"],
+            keywords: &[
+                "invalid wasm",
+                "wasm",
+                "webassembly",
+                "binary",
+                "magic",
+                "malformed",
+            ],
             finding: pattern_wasm_invalid,
         },
         ErrorPattern {
-            keywords: &["contract not found", "no contract", "does not exist", "ledger entry not found"],
+            keywords: &[
+                "contract not found",
+                "no contract",
+                "does not exist",
+                "ledger entry not found",
+            ],
             finding: pattern_contract_not_found,
         },
         ErrorPattern {
-            keywords: &["ttl", "expired", "archived", "state archival", "entry expired"],
+            keywords: &[
+                "ttl",
+                "expired",
+                "archived",
+                "state archival",
+                "entry expired",
+            ],
             finding: pattern_ttl_expired,
         },
         ErrorPattern {
-            keywords: &["test", "assert", "assertion", "expected", "left =", "right =", "#[test]", "failed"],
+            keywords: &[
+                "test",
+                "assert",
+                "assertion",
+                "expected",
+                "left =",
+                "right =",
+                "#[test]",
+                "failed",
+            ],
             finding: pattern_test_failure,
         },
         ErrorPattern {
-            keywords: &["type", "abi", "xdr", "conversion", "mismatch", "invalid argument", "wrong type"],
+            keywords: &[
+                "type",
+                "abi",
+                "xdr",
+                "conversion",
+                "mismatch",
+                "invalid argument",
+                "wrong type",
+            ],
             finding: pattern_type_mismatch,
         },
     ]
@@ -456,11 +525,13 @@ pub fn parse_stack_trace(trace: &str) -> Vec<StackTraceFrame> {
         }
         // Try to parse lines like "  0: function_name at src/lib.rs:42"
         let (function, location) = if let Some(at_pos) = line.find(" at ") {
-            let func_part = line[..at_pos].trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
+            let func_part = line[..at_pos]
+                .trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
             let loc_part = &line[at_pos + 4..];
             (func_part.to_string(), Some(loc_part.to_string()))
         } else {
-            let func_part = line.trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
+            let func_part =
+                line.trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
             (func_part.to_string(), None)
         };
 
@@ -486,13 +557,15 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
         let value_lower = value.to_lowercase();
 
         // Detect potential zero-value bugs
-        if value == "0" || value == "0i128" || value == "0u128" {
-            if name_lower.contains("amount") || name_lower.contains("balance") || name_lower.contains("fee") {
-                insights.push(format!(
-                    "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
-                    name
-                ));
-            }
+        if (value == "0" || value == "0i128" || value == "0u128")
+            && (name_lower.contains("amount")
+                || name_lower.contains("balance")
+                || name_lower.contains("fee"))
+        {
+            insights.push(format!(
+                "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
+                name
+            ));
         }
 
         // Detect max-value boundary conditions
@@ -507,18 +580,21 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
         }
 
         // Detect empty / null-like address
-        if name_lower.contains("address") || name_lower.contains("account") {
-            if value_lower.contains("none") || value == "\"\"" || value.is_empty() {
-                insights.push(format!(
-                    "✗  '{}' is empty or None — the contract will likely fail auth checks.",
-                    name
-                ));
-            }
+        if (name_lower.contains("address") || name_lower.contains("account"))
+            && (value_lower.contains("none") || value == "\"\"" || value.is_empty())
+        {
+            insights.push(format!(
+                "✗  '{}' is empty or None — the contract will likely fail auth checks.",
+                name
+            ));
         }
 
         // Detect very large collections
         if name_lower.contains("vec") || name_lower.contains("map") || name_lower.contains("list") {
-            if let Ok(n) = value.trim_matches(|c: char| !c.is_ascii_digit()).parse::<usize>() {
+            if let Ok(n) = value
+                .trim_matches(|c: char| !c.is_ascii_digit())
+                .parse::<usize>()
+            {
                 if n > 1000 {
                     insights.push(format!(
                         "ℹ  '{}' has {} elements — consider gas cost implications for large collections.",
@@ -564,18 +640,25 @@ fn build_overall_guidance(findings: &[DebugFinding], has_stack_trace: bool) -> S
             3. Check `starforge audit <path>` for static analysis findings."
             .to_string();
         if !has_stack_trace {
-            msg.push_str(
-                "\n4. Provide a stack trace with --stack-trace for deeper analysis.",
-            );
+            msg.push_str("\n4. Provide a stack trace with --stack-trace for deeper analysis.");
         }
         return msg;
     }
 
-    let critical = findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    let high = findings.iter().filter(|f| f.severity == Severity::High).count();
+    let critical = findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    let high = findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
 
     let priority = if critical > 0 {
-        format!("{} critical issue(s) require immediate attention.", critical)
+        format!(
+            "{} critical issue(s) require immediate attention.",
+            critical
+        )
     } else if high > 0 {
         format!("{} high-severity issue(s) detected.", high)
     } else {
@@ -603,8 +686,16 @@ pub fn analyse(
     let input_summary = format!(
         "Error: {}{}{}",
         &error_message[..error_message.len().min(120)],
-        if stack_trace.is_some() { " | Stack trace provided" } else { "" },
-        if variables.map(|v| !v.is_empty()).unwrap_or(false) { " | Variables provided" } else { "" },
+        if stack_trace.is_some() {
+            " | Stack trace provided"
+        } else {
+            ""
+        },
+        if variables.map(|v| !v.is_empty()).unwrap_or(false) {
+            " | Variables provided"
+        } else {
+            ""
+        },
     );
 
     // 1. Error pattern matching
@@ -647,9 +738,7 @@ pub fn analyse(
     });
 
     // 4. Variable state inspection
-    let variable_insights = variables
-        .map(inspect_variable_state)
-        .unwrap_or_default();
+    let variable_insights = variables.map(inspect_variable_state).unwrap_or_default();
 
     // 5. Collect all suggested breakpoints
     let suggested_breakpoints: Vec<String> = findings
@@ -691,7 +780,12 @@ mod tests {
 
     #[test]
     fn detects_overflow_error() {
-        let report = analyse("attempt to add with overflow in balance calculation", None, None, None);
+        let report = analyse(
+            "attempt to add with overflow in balance calculation",
+            None,
+            None,
+            None,
+        );
         assert!(report.findings.iter().any(|f| f.id == "ARITH001"));
     }
 
@@ -714,7 +808,11 @@ mod tests {
         let frames = parse_stack_trace(trace);
         assert_eq!(frames.len(), 2);
         assert!(frames[0].function.contains("contract::transfer"));
-        assert!(frames[0].location.as_deref().unwrap_or("").contains("src/lib.rs:42"));
+        assert!(frames[0]
+            .location
+            .as_deref()
+            .unwrap_or("")
+            .contains("src/lib.rs:42"));
     }
 
     #[test]

@@ -190,7 +190,7 @@ fn handle_init() -> Result<()> {
             "  {} {} ({})",
             "•".cyan(),
             wf.name.white(),
-            &wf.id[..12].dimmed()
+            wf.id[..12].dimmed()
         );
         for level in &wf.levels {
             println!(
@@ -292,7 +292,7 @@ fn handle_list_workflows() -> Result<()> {
         let created = wf.created_at.get(..10).unwrap_or(&wf.created_at);
         println!(
             "  {:<18} {:<30} {:<10} {:<10} {}",
-            &wf.id[..12].cyan(),
+            wf.id[..12].cyan(),
             wf.name.white(),
             wf.levels.len(),
             active_mark,
@@ -313,14 +313,7 @@ fn handle_show_workflow(args: ShowWorkflowArgs) -> Result<()> {
     p::kv_accent("ID", &workflow.id);
     p::kv("Name", &workflow.name);
     p::kv("Description", &workflow.description);
-    p::kv(
-        "Active",
-        if workflow.active {
-            "yes"
-        } else {
-            "no"
-        },
-    );
+    p::kv("Active", if workflow.active { "yes" } else { "no" });
     p::kv(
         "Created",
         &workflow
@@ -334,7 +327,7 @@ fn handle_show_workflow(args: ShowWorkflowArgs) -> Result<()> {
     println!(
         "  {} {}",
         "Approval Levels".bright_white(),
-        &format!("({})", workflow.levels.len()).dimmed()
+        format!("({})", workflow.levels.len()).dimmed()
     );
     p::separator();
 
@@ -348,21 +341,17 @@ fn handle_show_workflow(args: ShowWorkflowArgs) -> Result<()> {
         println!("    {} {}", "Name:        ".dimmed(), level.name.white());
         println!("    {} {}", "Description: ".dimmed(), level.description);
         println!(
-            "    {} {}",
+            "    {} {} approver(s)",
             "Required:    ".dimmed(),
-            format!("{} approver(s)", level.required_approvers)
+            level.required_approvers
         );
         println!(
-            "    {} {}",
+            "    {} {:?}",
             "Roles:       ".dimmed(),
-            format!("{:?}", level.approver_roles)
+            level.approver_roles
         );
         if let Some(timeout) = level.timeout_hours {
-            println!(
-                "    {} {}",
-                "Timeout:     ".dimmed(),
-                format!("{} hours", timeout)
-            );
+            println!("    {} {} hours", "Timeout:     ".dimmed(), timeout);
         }
     }
     println!();
@@ -495,8 +484,8 @@ fn handle_list_requests(args: ListRequestsArgs) -> Result<()> {
         let created = req.created_at.get(..16).unwrap_or(&req.created_at);
         println!(
             "  {:<14} {:<18} {:<12} {:<10} {:<12} {}",
-            &req.id[..12].cyan(),
-            &req.contract_id.chars().take(16).collect::<String>(),
+            req.id[..12].cyan(),
+            req.contract_id.chars().take(16).collect::<String>(),
             req.network,
             status_colored,
             req.level_progress(),
@@ -549,7 +538,7 @@ fn handle_show_request(args: ShowRequestArgs) -> Result<()> {
         println!(
             "  {} {}",
             "Approval Levels".bright_white(),
-            &format!("({})", wf.levels.len()).dimmed()
+            format!("({})", wf.levels.len()).dimmed()
         );
         p::separator();
 
@@ -605,7 +594,7 @@ fn handle_show_request(args: ShowRequestArgs) -> Result<()> {
                     "    {} by {} at {}",
                     action_str,
                     action.approver.white(),
-                    &action
+                    action
                         .timestamp
                         .get(..19)
                         .unwrap_or(&action.timestamp)
@@ -731,7 +720,7 @@ fn handle_dashboard() -> Result<()> {
         println!(
             "  {} {}",
             "By Network".bright_white(),
-            &format!("({} networks)", summary.by_network.len()).dimmed()
+            format!("({} networks)", summary.by_network.len()).dimmed()
         );
         p::separator();
         for (net, count) in &summary.by_network {
@@ -749,7 +738,7 @@ fn handle_dashboard() -> Result<()> {
         println!(
             "  {} {}",
             "By Workflow".bright_white(),
-            &format!("({} workflows)", summary.by_workflow.len()).dimmed()
+            format!("({} workflows)", summary.by_workflow.len()).dimmed()
         );
         p::separator();
         for (wf, count) in &summary.by_workflow {
@@ -779,7 +768,7 @@ fn handle_dashboard() -> Result<()> {
                 println!(
                     "  {} {} | {} | {} | {}",
                     "▶".cyan(),
-                    &req.id[..12].cyan(),
+                    req.id[..12].cyan(),
                     req.contract_id.chars().take(20).collect::<String>(),
                     req.network,
                     req.status.to_string().yellow(),

@@ -129,28 +129,33 @@ impl GasCostOptimizer {
     /// Analyze WASM for gas optimization opportunities.
     pub fn analyze_gas_optimization(wasm_bytes: &[u8]) -> Vec<OptimizationSuggestion> {
         let mut suggestions = Vec::new();
-        
+
         // Analyze WASM size
         let wasm_size_kb = wasm_bytes.len() as f64 / 1024.0;
-        
+
         // Large WASM penalty
         if wasm_size_kb > 100.0 {
             suggestions.push(OptimizationSuggestion {
                 id: "GAS-001".to_string(),
                 category: "wasm_size".to_string(),
                 title: "Reduce WASM Size".to_string(),
-                description: format!("WASM is {:.1} KB, consider optimizing to reduce gas costs", wasm_size_kb),
+                description: format!(
+                    "WASM is {:.1} KB, consider optimizing to reduce gas costs",
+                    wasm_size_kb
+                ),
                 estimated_gas_savings: ((wasm_size_kb - 100.0) * 1000.0) as u64,
                 estimated_time_savings_ms: 500,
                 implementation_effort: "1-2 hours".to_string(),
                 priority: "high".to_string(),
-                code_example: Some("Use soroban-optimize or remove unused dependencies".to_string()),
+                code_example: Some(
+                    "Use soroban-optimize or remove unused dependencies".to_string(),
+                ),
             });
         }
-        
+
         // Check for common gas-heavy patterns
         let wasm_str = String::from_utf8_lossy(wasm_bytes);
-        
+
         if wasm_str.contains("panic") || wasm_str.contains("unwrap") {
             suggestions.push(OptimizationSuggestion {
                 id: "GAS-002".to_string(),
@@ -161,10 +166,12 @@ impl GasCostOptimizer {
                 estimated_time_savings_ms: 100,
                 implementation_effort: "30 minutes".to_string(),
                 priority: "medium".to_string(),
-                code_example: Some("Replace .unwrap() with proper error handling using ?".to_string()),
+                code_example: Some(
+                    "Replace .unwrap() with proper error handling using ?".to_string(),
+                ),
             });
         }
-        
+
         suggestions
     }
 
@@ -175,7 +182,7 @@ impl GasCostOptimizer {
             "testnet" => 10_000,
             _ => 50_000,
         };
-        
+
         let size_multiplier = (wasm_bytes.len() as f64 / 1024.0) / 100.0;
         (base_cost as f64 * size_multiplier) as u64
     }
@@ -197,9 +204,9 @@ impl SpeedOptimizer {
     /// Analyze deployment speed optimization opportunities.
     pub fn analyze_speed_optimization(wasm_bytes: &[u8]) -> Vec<OptimizationSuggestion> {
         let mut suggestions = Vec::new();
-        
+
         let wasm_size_kb = wasm_bytes.len() as f64 / 1024.0;
-        
+
         // Large WASM takes longer to deploy
         if wasm_size_kb > 50.0 {
             suggestions.push(OptimizationSuggestion {
@@ -214,7 +221,7 @@ impl SpeedOptimizer {
                 code_example: Some("Use compression or soroban-optimize".to_string()),
             });
         }
-        
+
         suggestions
     }
 
@@ -225,7 +232,7 @@ impl SpeedOptimizer {
             "testnet" => 2000,
             _ => 3000,
         };
-        
+
         let size_multiplier = (wasm_bytes.len() as f64 / 1024.0) / 50.0;
         (base_time_ms as f64 * size_multiplier) as u64
     }
@@ -246,32 +253,37 @@ pub struct ReliabilityOptimizer;
 impl ReliabilityOptimizer {
     /// Analyze reliability optimization opportunities.
     pub fn analyze_reliability_optimization() -> Vec<OptimizationSuggestion> {
-        let mut suggestions = Vec::new();
-        
-        suggestions.push(OptimizationSuggestion {
-            id: "REL-001".to_string(),
-            category: "retry_logic".to_string(),
-            title: "Add Retry Logic".to_string(),
-            description: "Implement exponential backoff for network failures".to_string(),
-            estimated_gas_savings: 0,
-            estimated_time_savings_ms: 0,
-            implementation_effort: "1 hour".to_string(),
-            priority: "high".to_string(),
-            code_example: Some("Implement retry with exponential backoff: 100ms, 200ms, 400ms, 800ms".to_string()),
-        });
-        
-        suggestions.push(OptimizationSuggestion {
-            id: "REL-002".to_string(),
-            category: "pre_deployment_checks".to_string(),
-            title: "Add Pre-deployment Validation".to_string(),
-            description: "Validate WASM and network conditions before deployment".to_string(),
-            estimated_gas_savings: 0,
-            estimated_time_savings_ms: 0,
-            implementation_effort: "2 hours".to_string(),
-            priority: "high".to_string(),
-            code_example: Some("Run validation checks: WASM integrity, network connectivity, wallet balance".to_string()),
-        });
-        
+        let suggestions = vec![
+            OptimizationSuggestion {
+                id: "REL-001".to_string(),
+                category: "retry_logic".to_string(),
+                title: "Add Retry Logic".to_string(),
+                description: "Implement exponential backoff for network failures".to_string(),
+                estimated_gas_savings: 0,
+                estimated_time_savings_ms: 0,
+                implementation_effort: "1 hour".to_string(),
+                priority: "high".to_string(),
+                code_example: Some(
+                    "Implement retry with exponential backoff: 100ms, 200ms, 400ms, 800ms"
+                        .to_string(),
+                ),
+            },
+            OptimizationSuggestion {
+                id: "REL-002".to_string(),
+                category: "pre_deployment_checks".to_string(),
+                title: "Add Pre-deployment Validation".to_string(),
+                description: "Validate WASM and network conditions before deployment".to_string(),
+                estimated_gas_savings: 0,
+                estimated_time_savings_ms: 0,
+                implementation_effort: "2 hours".to_string(),
+                priority: "high".to_string(),
+                code_example: Some(
+                    "Run validation checks: WASM integrity, network connectivity, wallet balance"
+                        .to_string(),
+                ),
+            },
+        ];
+
         suggestions
     }
 }
@@ -281,10 +293,7 @@ pub struct NetworkSelector;
 
 impl NetworkSelector {
     /// Select optimal network for deployment.
-    pub fn select_network(
-        wasm_bytes: &[u8],
-        target_networks: &[String],
-    ) -> NetworkSelection {
+    pub fn select_network(wasm_bytes: &[u8], target_networks: &[String]) -> NetworkSelection {
         let gas_costs: Vec<_> = target_networks
             .iter()
             .map(|net| {
@@ -294,20 +303,22 @@ impl NetworkSelector {
                 )
             })
             .collect();
-        
+
         let (best_network, min_cost) = gas_costs
             .iter()
             .min_by_key(|(_, cost)| *cost)
             .map(|(n, c)| (n.clone(), *c))
             .unwrap_or(("testnet".to_string(), 10_000));
-        
+
         let alternatives: Vec<NetworkAlternative> = gas_costs
             .iter()
             .filter(|(net, _)| net != &best_network)
             .map(|(net, cost)| NetworkAlternative {
                 network_name: net.clone(),
                 estimated_cost_usd: *cost as f64 / 1_000_000.0,
-                estimated_time_seconds: SpeedOptimizer::estimate_deployment_time(wasm_bytes, net) as f64 / 1000.0,
+                estimated_time_seconds: SpeedOptimizer::estimate_deployment_time(wasm_bytes, net)
+                    as f64
+                    / 1000.0,
                 reliability_score: if net == "mainnet" { 0.99 } else { 0.95 },
                 trade_offs: vec![
                     format!("Higher cost: {} stroops", cost),
@@ -315,12 +326,20 @@ impl NetworkSelector {
                 ],
             })
             .collect();
-        
+
         NetworkSelection {
             recommended_network: best_network.clone(),
             estimated_cost_usd: min_cost as f64 / 1_000_000.0,
-            estimated_time_seconds: SpeedOptimizer::estimate_deployment_time(wasm_bytes, &best_network) as f64 / 1000.0,
-            reliability_score: if best_network == "mainnet" { 0.99 } else { 0.95 },
+            estimated_time_seconds: SpeedOptimizer::estimate_deployment_time(
+                wasm_bytes,
+                &best_network,
+            ) as f64
+                / 1000.0,
+            reliability_score: if best_network == "mainnet" {
+                0.99
+            } else {
+                0.95
+            },
             alternatives,
         }
     }
@@ -358,7 +377,7 @@ impl SchedulingOptimizer {
             "testnet" => "Any time (low cost)".to_string(),
             _ => "09:00-17:00 UTC (standard hours)".to_string(),
         };
-        
+
         SchedulingOptimization {
             optimal_deployment_time: optimal_time,
             estimated_cost_reduction: match network {
@@ -381,7 +400,7 @@ impl ResourceAnalyzer {
     /// Analyze current resource utilization.
     pub fn analyze_utilization(wasm_bytes: &[u8]) -> ResourceUtilization {
         let wasm_size_mb = wasm_bytes.len() as f64 / (1024.0 * 1024.0);
-        
+
         ResourceUtilization {
             cpu_usage_percentage: 45.0,
             memory_usage_mb: wasm_size_mb * 2.0,
@@ -393,37 +412,45 @@ impl ResourceAnalyzer {
 }
 
 /// Perform comprehensive deployment optimization.
-pub fn optimize_deployment(config: &DeploymentOptimizerConfig) -> Result<DeploymentOptimizationResult> {
+pub fn optimize_deployment(
+    config: &DeploymentOptimizerConfig,
+) -> Result<DeploymentOptimizationResult> {
     let wasm_path = Path::new(&config.wasm_path);
     let wasm_bytes = std::fs::read(wasm_path)
         .with_context(|| format!("Failed to read WASM file: {}", wasm_path.display()))?;
-    
+
     // Calculate original metrics
     let original_gas_cost = GasCostOptimizer::estimate_gas_cost(&wasm_bytes, "testnet");
     let original_deployment_time = SpeedOptimizer::estimate_deployment_time(&wasm_bytes, "testnet");
-    
+
     // Collect optimization suggestions
     let mut optimization_suggestions = Vec::new();
-    
+
     if config.enable_cost_optimization {
         optimization_suggestions.extend(GasCostOptimizer::analyze_gas_optimization(&wasm_bytes));
     }
-    
+
     if config.enable_speed_optimization {
         optimization_suggestions.extend(SpeedOptimizer::analyze_speed_optimization(&wasm_bytes));
     }
-    
+
     if config.enable_reliability_optimization {
         optimization_suggestions.extend(ReliabilityOptimizer::analyze_reliability_optimization());
     }
-    
+
     // Calculate optimized metrics (estimated based on suggestions)
-    let total_gas_savings: u64 = optimization_suggestions.iter().map(|s| s.estimated_gas_savings).sum();
-    let total_time_savings: u64 = optimization_suggestions.iter().map(|s| s.estimated_time_savings_ms).sum();
-    
+    let total_gas_savings: u64 = optimization_suggestions
+        .iter()
+        .map(|s| s.estimated_gas_savings)
+        .sum();
+    let total_time_savings: u64 = optimization_suggestions
+        .iter()
+        .map(|s| s.estimated_time_savings_ms)
+        .sum();
+
     let optimized_gas_cost = original_gas_cost.saturating_sub(total_gas_savings);
     let optimized_deployment_time = original_deployment_time.saturating_sub(total_time_savings);
-    
+
     // Network selection
     let networks = if config.target_networks.is_empty() {
         vec!["testnet".to_string(), "mainnet".to_string()]
@@ -431,24 +458,32 @@ pub fn optimize_deployment(config: &DeploymentOptimizerConfig) -> Result<Deploym
         config.target_networks.clone()
     };
     let network_selection = NetworkSelector::select_network(&wasm_bytes, &networks);
-    
+
     // Resource utilization
     let resource_utilization = ResourceAnalyzer::analyze_utilization(&wasm_bytes);
-    
+
     // Batch optimization
     let batch_optimization = BatchOptimizer::analyze_batch_optimization();
-    
+
     // Scheduling optimization
-    let scheduling_optimization = SchedulingOptimizer::analyze_scheduling_optimization(&network_selection.recommended_network);
-    
+    let scheduling_optimization = SchedulingOptimizer::analyze_scheduling_optimization(
+        &network_selection.recommended_network,
+    );
+
     Ok(DeploymentOptimizationResult {
         deployment_id: uuid::Uuid::new_v4().to_string(),
         original_gas_cost,
         optimized_gas_cost,
-        gas_savings_percentage: GasCostOptimizer::calculate_gas_savings(original_gas_cost, optimized_gas_cost),
+        gas_savings_percentage: GasCostOptimizer::calculate_gas_savings(
+            original_gas_cost,
+            optimized_gas_cost,
+        ),
         original_deployment_time_ms: original_deployment_time,
         optimized_deployment_time_ms: optimized_deployment_time,
-        time_improvement_percentage: SpeedOptimizer::calculate_time_improvement(original_deployment_time, optimized_deployment_time),
+        time_improvement_percentage: SpeedOptimizer::calculate_time_improvement(
+            original_deployment_time,
+            optimized_deployment_time,
+        ),
         optimization_suggestions,
         resource_utilization,
         network_selection,

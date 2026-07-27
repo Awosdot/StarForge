@@ -44,6 +44,42 @@ fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
+/// Per-invocation `-c` overrides supplying a committer identity.
+///
+/// Returns an empty list when git already has one configured, so a developer's
+/// own identity is never overridden. Without this, `git commit` aborts with
+/// "Author identity unknown" anywhere the global config is unset — CI runners
+/// and containers, most notably.
+fn committer_identity_args(template_path: &Path, author: &str) -> Vec<String> {
+    let configured = Command::new("git")
+        .current_dir(template_path)
+        .args(["config", "--get", "user.email"])
+        .output()
+        .map(|out| out.status.success() && !out.stdout.is_empty())
+        .unwrap_or(false);
+
+    if configured {
+        return Vec::new();
+    }
+
+    let handle = author
+        .trim()
+        .replace(char::is_whitespace, "-")
+        .to_lowercase();
+    let handle = if handle.is_empty() {
+        "starforge".to_string()
+    } else {
+        handle
+    };
+
+    vec![
+        "-c".to_string(),
+        format!("user.name={}", author.trim()),
+        "-c".to_string(),
+        format!("user.email={handle}@templates.starforge.local"),
+    ]
+}
+
 pub fn init_vcs(template_path: &Path, template_name: &str) -> Result<()> {
     let vcs = vcs_dir(template_path);
     if vcs.exists() {
@@ -137,6 +173,7 @@ pub fn commit_version(
         let commit_msg = format!("{}: {}", tag, message.lines().next().unwrap_or(message));
         let output = Command::new("git")
             .current_dir(template_path)
+            .args(committer_identity_args(template_path, author))
             .args(["commit", "-m", &commit_msg])
             .output()
             .context("Failed to commit")?;

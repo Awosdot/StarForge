@@ -34,6 +34,7 @@ items_after_test_module = "allow"
 needless_borrow = "allow"
 needless_borrows_for_generic_args = "allow"
 empty_line_after_doc_comments = "allow"
+doc_overindented_list_items = "allow"
 expect_fun_call = "allow"
 useless_vec = "allow"
 single_match = "allow"
@@ -50,7 +51,7 @@ dirs     = "=5.0.1"
 anyhow   = "1.0"
 chrono   = { version = "0.4", features = ["serde"] }
 rand     = "0.8"
-ed25519-dalek = "=2.0.0"
+ed25519-dalek = "=2.1.1"
 reqwest    = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
 tokio      = { version = "1", features = ["full"] }
 ctrlc      = "3.4"

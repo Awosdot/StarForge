@@ -69,7 +69,8 @@ pub async fn handle(cmd: NewCommands) -> Result<()> {
                     "none",
                     true,
                     force_refresh,
-                ).await
+                )
+                .await
             }
         }
         NewCommands::Dapp { name } => scaffold_dapp(name),
@@ -271,7 +272,9 @@ async fn scaffold_contract(
         "voting" => voting_template(&name),
         "nft" => nft_template(&name),
         _ => {
-            if let Some(custom) = templates::template_source_content(&template, force_refresh).await? {
+            if let Some(custom) =
+                templates::template_source_content(&template, force_refresh).await?
+            {
                 custom
             } else if template == "hello-world" {
                 hello_world_template(&name, storage, include_tests)

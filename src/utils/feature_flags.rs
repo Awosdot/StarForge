@@ -23,12 +23,12 @@
 //! [`FlagManager`] is the high-level façade that ties everything together.
 
 use crate::utils::database::Database;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::collections::HashSet;
 use std::collections::HashMap;
-use std::sync::{OnceLock, Mutex};
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 
 // ── Categories ───────────────────────────────────────────────────────────────
 
@@ -434,14 +434,19 @@ pub fn validate_ident(label: &str, value: &str) -> Result<()> {
         bail!("{} must not be empty", label);
     }
     if value.len() > 64 {
-        bail!("{} must be at most 64 characters (got {})", label, value.len());
+        bail!(
+            "{} must be at most 64 characters (got {})",
+            label,
+            value.len()
+        );
     }
-    if let Some(bad) =
-        value.chars().find(|c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '.' || *c == '-' || *c == '_'))
-    {
+    if let Some(bad) = value.chars().find(|c| {
+        !(c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '.' || *c == '-' || *c == '_')
+    }) {
         bail!(
             "{} contains invalid character {:?}; use lowercase letters, digits, '.', '-', or '_'",
-            label, bad
+            label,
+            bad
         );
     }
     Ok(())
@@ -754,7 +759,7 @@ impl Database {
             let (k, v) = r?;
             out.insert(k, v);
         }
-        out
+        Ok(out)
     }
 
     pub fn metrics_recent(&self, flag_name: &str, limit: u32) -> Result<Vec<MetricEvent>> {
@@ -793,8 +798,10 @@ impl Database {
 
     /// Delete every state row for `flag_name` — used by `flag reset`.
     pub fn delete_states(&self, flag_name: &str) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM flag_states WHERE flag_name = ?1", rusqlite::params![flag_name])?;
+        self.conn.execute(
+            "DELETE FROM flag_states WHERE flag_name = ?1",
+            rusqlite::params![flag_name],
+        )?;
         Ok(())
     }
 
@@ -893,7 +900,10 @@ impl<'a> FlagManager<'a> {
         }
 
         // 1) User override always wins.
-        if let Some(ov) = self.db.get_override(flag_name, &self.user_context.user_id)? {
+        if let Some(ov) = self
+            .db
+            .get_override(flag_name, &self.user_context.user_id)?
+        {
             let variant = pick_variant_for_override(&ov, self.db.latest_state(flag_name)?);
             return Ok(EvaluationResult {
                 flag_name: flag_name.to_string(),
@@ -948,6 +958,7 @@ impl<'a> FlagManager<'a> {
 
         // 3) Segment rules.
         let mut segment_passed = false;
+        let mut matched_segment = false;
         let mut last_reason = String::new();
         if state.segments.is_empty() {
             segment_passed = true;
@@ -956,6 +967,7 @@ impl<'a> FlagManager<'a> {
             for rule in &state.segments {
                 if rule.evaluate(flag_name, &self.user_context) {
                     segment_passed = true;
+                    matched_segment = true;
                     last_reason = format!("matched segment rule ({:?})", rule);
                     break;
                 }
@@ -978,8 +990,13 @@ impl<'a> FlagManager<'a> {
         }
 
         // 4) Percentage bucket.
+        //
+        // A user picked out by an explicit segment rule is a deliberate
+        // targeting decision, so it bypasses the percentage gate — the
+        // percentage governs the *open* rollout only. Without this, the common
+        // "rollout 0% + allow-list" setup would exclude the very users it names.
         let bucket = stable_bucket(flag_name, &self.user_context.user_id, 100);
-        let in_rollout = bucket < state.rollout_percent as u32;
+        let in_rollout = matched_segment || bucket < state.rollout_percent as u32;
         if !in_rollout {
             return Ok(EvaluationResult {
                 flag_name: flag_name.to_string(),
@@ -999,7 +1016,11 @@ impl<'a> FlagManager<'a> {
         let variant = if state.variants.is_empty() {
             None
         } else {
-            Some(pick_variant(flag_name, &self.user_context.user_id, &state.variants))
+            Some(pick_variant(
+                flag_name,
+                &self.user_context.user_id,
+                &state.variants,
+            ))
         };
 
         Ok(EvaluationResult {
@@ -1008,10 +1029,7 @@ impl<'a> FlagManager<'a> {
             enabled: true,
             variant: variant.as_ref().map(|v| v.variant.clone()),
             payload: variant.and_then(|v| v.payload),
-            reason: format!(
-                "{} (bucket {}/100)",
-                last_reason, state.rollout_percent
-            ),
+            reason: format!("{} (bucket {}/100)", last_reason, state.rollout_percent),
             from_override: false,
         })
     }
@@ -1025,8 +1043,10 @@ impl<'a> FlagManager<'a> {
     pub fn list_all(&self) -> Result<Vec<FlagListEntry>> {
         let defs = self.db.list_definitions()?;
         let states = self.db.latest_states()?;
-        let states_by_name: HashMap<String, FlagState> =
-            states.into_iter().map(|s| (s.flag_name.clone(), s)).collect();
+        let states_by_name: HashMap<String, FlagState> = states
+            .into_iter()
+            .map(|s| (s.flag_name.clone(), s))
+            .collect();
         let mut entries = Vec::with_capacity(defs.len());
         for d in defs {
             let state = states_by_name.get(&d.name).cloned();
@@ -1061,22 +1081,20 @@ impl<'a> FlagManager<'a> {
         // Atomic read + write inside a single tx so concurrent updates can't
         // collide on UNIQUE(flag_name, version).
         let new_state = self.db.with_transaction(|| {
-            let prior = self.db.latest_state(flag_name)?.unwrap_or_else(|| {
-                FlagState::for_definition(
-                    &self
-                        .db
-                        .get_definition(flag_name)
-                        .ok()
-                        .flatten()
-                        .unwrap_or(FlagDefinition {
-                            name: flag_name.to_string(),
-                            category: FlagCategory::Experimental,
-                            description: String::new(),
-                            owner: None,
-                            user_manageable: true,
-                        }),
-                )
-            });
+            let prior =
+                self.db.latest_state(flag_name)?.unwrap_or_else(|| {
+                    FlagState::for_definition(
+                        &self.db.get_definition(flag_name).ok().flatten().unwrap_or(
+                            FlagDefinition {
+                                name: flag_name.to_string(),
+                                category: FlagCategory::Experimental,
+                                description: String::new(),
+                                owner: None,
+                                user_manageable: true,
+                            },
+                        ),
+                    )
+                });
             let new_state = FlagState {
                 flag_name: flag_name.to_string(),
                 version: prior.version + 1,
@@ -1095,8 +1113,34 @@ impl<'a> FlagManager<'a> {
 
     /// Convenience helpers.
     pub fn set_enabled(&self, flag_name: &str, enabled: bool) -> Result<FlagState> {
-        let note = if enabled { "enabled via CLI" } else { "disabled via CLI" };
-        self.update_state(flag_name, Some(enabled), None, None, None, Some(note.to_string()))
+        let note = if enabled {
+            "enabled via CLI"
+        } else {
+            "disabled via CLI"
+        };
+
+        // Flipping a flag on while its rollout sits at 0% would leave it off for
+        // everyone, which is never what "enable" means. Widen to a full rollout,
+        // but only when no targeting has been configured — an operator who has
+        // already set a percentage or segments keeps their configuration.
+        let rollout = if enabled {
+            match self.db.latest_state(flag_name)? {
+                Some(state) if state.rollout_percent == 0 && state.segments.is_empty() => Some(100),
+                None => Some(100),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        self.update_state(
+            flag_name,
+            Some(enabled),
+            rollout,
+            None,
+            None,
+            Some(note.to_string()),
+        )
     }
 
     pub fn set_rollout(&self, flag_name: &str, percent: u8) -> Result<FlagState> {
@@ -1111,7 +1155,11 @@ impl<'a> FlagManager<'a> {
         )
     }
 
-    pub fn replace_segments(&self, flag_name: &str, segments: Vec<SegmentRule>) -> Result<FlagState> {
+    pub fn replace_segments(
+        &self,
+        flag_name: &str,
+        segments: Vec<SegmentRule>,
+    ) -> Result<FlagState> {
         self.update_state(
             flag_name,
             None,
@@ -1139,9 +1187,8 @@ impl<'a> FlagManager<'a> {
         if self.db.get_definition(&def.name)?.is_some() {
             return Ok(false);
         }
+        // `upsert_definition` seeds the initial state row for a new definition.
         self.db.upsert_definition(&def)?;
-        let state = FlagState::for_definition(&def);
-        self.db.insert_state(&state)?;
         Ok(true)
     }
 
@@ -1151,7 +1198,13 @@ impl<'a> FlagManager<'a> {
         let target = self
             .db
             .state_at_version(flag_name, target_version)?
-            .ok_or_else(|| anyhow::anyhow!("version {} not found for flag '{}'", target_version, flag_name))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "version {} not found for flag '{}'",
+                    target_version,
+                    flag_name
+                )
+            })?;
         self.update_state(
             flag_name,
             Some(target.enabled),
@@ -1465,7 +1518,16 @@ mod tests {
         let res = mgr.evaluate_dry("ai.audit").unwrap();
         assert!(res.enabled);
         assert!(res.from_override);
-        // Override with variant.
+        // Override with variant — the variant must exist on the flag first.
+        mgr.replace_variants(
+            "ai.audit",
+            vec![Variant {
+                name: "control".to_string(),
+                weight: 100,
+                payload: None,
+            }],
+        )
+        .unwrap();
         mgr.set_override("ai.audit", "u-1", true, Some("control".into()))
             .unwrap();
         let res2 = mgr.evaluate_dry("ai.audit").unwrap();
@@ -1539,11 +1601,7 @@ mod tests {
         }
         let control = *counts.get("control").unwrap_or(&0) as f64 / n as f64;
         let treatment = *counts.get("treatment").unwrap_or(&0) as f64 / n as f64;
-        assert!(
-            (0.18..=0.32).contains(&control),
-            "control {}",
-            control
-        );
+        assert!((0.18..=0.32).contains(&control), "control {}", control);
         assert!(
             (0.65..=0.82).contains(&treatment),
             "treatment {}",
@@ -1619,7 +1677,14 @@ mod tests {
         mgr_set_rollout_full(&db);
         let mgr = FlagManager::new(&db, UserContext::new("u-1")).with_exposure_recording(false);
         assert!(mgr.is_enabled("ai.audit"));
-        assert_eq!(db.metrics_summary("ai.audit").unwrap().get("exposure").copied().unwrap_or(0), 0);
+        assert_eq!(
+            db.metrics_summary("ai.audit")
+                .unwrap()
+                .get("exposure")
+                .copied()
+                .unwrap_or(0),
+            0
+        );
     }
 
     #[test]
