@@ -222,6 +222,10 @@ enum Commands {
     #[command(subcommand)]
     AiRecommend(commands::ai_recommend::AiRecommendCommands),
 
+    /// AI contract function suggestions (context-aware function suggestions based on contract type)
+    #[command(subcommand)]
+    AiContractSuggest(commands::ai_contract_suggest::AiContractSuggestCommands),
+
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
     Schedule(commands::schedule::ScheduleCommands),
@@ -340,6 +344,7 @@ async fn main() {
         Commands::AiFeedback(_) => "ai-feedback",
         Commands::AiSearch(_) => "ai-search",
         Commands::AiRecommend(_) => "ai-recommend",
+        Commands::AiContractSuggest(_) => "ai-contract-suggest",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -417,6 +422,7 @@ async fn main() {
         Commands::AiFeedback(cmd) => commands::ai_feedback::handle(cmd).await,
         Commands::AiSearch(cmd) => commands::ai_search::handle(cmd).await,
         Commands::AiRecommend(cmd) => commands::ai_recommend::handle(cmd).await,
+        Commands::AiContractSuggest(cmd) => commands::ai_contract_suggest::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,

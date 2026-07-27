@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod ai_audit;
 pub mod ai_chat;
+pub mod ai_contract_suggest;
 pub mod ai_debug;
 pub mod ai_error;
 pub mod ai_feedback;
