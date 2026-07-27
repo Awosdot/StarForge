@@ -154,6 +154,30 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
+    /// Get AI-powered template recommendations based on your project requirements
+    Recommend {
+        /// Free-form description of what you want to build (e.g. "decentralized exchange")
+        #[arg(default_value = "")]
+        query: String,
+        /// Filter by tags (comma-separated, e.g. "defi,amm")
+        #[arg(long)]
+        tags: Option<String>,
+        /// Your skill level: beginner, intermediate, or advanced
+        #[arg(long)]
+        skill: Option<String>,
+        /// Maximum number of recommendations to show (default 5)
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+        /// Show detailed scoring breakdown for each recommendation
+        #[arg(long)]
+        explain: bool,
+        /// Ignore past usage history when ranking recommendations
+        #[arg(long)]
+        no_personalise: bool,
+        /// Ignore community popularity when ranking recommendations
+        #[arg(long)]
+        no_community: bool,
+    },
 }
 
 pub async fn handle(cmd: TemplateCommands) -> Result<()> {
@@ -232,6 +256,26 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
+        TemplateCommands::Recommend {
+            query,
+            tags,
+            skill,
+            limit,
+            explain,
+            no_personalise,
+            no_community,
+        } => {
+            crate::commands::recommend::handle(
+                query,
+                tags,
+                skill,
+                limit,
+                explain,
+                no_personalise,
+                no_community,
+            )
+            .await
+        }
     }
 }
 
@@ -723,6 +767,8 @@ async fn install(
     if let Some(ref path) = entry.path {
         p::kv("Local path", path);
     }
+    // Record this install for community-learning / personalisation.
+    let _ = crate::utils::template_recommender::record_usage(&entry.name, "install");
     p::info(&format!(
         "Use it with: starforge template info {}",
         entry.name

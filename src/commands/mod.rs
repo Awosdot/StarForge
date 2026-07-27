@@ -43,7 +43,7 @@ pub mod perf;
 pub mod pipeline_builder;
 pub mod plugin;
 pub mod privacy;
-pub mod project;
+pub mod recommend;
 pub mod registry;
 pub mod refactor;
 pub mod schedule;
