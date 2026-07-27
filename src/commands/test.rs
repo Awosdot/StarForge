@@ -1,6 +1,6 @@
 use crate::utils::{
     config, contract_testing, print as p, rollback_testing, test_automation, test_coverage,
-    test_optimizer, test_runner,
+    test_generator, test_runner,
 };
 use anyhow::Result;
 use clap::Args;

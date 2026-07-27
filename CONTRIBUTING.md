@@ -12,6 +12,7 @@ Welcome to StarForge! This guide will help you get started contributing to the p
 - [Development Workflow](#development-workflow)
 - [Code Quality](#code-quality)
 - [Submitting a Pull Request](#submitting-a-pull-request)
+- [Contributing to AI Features](#contributing-to-ai-features)
 - [Common Issues & Troubleshooting](#common-issues--troubleshooting)
 - [Questions & Support](#questions--support)
 
@@ -430,6 +431,20 @@ When opening a PR, fill out the template with:
 - **Reference issues**: Use `closes #XXX` to automatically link issues
 - **Test thoroughly**: Include test cases for both happy path and edge cases
 - **Update docs**: If your changes affect user-facing behavior, update docs
+
+---
+
+## Contributing to AI Features
+
+StarForge integrates AI features for smart contract generation and automated documentation. When contributing to these features:
+
+### Guidelines
+1. **Mock External Calls in Tests**: Ensure all unit and integration tests do not query live OpenAI or Anthropic endpoints. Use mocked endpoints or verify inputs/outputs via local unit tests.
+2. **Prompts Verification**: If you modify the prompt configurations in `src/utils/ollama.rs` or `src/commands/generate.rs`, verify that the system context still enforces strictly compilable Soroban Rust code and adheres to `#![no_std]`.
+3. **Structured Response Formats**: When building tools that parse LLM output programmatically, enforce JSON output structures using formatting schemas or system templates rather than trusting loose markdown responses.
+4. **Local-First Precedence**: Keep local Ollama support up-to-date. Ensure fallback warnings correctly instruct developers on how to pull and serve local models.
+
+For more information, see [ARCHITECTURE_AI.md](ARCHITECTURE_AI.md), [AI_INTEGRATION_GUIDE.md](AI_INTEGRATION_GUIDE.md), and [AI_PROMPT_GUIDE.md](AI_PROMPT_GUIDE.md).
 
 ---
 

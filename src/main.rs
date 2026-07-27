@@ -9,9 +9,10 @@
     clippy::needless_borrow
 )]
 
-pub use starforge::commands;
-pub use starforge::plugins;
-pub use starforge::utils;
+mod commands;
+pub mod curation;
+pub mod plugins;
+mod utils;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -46,20 +47,28 @@ enum Commands {
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
 
+    /// Local LLM assistant for Soroban contracts (audit, explain, test, optimise, profile)
+    #[command(subcommand)]
+    Ai(commands::ai::AiCommands),
+
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
-    /// Generate contract scaffolding, bindings, and docs
-    #[command(subcommand)]
-    Generate(commands::generate::GenerateCommands),
-    /// AI-assisted code completion (suggestions, boilerplate, stubs, imports)
-    #[command(subcommand)]
-    Complete(commands::complete::CompleteCommands),
+    /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
+    /// Generate smart contracts from natural language prompts
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+    /// Smart contract completion assistant
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+    /// External plugins
+    #[command(external_subcommand)]
+    External(Vec<String>),
     /// Debug Soroban contracts with breakpoints, stepping, and inspection
     #[command(subcommand)]
     Debug(commands::debug::DebugCommands),
@@ -77,7 +86,7 @@ enum Commands {
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
 
-    /// Manage telemetry collection
+    /// Manage telemetry settings directly
     #[command(subcommand)]
     Telemetry(commands::telemetry::TelemetryCommands),
 
@@ -189,9 +198,9 @@ enum Commands {
     /// AI-powered security audit for Soroban contracts using Claude
     AiAudit(commands::ai_audit::AiAuditArgs),
 
-    /// AI-driven code refactoring and improvement
+    /// AI-driven testing assistance (generate, optimize, analyze, maintain tests)
     #[command(subcommand)]
-    Ai(commands::refactor::RefactorCommands),
+    AiTest(commands::ai_test::AiTestCommands),
 
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
@@ -241,18 +250,6 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
-
-    /// Generate a Soroban smart contract from a natural language prompt (OpenAI)
-    #[command(subcommand)]
-    Generate(commands::generate::GenerateCommands),
-
-    /// AI Contract Completion Assistant (offline code completion, boilerplate, stubs)
-    #[command(subcommand)]
-    Complete(commands::complete::CompleteCommands),
-
-    /// Run an installed external plugin by name
-    #[command(external_subcommand)]
-    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -272,6 +269,7 @@ async fn main() {
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
+        Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
@@ -302,7 +300,7 @@ async fn main() {
         Commands::Privacy(_) => "privacy",
         Commands::Project(_) => "project",
         Commands::Template(_) => "template",
-        Commands::Registry(_) => "registry",
+        Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -310,7 +308,7 @@ async fn main() {
         Commands::Security(_) => "security",
         Commands::Audit(_) => "audit",
         Commands::AiAudit(_) => "ai-audit",
-        Commands::Ai(_) => "ai",
+        Commands::AiTest(_) => "ai-test",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -323,8 +321,6 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
-        Commands::Generate(_) => "generate",
-        Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
     }
     .to_string();
@@ -332,6 +328,7 @@ async fn main() {
     let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
+        Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
@@ -370,10 +367,8 @@ async fn main() {
         Commands::Benchmark(args) => commands::benchmark::handle(args).await,
         Commands::Test(args) => commands::test::handle(args).await,
         Commands::Gas(args) => commands::gas::handle(args).await,
-        Commands::Cost(args) => commands::cost::handle(args).await,
         Commands::Plugin(args) => commands::plugin::handle(args).await,
         Commands::Privacy(cmd) => commands::privacy::handle(cmd).await,
-        Commands::Project(cmd) => commands::project::handle(cmd).await,
         Commands::Template(args) => commands::template::handle(args).await,
         Commands::Registry(cmd) => commands::registry::handle(cmd).await,
         Commands::Upgrade(cmd) => commands::upgrade::handle(cmd).await,
@@ -383,7 +378,7 @@ async fn main() {
         Commands::Security(cmd) => commands::security::handle(cmd).await,
         Commands::Audit(args) => commands::audit::handle(args).await,
         Commands::AiAudit(args) => commands::ai_audit::handle(args).await,
-        Commands::Ai(cmd) => commands::refactor::handle(cmd).await,
+        Commands::AiTest(cmd) => commands::ai_test::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
@@ -395,9 +390,7 @@ async fn main() {
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
-        Commands::FeatureFlags(args) => commands::feature_flags_cmd::handle(args).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
-        Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();
@@ -434,6 +427,10 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             } else if msg.contains("model") || msg.contains("not found") {
                 hints.push("List available models: starforge ai models".into());
                 hints.push("Download a model: starforge ai pull codellama:7b".into());
+            } else if msg.contains("wasm") || msg.contains("profile") {
+                hints.push("Build your contract first: stellar contract build".into());
+                hints.push("Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into());
+                hints.push("Save a baseline first: starforge ai profile <wasm> --output baseline.json".into());
             }
         }
         "wallet" => {
@@ -549,9 +546,23 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             hints.push("Explain a specific category: starforge ai-debug explain auth".into());
             hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
         }
-        "benchmark" | "test" if (msg.contains("wasm") || msg.contains("not found")) => {
-            hints.push("Build your contract first: stellar contract build".into());
-            hints.push("Pass the correct --wasm path to the command.".into());
+        "ai-test" => {
+            if msg.contains("not found") || msg.contains("no such file") {
+                hints.push("Ensure the source file exists: ls src/lib.rs".into());
+                hints.push("Build your contract first: stellar contract build".into());
+            } else if msg.contains("ollama") || msg.contains("not running") {
+                hints.push("Install Ollama: https://ollama.ai/download".into());
+                hints.push("Start Ollama: ollama serve".into());
+                hints.push("Or run without --use-ai for local generation".into());
+            } else if msg.contains("coverage") {
+                hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
+            }
+        }
+        "benchmark" | "test" => {
+            if msg.contains("wasm") || msg.contains("not found") {
+                hints.push("Build your contract first: stellar contract build".into());
+                hints.push("Pass the correct --wasm path to the command.".into());
+            }
         }
         _ => {}
     }

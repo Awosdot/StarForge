@@ -179,8 +179,8 @@ impl NetworkSimulator {
     /// Create a simulator with a custom configuration.
     pub fn with_config(config: SimulatorConfig) -> Self {
         let seed = config.deterministic.seed;
-        let enable_failure_injection = config.enable_failure_injection;
         let initial_accounts = config.initial_accounts.clone();
+        let enable_failure_injection = config.enable_failure_injection;
         let mut sim = Self {
             ledger: LedgerInfo {
                 sequence: config.initial_ledger_sequence,

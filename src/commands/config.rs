@@ -1,4 +1,4 @@
-use crate::utils::{config, database, print as p};
+use crate::utils::{config, print as p};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
@@ -6,16 +6,13 @@ use clap::{Args, Subcommand};
 pub enum ConfigCommands {
     /// Show current global configuration
     Show,
-    /// Set a scalar configuration value
+    /// Set a configuration key/value pair
     Set {
-        /// Configuration key, e.g. telemetry.enabled or network
+        /// Configuration key to update (e.g. telemetry.enabled)
         key: String,
-        /// New value
+        /// New value for the configuration key
         value: String,
     },
-    /// Manage trusted plugin source allowlist
-    #[command(subcommand)]
-    PluginTrust(PluginTrustCommands),
     /// Set global wallet encryption parameters (Argon2id)
     SetEncryption {
         /// Argon2 memory cost in KiB (e.g. 65536)
@@ -92,8 +89,7 @@ pub enum PluginTrustCommands {
 pub async fn handle(cmd: ConfigCommands) -> Result<()> {
     match cmd {
         ConfigCommands::Show => show(),
-        ConfigCommands::Set { key, value } => set_value(&key, &value),
-        ConfigCommands::PluginTrust(cmd) => plugin_trust(cmd),
+        ConfigCommands::Set { key, value } => set(&key, &value),
         ConfigCommands::SetEncryption {
             mem,
             iterations,
@@ -301,19 +297,17 @@ fn show() -> Result<()> {
     );
     p::kv("Active network", &cfg.network);
     p::kv(
-        "telemetry.enabled",
-        &cfg.telemetry_enabled.unwrap_or(false).to_string(),
+        "Telemetry",
+        if cfg.telemetry_enabled.unwrap_or(true) {
+            "enabled"
+        } else {
+            "disabled"
+        },
     );
-
-    println!();
-    p::header("Plugin Trust");
-    if cfg.plugin_trust.trusted_sources.is_empty() {
-        p::warn("No trusted remote plugin sources configured.");
-    } else {
-        for source in &cfg.plugin_trust.trusted_sources {
-            p::kv("trusted source", source);
-        }
-    }
+    p::kv(
+        "telemetry.enabled",
+        &cfg.telemetry_enabled.unwrap_or(true).to_string(),
+    );
 
     println!();
     p::header("Wallet Encryption (Argon2id)");
@@ -452,4 +446,28 @@ fn set_encryption(
     p::success("Global wallet encryption parameters updated.");
     show()?;
     Ok(())
+}
+
+fn set(key: &str, value: &str) -> Result<()> {
+    let mut cfg = config::load()?;
+
+    let normalized = key.to_lowercase();
+    let enabled = match value.to_lowercase().as_str() {
+        "true" | "1" | "on" | "yes" => true,
+        "false" | "0" | "off" | "no" => false,
+        _ => anyhow::bail!("Invalid boolean value '{}'. Use true or false.", value),
+    };
+
+    match normalized.as_str() {
+        "telemetry" | "telemetry.enabled" => {
+            cfg.telemetry_enabled = Some(enabled);
+            config::save(&cfg)?;
+            p::success(&format!("'{}' set to '{}'.", key, enabled));
+            Ok(())
+        }
+        _ => anyhow::bail!(
+            "Unsupported config key '{}'. Supported keys: telemetry.enabled",
+            key
+        ),
+    }
 }

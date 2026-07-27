@@ -20,7 +20,7 @@
 //! audited or reversed later, mirroring the `upgrade` command's proposal
 //! history model.
 
-use crate::utils::{config, print as p};
+use crate::utils::{config, print as p, state_diff};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Args, Subcommand};
@@ -50,6 +50,8 @@ pub enum MigrateCommands {
     History(HistoryArgs),
     /// Print a migration usage guide
     Docs(DocsArgs),
+    /// Diff two state snapshots to show what changed between versions
+    Diff(DiffArgs),
 }
 
 #[derive(Args)]
@@ -130,6 +132,31 @@ pub struct HistoryArgs {
 #[derive(Args)]
 pub struct DocsArgs {
     /// Optional path to write the documentation to (prints to stdout otherwise)
+    #[arg(long)]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct DiffArgs {
+    /// Path to the first (older) state snapshot (JSON)
+    #[arg(long)]
+    pub before: PathBuf,
+    /// Path to the second (newer) state snapshot (JSON)
+    #[arg(long)]
+    pub after: PathBuf,
+    /// Output format: console (default), json
+    #[arg(long, default_value = "console")]
+    pub format: String,
+    /// Version label for the before snapshot
+    #[arg(long, default_value = "v1")]
+    pub from_version: String,
+    /// Version label for the after snapshot
+    #[arg(long, default_value = "v2")]
+    pub to_version: String,
+    /// Generate migration rules from the diff and save to file
+    #[arg(long)]
+    pub generate_rules: Option<PathBuf>,
+    /// Save diff report to file
     #[arg(long)]
     pub output: Option<PathBuf>,
 }
@@ -515,6 +542,7 @@ pub fn handle(cmd: MigrateCommands) -> Result<()> {
         MigrateCommands::Rollback(args) => handle_rollback(args),
         MigrateCommands::History(args) => handle_history(args),
         MigrateCommands::Docs(args) => handle_docs(args),
+        MigrateCommands::Diff(args) => handle_diff(args),
     }
 }
 
@@ -918,6 +946,101 @@ fn handle_docs(args: DocsArgs) -> Result<()> {
         }
         None => println!("{}", docs),
     }
+    Ok(())
+}
+
+fn handle_diff(args: DiffArgs) -> Result<()> {
+    p::header("Contract State Diff");
+
+    let before_snapshot = load_snapshot(&args.before)?;
+    let after_snapshot = load_snapshot(&args.after)?;
+
+    p::kv("Before", &args.before.display().to_string());
+    p::kv("After", &args.after.display().to_string());
+    p::kv("Keys before", &before_snapshot.entries.len().to_string());
+    p::kv("Keys after", &after_snapshot.entries.len().to_string());
+    p::separator();
+
+    let report = state_diff::diff_snapshots(
+        &before_snapshot.entries,
+        &after_snapshot.entries,
+        Some(args.from_version.clone()),
+        Some(args.to_version.clone()),
+    );
+
+    match args.format.as_str() {
+        "json" => {
+            let json_out = serde_json::to_string_pretty(&report)?;
+            if let Some(ref out_path) = args.output {
+                fs::write(out_path, &json_out)?;
+                p::success(&format!("Diff report saved to {}", out_path.display()));
+            } else {
+                println!("{}", json_out);
+            }
+        }
+        _ => {
+            let console_out = state_diff::render_diff_console(&report);
+            if let Some(ref out_path) = args.output {
+                fs::write(out_path, &console_out)?;
+                p::success(&format!("Diff report saved to {}", out_path.display()));
+            } else {
+                println!("{}", console_out);
+            }
+        }
+    }
+
+    println!();
+    p::header("Diff Summary");
+    p::kv("Added", &format!("+{}", report.summary.count_added));
+    p::kv("Removed", &format!("-{}", report.summary.count_removed));
+    p::kv("Modified", &format!("~{}", report.summary.count_modified));
+    p::kv(
+        "Type changes",
+        &report.summary.count_type_changed.to_string(),
+    );
+    p::kv("Unchanged", &report.summary.count_unchanged.to_string());
+    p::kv("Total changes", &report.summary.total_changes.to_string());
+
+    if let Some(ref rules_path) = args.generate_rules {
+        let diff_rules = state_diff::generate_migration_rules_from_diff(&report);
+        let ops: Vec<TransformOp> = diff_rules
+            .iter()
+            .map(|r| match r.op.as_str() {
+                "remove_field" => TransformOp::RemoveField { key: r.key.clone() },
+                "add_field" => TransformOp::AddField {
+                    key: r.key.clone(),
+                    default: r.default_value.clone().unwrap_or(Value::Null),
+                },
+                "cast_type" => TransformOp::CastType {
+                    key: r.key.clone(),
+                    to_type: r
+                        .target_type
+                        .clone()
+                        .unwrap_or_else(|| "string".to_string()),
+                },
+                _ => TransformOp::RemoveField { key: r.key.clone() },
+            })
+            .collect();
+        let migration_rules = MigrationRules {
+            from_version: args.from_version.clone(),
+            to_version: args.to_version.clone(),
+            ops,
+            required_keys: after_snapshot.entries.keys().cloned().collect(),
+            forbidden_keys: report.removed.iter().map(|e| e.key.clone()).collect(),
+        };
+        fs::write(rules_path, serde_json::to_string_pretty(&migration_rules)?)?;
+        println!();
+        p::success(&format!(
+            "Migration rules generated from diff at {}",
+            rules_path.display()
+        ));
+        p::info(&format!(
+            "Test with: starforge migrate test --sample {} --rules {}",
+            args.before.display(),
+            rules_path.display()
+        ));
+    }
+
     Ok(())
 }
 

@@ -344,12 +344,11 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
         }
 
         // Suggest soroban_sdk::Vec instead of std::vec::Vec
-        if trimmed.contains("Vec<")
-            && !trimmed.starts_with("//")
-            && (trimmed.contains("std::vec")
-                || (trimmed.contains("Vec<") && trimmed.contains("use std")))
-        {
-            suggestions.push(TransformSuggestion {
+        if trimmed.contains("Vec<") && !trimmed.starts_with("//") {
+            if trimmed.contains("std::vec")
+                || (trimmed.contains("Vec<") && trimmed.contains("use std"))
+            {
+                suggestions.push(TransformSuggestion {
                     file: file.to_string(),
                     line: line_no,
                     original: line.to_string(),

@@ -475,12 +475,12 @@ pub fn reject_proposal(
 
 pub fn get_proposal(proposal_id: &str, network: &str) -> Result<GovernanceProposal> {
     let mut proposals = load_proposals()?;
-    let idx = proposals
+    let index = proposals
         .iter()
         .position(|p| p.id == proposal_id && p.network == network)
         .ok_or_else(|| anyhow::anyhow!("Proposal '{}' not found on {}", proposal_id, network))?;
-    refresh_timelock_status(&mut proposals[idx]);
-    let updated = proposals[idx].clone();
+    refresh_timelock_status(&mut proposals[index]);
+    let updated = proposals[index].clone();
     save_proposals(&proposals)?;
     Ok(updated)
 }
