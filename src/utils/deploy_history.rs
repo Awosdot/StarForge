@@ -38,6 +38,8 @@ pub struct DeployRecord {
     pub previous_id: Option<String>,
     pub approved_by: Option<String>,
     pub verification_passed: bool,
+    pub duration_ms: Option<u64>,
+    pub fee_stroops: Option<u64>,
 }
 
 impl DeployRecord {
@@ -61,6 +63,8 @@ impl DeployRecord {
             previous_id,
             approved_by: None,
             verification_passed: false,
+            duration_ms: None,
+            fee_stroops: None,
         }
     }
 
@@ -84,6 +88,8 @@ impl DeployRecord {
             previous_id: Some(target.id.clone()),
             approved_by: None,
             verification_passed: target.verification_passed,
+            duration_ms: None,
+            fee_stroops: None,
         }
     }
 }
@@ -140,6 +146,22 @@ pub fn set_verified(id: &str, passed: bool) -> Result<()> {
     let mut history = load_history()?;
     if let Some(rec) = history.iter_mut().find(|r| r.id == id) {
         rec.verification_passed = passed;
+    }
+    save_history(&history)
+}
+
+pub fn set_duration(id: &str, duration_ms: u64) -> Result<()> {
+    let mut history = load_history()?;
+    if let Some(rec) = history.iter_mut().find(|r| r.id == id) {
+        rec.duration_ms = Some(duration_ms);
+    }
+    save_history(&history)
+}
+
+pub fn set_fee(id: &str, fee_stroops: u64) -> Result<()> {
+    let mut history = load_history()?;
+    if let Some(rec) = history.iter_mut().find(|r| r.id == id) {
+        rec.fee_stroops = Some(fee_stroops);
     }
     save_history(&history)
 }
