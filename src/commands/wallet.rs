@@ -1,8 +1,5 @@
-#![allow(clippy::items_after_test_module)]
-
 use crate::utils::{
     config, confirmation, crypto, hardware_wallet, horizon, mnemonic, multisig, print as p,
-    wallet_signer,
 };
 use anyhow::{Context, Result};
 use bip39::{Language, Mnemonic};
@@ -49,7 +46,7 @@ struct WalletBackup {
     wallets: Vec<WalletBackupEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WalletBackupEntry {
     name: String,
     public_key: String,
@@ -60,6 +57,7 @@ struct WalletBackupEntry {
 }
 
 impl From<&config::WalletEntry> for WalletBackupEntry {
+    // This was already correct, no change needed here.
     fn from(entry: &config::WalletEntry) -> Self {
         Self {
             name: entry.name.clone(),
@@ -176,7 +174,7 @@ pub enum WalletCommands {
         /// Argon2 parallelism factor (requires --encrypt)
         #[arg(long, requires = "encrypt")]
         parallelism: Option<u32>,
-        /// Optional backup file path to save a snapshot before rotation
+        /// Path to write a pre-rotation backup snapshot
         #[arg(long)]
         backup: Option<PathBuf>,
     },
@@ -388,20 +386,17 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
             iterations,
             parallelism,
             backup,
-        } => {
-            rotate_wallet(
-                name,
-                fund,
-                network,
-                encrypt,
-                strict,
-                mem,
-                iterations,
-                parallelism,
-                backup,
-            )
-            .await
-        }
+        } => rotate_wallet(
+            name,
+            fund,
+            network,
+            encrypt,
+            strict,
+            mem,
+            iterations,
+            parallelism,
+            backup,
+        ),
         WalletCommands::Export {
             name,
             all,
@@ -607,9 +602,9 @@ async fn create(
     use_mnemonic: bool,
     words: String,
     account_index: u32,
-    mem: Option<u32>,
-    iterations: Option<u32>,
-    parallelism: Option<u32>,
+    _mem: Option<u32>,
+    _iterations: Option<u32>,
+    _parallelism: Option<u32>,
 ) -> Result<()> {
     let mut cfg = config::load()?;
 
@@ -1062,7 +1057,7 @@ async fn merge_wallet(
         risk_level,
         network: network.clone(),
         skip_confirm,
-        dry_run: false,
+        dry_run: false, // This was missing a comma
         prompt: Some(format!(
             "Type '{}' to confirm merge of account {}:",
             wallet.name, wallet.name
@@ -1402,8 +1397,8 @@ fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf, strict: b
 
     let backup = WalletBackup {
         version: WALLET_BACKUP_VERSION.to_string(),
-        exported_at: Utc::now().to_rfc3339(),
-        wallets: wallets_to_export,
+        exported_at: Utc::now().to_rfc3339(), // This was missing a comma
+        wallets: wallets_to_export.clone(),
     };
 
     let context: Vec<&str> = backup

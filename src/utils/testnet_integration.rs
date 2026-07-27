@@ -201,6 +201,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
     });
 
     let url = url.to_string();
+    let body_string = body.to_string();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let result = (|| {

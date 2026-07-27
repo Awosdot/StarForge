@@ -568,6 +568,7 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
             ));
         }
 
+
         // Detect max-value boundary conditions
         if value.contains("170141183460469231731687303715884105727")
             || value.contains("i128::MAX")

@@ -323,7 +323,7 @@ pub fn suggest(source: &str) -> Vec<Completion> {
     }
 
     // Rank by confidence (stable, highest first).
-    out.sort_by_key(|b| std::cmp::Reverse(b.confidence));
+    out.sort_by_key(|item| std::cmp::Reverse(item.confidence));
     out
 }
 
@@ -876,6 +876,7 @@ fn external_call_snippet() -> String {
 /// Return the default return expression for a return type `ret`.
 fn default_return_expr(ret: &str, has_env: bool) -> String {
     let r = ret.trim();
+
     if r.starts_with("Option<") {
         "None".to_string()
     } else if r.starts_with("Result<") {

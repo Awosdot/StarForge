@@ -418,6 +418,7 @@ mod tests {
             FailureMode::RpcTimeout,
             FailureMode::RpcConnectionRefused,
             FailureMode::RpcError { code: -123 },
+            FailureMode::RpcError { code: -32099 },
             FailureMode::InsufficientFee,
             FailureMode::BadAuth,
             FailureMode::ContractPanic,

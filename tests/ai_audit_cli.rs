@@ -4,7 +4,7 @@
 //! and output formatting.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
 /// Mirror of the AiAuditArgs struct for test-only usage.

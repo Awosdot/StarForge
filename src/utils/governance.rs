@@ -475,12 +475,12 @@ pub fn reject_proposal(
 
 pub fn get_proposal(proposal_id: &str, network: &str) -> Result<GovernanceProposal> {
     let mut proposals = load_proposals()?;
-    let proposal = proposals
-        .iter_mut()
-        .find(|p| p.id == proposal_id && p.network == network)
+    let index = proposals
+        .iter()
+        .position(|p| p.id == proposal_id && p.network == network)
         .ok_or_else(|| anyhow::anyhow!("Proposal '{}' not found on {}", proposal_id, network))?;
-    refresh_timelock_status(proposal);
-    let updated = proposal.clone();
+    refresh_timelock_status(&mut proposals[index]);
+    let updated = proposals[index].clone();
     save_proposals(&proposals)?;
     Ok(updated)
 }
@@ -698,6 +698,7 @@ mod tests {
     }
 
     fn with_isolated_governance<F: FnOnce()>(f: F) {
+        let _home_guard = crate::utils::lock_home_env();
         let _guard = TEST_MUTEX.get_or_init(|| Mutex::new(())).lock().unwrap();
         let home = test_home();
         env::set_var("HOME", home.path());

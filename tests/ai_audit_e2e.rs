@@ -179,7 +179,7 @@ fn test_detects_privacy_leak_in_sample() {
         "Should detect privacy leak in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("sensitive")),
+        findings.iter().any(|f| f.pattern_name == "privacy_leak"),
         "Should identify sensitive data storage"
     );
 }

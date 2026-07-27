@@ -21,6 +21,8 @@ pub enum ContractCommands {
     CallGraph(CallGraphArgs),
     /// Manage contract dependencies
     Deps(DepsArgs),
+    /// Track contract versions, resolve conflicts, and manage migrations
+    Version(VersionArgs),
 }
 
 #[derive(Args)]
@@ -74,6 +76,91 @@ pub struct DepsGraphArgs {
     /// Format: ascii or dot
     #[arg(long, default_value = "ascii")]
     pub format: String,
+}
+
+#[derive(Args)]
+pub struct VersionArgs {
+    #[command(subcommand)]
+    pub cmd: VersionCommands,
+}
+
+#[derive(Subcommand)]
+pub enum VersionCommands {
+    /// Initialize contract-versions.toml
+    Init(VersionInitArgs),
+    /// Record an explicit semantic version
+    Tag(VersionTagArgs),
+    /// Bump the current version (major, minor, patch, or prerelease)
+    Bump(VersionBumpArgs),
+    /// List tracked versions
+    List,
+    /// Show details for a specific version
+    Show(VersionShowArgs),
+    /// Mark a version as yanked (deprecated, should not be depended on)
+    Yank(VersionShowArgs),
+    /// Detect version conflicts across the dependency graph
+    Conflicts,
+    /// Show a compatibility matrix for a dependency's tracked versions
+    Matrix(VersionMatrixArgs),
+    /// Resolve the migration chain needed to go from one version to another
+    MigrationPath(MigrationPathArgs),
+}
+
+#[derive(Args)]
+pub struct VersionInitArgs {
+    /// Name of the contract being versioned
+    #[arg(long)]
+    pub name: String,
+}
+
+#[derive(Args)]
+pub struct VersionTagArgs {
+    /// Semantic version to record (e.g. 1.2.0)
+    pub version: String,
+    /// Optional release notes
+    #[arg(long)]
+    pub notes: Option<String>,
+    /// Optional wasm hash to associate with this version
+    #[arg(long)]
+    pub wasm_hash: Option<String>,
+    /// Allow tagging a version that is not greater than the current highest
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
+}
+
+#[derive(Args)]
+pub struct VersionBumpArgs {
+    /// Which part to bump
+    #[arg(value_parser = ["major", "minor", "patch", "prerelease"])]
+    pub part: String,
+    /// Optional release notes
+    #[arg(long)]
+    pub notes: Option<String>,
+}
+
+#[derive(Args)]
+pub struct VersionShowArgs {
+    /// Version to show or yank
+    pub version: String,
+}
+
+#[derive(Args)]
+pub struct VersionMatrixArgs {
+    /// Name of the dependency to build a compatibility matrix for
+    pub dependency: String,
+}
+
+#[derive(Args)]
+pub struct MigrationPathArgs {
+    /// Directory containing migration rule files (from `starforge migrate init`)
+    #[arg(long, default_value = "migrations")]
+    pub dir: PathBuf,
+    /// Version to migrate from
+    #[arg(long)]
+    pub from: String,
+    /// Version to migrate to
+    #[arg(long)]
+    pub to: String,
 }
 
 #[derive(Args)]
@@ -188,6 +275,7 @@ pub async fn handle(cmd: ContractCommands) -> Result<()> {
         ContractCommands::GenerateBindings(args) => handle_generate_bindings(args),
         ContractCommands::CallGraph(args) => handle_call_graph(args),
         ContractCommands::Deps(args) => handle_deps(args),
+        ContractCommands::Version(args) => handle_version(args),
     }
 }
 

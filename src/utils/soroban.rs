@@ -942,31 +942,33 @@ mod tests {
         assert!(!err.to_string().is_empty());
     }
 
-    #[test]
-    fn check_soroban_rpc_url_reports_healthy_endpoint() {
-        let mut server = mockito::Server::new();
+    // `mockito::Server::new` blocks on its own runtime internally, so these use
+    // the async constructor to avoid nesting one runtime inside another.
+    #[tokio::test]
+    async fn check_soroban_rpc_url_reports_healthy_endpoint() {
+        let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("POST", "/")
             .with_status(200)
-            .with_body(r#"{"jsonrpc":"2.0","id":1,"result":{"healthy":true}}"#)
-            .create();
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"jsonrpc":"2.0","id":1,"result":{"status":"healthy"}}"#)
+            .create_async()
+            .await;
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            assert!(check_soroban_rpc_url(&server.url()).await);
-        });
-        mock.assert();
+        assert!(check_soroban_rpc_url(&server.url()).await);
+        mock.assert_async().await;
     }
 
-    #[test]
-    fn check_soroban_rpc_url_rejects_error_response() {
-        let mut server = mockito::Server::new();
-        let mock = server.mock("POST", "/").with_status(500).create();
+    #[tokio::test]
+    async fn check_soroban_rpc_url_rejects_error_response() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/")
+            .with_status(500)
+            .create_async()
+            .await;
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            assert!(!check_soroban_rpc_url(&server.url()).await);
-        });
-        mock.assert();
+        assert!(!check_soroban_rpc_url(&server.url()).await);
+        mock.assert_async().await;
     }
 }

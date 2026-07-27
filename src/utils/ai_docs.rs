@@ -121,6 +121,7 @@ pub fn generate_from_extracted(
         source_text,
         &options.name,
         &options.network,
+        &options.version,
         &description,
         &storage,
         &options.languages,
@@ -281,6 +282,7 @@ fn build_sections(
     source_text: &str,
     name: &str,
     network: &str,
+    version: &str,
     description: &str,
     storage: &[StorageDoc],
     languages: &[DocLanguage],
@@ -318,15 +320,21 @@ fn build_sections(
     });
 
     sections.push(DocSection {
+        title: "Configuration Reference".to_string(),
+        content: document_configuration(extracted, network, version),
+        order: 4,
+    });
+
+    sections.push(DocSection {
         title: "Security Considerations".to_string(),
         content: analyze_security(source_text, extracted),
-        order: 4,
+        order: 5,
     });
 
     sections.push(DocSection {
         title: "Usage Guides".to_string(),
         content: build_usage_guides(extracted, languages),
-        order: 5,
+        order: 6,
     });
 
     sections.push(DocSection {
@@ -337,10 +345,106 @@ fn build_sections(
              3. Call public entrypoints via `starforge contract invoke` or generated bindings.\n\
              4. Keep rustdoc comments (`///`, `//!`) in sync — re-run `starforge docs generate --source` after API changes."
         ),
-        order: 6,
+        order: 7,
+    });
+
+    sections.push(DocSection {
+        title: "Troubleshooting".to_string(),
+        content: build_troubleshooting(source_text, extracted, storage),
+        order: 8,
     });
 
     sections
+}
+
+/// Documents contract-level constants, the target network/version, and any
+/// environment configuration a deployer needs to know about.
+fn document_configuration(extracted: &ExtractedDocs, network: &str, version: &str) -> String {
+    let mut out = format!(
+        "| Setting | Value |\n|---|---|\n| Network | `{}` |\n| Version | `{}` |\n",
+        network, version
+    );
+
+    if extracted.constants.is_empty() {
+        out.push_str(
+            "\nNo module-level constants were found in source. Configuration is driven \
+             entirely by constructor/`initialize` arguments at deploy time.\n",
+        );
+    } else {
+        out.push_str("\n### Constants\n\n| Name | Type | Value | Description |\n|---|---|---|---|\n");
+        for c in &extracted.constants {
+            out.push_str(&format!(
+                "| `{}` | `{}` | `{}` | {} |\n",
+                c.name,
+                c.ty,
+                c.value,
+                first_paragraph(&c.doc_comment)
+            ));
+        }
+    }
+
+    out
+}
+
+/// Heuristic troubleshooting guide covering the most common failure modes
+/// for the detected contract shape (auth, storage, arithmetic).
+fn build_troubleshooting(source: &str, extracted: &ExtractedDocs, storage: &[StorageDoc]) -> String {
+    let mut tips: Vec<String> = Vec::new();
+
+    if source.contains("require_auth") {
+        tips.push(
+            "**`Error(Auth, InvalidAction)`** — the transaction was not signed by the address \
+             passed to a `require_auth()` call. Make sure the invoking key matches the address \
+             argument exactly."
+                .to_string(),
+        );
+    }
+
+    if !storage.is_empty() {
+        tips.push(
+            "**Reads return `None`/default values** — storage is only populated after the \
+             relevant `initialize`/setter function has been invoked at least once. Confirm \
+             the contract was initialized on the network you're querying."
+                .to_string(),
+        );
+    }
+
+    if source.contains(".unwrap()") || source.contains(".expect(") {
+        tips.push(
+            "**Host panics with a generic `UnreachableCodeReached`/`Error(Contract, #0)`** — \
+             one of the contract's `unwrap()`/`expect()` calls hit an unexpected `None`/`Err`. \
+             Check the preconditions of the function you called (e.g. an account must exist, \
+             a balance must be sufficient)."
+                .to_string(),
+        );
+    }
+
+    if extracted.functions.iter().any(|f| {
+        f.params
+            .iter()
+            .any(|p| p.ty.contains("i128") || p.ty.contains("u32") || p.ty.contains("u64"))
+    }) {
+        tips.push(
+            "**`Error(Contract, #...)` on large amounts** — numeric parameters use fixed-width \
+             integer types; verify inputs stay within range before calling to avoid overflow \
+             panics."
+                .to_string(),
+        );
+    }
+
+    tips.push(
+        "**`HostError: not found`** — the contract ID or network passed to \
+         `starforge contract invoke` doesn't match where the contract was deployed. Re-check \
+         with `starforge deployments list`."
+            .to_string(),
+    );
+    tips.push(
+        "**Build fails on `wasm32v1-none`** — ensure the target is installed with \
+         `rustup target add wasm32v1-none` and that `#![no_std]` is present for on-chain builds."
+            .to_string(),
+    );
+
+    tips.join("\n\n")
 }
 
 fn explain_architecture(extracted: &ExtractedDocs, source: &str, name: &str) -> String {
@@ -1309,8 +1413,10 @@ impl Counter {
         assert!(docs.markdown.contains("# Counter Documentation"));
         assert!(docs.markdown.contains("## Architecture"));
         assert!(docs.markdown.contains("## Storage Layout"));
+        assert!(docs.markdown.contains("## Configuration Reference"));
         assert!(docs.markdown.contains("## Security Considerations"));
         assert!(docs.markdown.contains("## Usage Guides"));
+        assert!(docs.markdown.contains("## Troubleshooting"));
         assert!(docs.markdown.contains("## API Reference"));
         assert!(docs.markdown.contains("increment"));
         assert!(docs.markdown.contains("get_count"));
@@ -1377,5 +1483,42 @@ impl Token {
         let extracted = DocCommentExtractor::extract_from_source(source);
         let notes = analyze_security(source, &extracted);
         assert!(notes.contains("require_auth"));
+    }
+
+    #[test]
+    fn configuration_reference_lists_constants() {
+        let extracted = DocCommentExtractor::extract_from_source(SAMPLE_CONTRACT);
+        let out = document_configuration(&extracted, "testnet", "1.2.3");
+        assert!(out.contains("testnet"));
+        assert!(out.contains("1.2.3"));
+        assert!(out.contains("COUNTER"));
+    }
+
+    #[test]
+    fn configuration_reference_handles_no_constants() {
+        let extracted = DocCommentExtractor::extract_from_source("pub fn noop() {}");
+        let out = document_configuration(&extracted, "testnet", "1.0.0");
+        assert!(out.contains("No module-level constants"));
+    }
+
+    #[test]
+    fn troubleshooting_flags_auth_and_storage() {
+        let extracted = DocCommentExtractor::extract_from_source(SAMPLE_CONTRACT);
+        let storage = vec![StorageDoc {
+            key: "COUNTER".into(),
+            ty: "u32".into(),
+            description: String::new(),
+        }];
+        let tips = build_troubleshooting(SAMPLE_CONTRACT, &extracted, &storage);
+        assert!(tips.contains("Auth, InvalidAction"));
+        assert!(tips.contains("initialize"));
+    }
+
+    #[test]
+    fn troubleshooting_flags_unwrap_panics() {
+        let source = "pub fn f(x: Option<u32>) -> u32 { x.unwrap() }";
+        let extracted = DocCommentExtractor::extract_from_source(source);
+        let tips = build_troubleshooting(source, &extracted, &[]);
+        assert!(tips.to_lowercase().contains("unwrap"));
     }
 }

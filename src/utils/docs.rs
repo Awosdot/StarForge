@@ -269,7 +269,7 @@ pub fn search_documentation(query: &str) -> Result<Vec<SearchResult>> {
         }
     }
 
-    results.sort_by_key(|b| std::cmp::Reverse(b.score));
+    results.sort_by_key(|result| std::cmp::Reverse(result.score));
     Ok(results)
 }
 

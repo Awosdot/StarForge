@@ -3,10 +3,28 @@ use std::time::{Duration, Instant};
 
 #[cfg(feature = "memory-profiling")]
 use std::alloc::{GlobalAlloc, Layout, System};
+#[cfg(feature = "memory-profiling")]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(feature = "memory-profiling")]
+static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "memory-profiling")]
+static DEALLOCATED: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "memory-profiling")]
+static CURRENT: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "memory-profiling")]
+static PEAK: AtomicUsize = AtomicUsize::new(0);
+
+/// Allocation-counting global allocator.
+///
+/// Register it from the binary with `#[global_allocator]` to make
+/// [`Profiler::get_memory_metrics`] report real numbers.
+///
+/// Only atomic counters are updated here, deliberately: allocating a
+/// collection inside `alloc` would re-enter the allocator and recurse.
+#[cfg(feature = "memory-profiling")]
 #[derive(Debug)]
-struct MemoryProfiler;
+pub struct MemoryProfiler;
 
 #[cfg(feature = "memory-profiling")]
 unsafe impl GlobalAlloc for MemoryProfiler {
@@ -16,7 +34,19 @@ unsafe impl GlobalAlloc for MemoryProfiler {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         System.dealloc(ptr, layout);
+
     }
+}
+
+/// Snapshot of the global allocation counters.
+#[cfg(feature = "memory-profiling")]
+fn allocator_snapshot() -> (usize, usize, usize, usize) {
+    (
+        ALLOCATED.load(Ordering::Relaxed),
+        DEALLOCATED.load(Ordering::Relaxed),
+        CURRENT.load(Ordering::Relaxed),
+        PEAK.load(Ordering::Relaxed),
+    )
 }
 
 pub struct Timer {
@@ -74,7 +104,19 @@ struct MemoryTracker {
     start: Instant,
     current_memory: usize,
     peak_memory: usize,
-    samples: Vec<(String, Instant, usize, usize, usize, usize)>,
+    samples: Vec<(String, Duration, usize, usize, usize, usize)>,
+}
+
+#[cfg(feature = "memory-profiling")]
+impl MemoryTracker {
+    /// Records the allocator counters as they stand at `elapsed`.
+    fn record_sample(&mut self, label: String, elapsed: Duration) {
+        let (allocated, deallocated, current, peak) = allocator_snapshot();
+        self.current_memory = current;
+        self.peak_memory = peak;
+        self.samples
+            .push((label, elapsed, allocated, deallocated, current, peak));
+    }
 }
 
 #[cfg(feature = "memory-profiling")]
@@ -107,15 +149,44 @@ impl Profiler {
     }
 
     pub fn mark(&mut self, label: impl Into<String>) {
-        let label_str = label.into();
-        self.marks.push((label_str.clone(), Instant::now()));
+        let label = label.into();
+        let at = Instant::now();
+
         #[cfg(feature = "memory-profiling")]
-        if let Some(tracker) = &mut self.memory_tracker {
-            tracker.record_sample(label_str, self.start.elapsed());
+        {
+            let elapsed = at.duration_since(self.start);
+            if let Some(tracker) = &mut self.memory_tracker {
+                tracker.record_sample(label.clone(), elapsed);
+            }
         }
+
+        self.marks.push((label, at));
     }
 
     pub fn get_memory_metrics(&self) -> MemoryMetrics {
+        #[cfg(feature = "memory-profiling")]
+        if let Some(tracker) = &self.memory_tracker {
+            let (allocated, deallocated, current, peak) = allocator_snapshot();
+            return MemoryMetrics {
+                allocated,
+                deallocated,
+                current,
+                peak,
+                samples: tracker
+                    .samples
+                    .iter()
+                    .map(|(label, timestamp, a, d, c, p)| MemoryPoint {
+                        label: label.clone(),
+                        timestamp: *timestamp,
+                        allocated_bytes: *a,
+                        deallocated_bytes: *d,
+                        current_bytes: *c,
+                        peak_bytes: *p,
+                    })
+                    .collect(),
+            };
+        }
+
         let mut metrics = MemoryMetrics::default();
         for (label, at) in &self.marks {
             metrics.samples.push(MemoryPoint {

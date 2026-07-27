@@ -129,7 +129,7 @@ impl AnomalyAggregator {
             .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();
-        entries.sort_by_key(|b| std::cmp::Reverse(b.1));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.1));
         entries.truncate(limit);
         entries
     }

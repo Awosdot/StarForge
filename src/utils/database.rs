@@ -8,7 +8,7 @@ pub fn db_path() -> PathBuf {
 }
 
 pub struct Database {
-    conn: Connection,
+    pub(crate) conn: Connection,
 }
 
 impl Database {
@@ -29,11 +29,40 @@ impl Database {
         Ok(Self { conn })
     }
 
+    /// Run `f` inside a SQLite transaction. Rolls back on error. Used by
+    /// feature-flag and other writes that need atomic read-then-insert.
+    pub fn with_transaction<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce() -> Result<T>,
+    {
+        let tx = self.conn.unchecked_transaction()?;
+        let result = f();
+        match result {
+            Ok(value) => {
+                tx.commit()?;
+                Ok(value)
+            }
+            Err(e) => {
+                let _ = tx.rollback();
+                Err(e)
+            }
+        }
+    }
+
     pub fn initialize(&self) -> Result<()> {
         self.conn.execute_batch(SCHEMA)?;
         self.ensure_column("wallets", "secret_key", "TEXT")?;
         self.ensure_column("wallets", "rotation_history", "TEXT NOT NULL DEFAULT '[]'")?;
         self.set_meta("schema_version", "1")?;
+        // The feature-flags schema is shipped alongside the rest of the
+        // schema for first-startup convenience; subsequent startups hit the
+        // idempotent `CREATE TABLE IF NOT EXISTS` guards and no-op.
+        self.conn
+            .execute_batch(crate::utils::feature_flags::FEATURE_FLAGS_SCHEMA)
+            .context("Failed to apply feature_flags schema")?;
+        for def in crate::utils::feature_flags::builtin_definitions() {
+            self.upsert_definition(&def)?;
+        }
         Ok(())
     }
 
@@ -226,6 +255,16 @@ impl Database {
         if let Some(wallet_encryption) = self.get_config_kv("wallet_encryption")? {
             cfg.wallet_encryption = Some(serde_json::from_str(&wallet_encryption)?);
         }
+        if let Some(install_id) = self.get_config_kv("install_id")? {
+            cfg.install_id = Some(install_id);
+        }
+        if let Some(feature_flags) = self.get_config_kv("feature_flags")? {
+            if let Ok(parsed) =
+                serde_json::from_str::<crate::utils::config::FeatureFlagsConfig>(&feature_flags)
+            {
+                cfg.feature_flags = parsed;
+            }
+        }
 
         cfg.networks = self
             .list_networks()?
@@ -306,6 +345,10 @@ impl Database {
         if let Some(kdf) = &cfg.wallet_encryption {
             self.insert_config_kv("wallet_encryption", &serde_json::to_string(kdf)?)?;
         }
+        if let Some(install_id) = &cfg.install_id {
+            self.insert_config_kv("install_id", install_id)?;
+        }
+        self.insert_config_kv("feature_flags", &serde_json::to_string(&cfg.feature_flags)?)?;
         self.set_meta("updated_at", &chrono::Utc::now().to_rfc3339())?;
 
         Ok(())

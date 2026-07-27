@@ -92,6 +92,9 @@ pub struct TestArgs {
 // ── Top-level handler ─────────────────────────────────────────────────────────
 
 pub async fn handle(cmd: AiDebugCommands) -> Result<()> {
+    // Feature-flag gate (Stable category, default-on; admins can roll it back
+    // for an entire fleet via `starforge feature-flags disable ai.debug`).
+    crate::commands::feature_flags_cmd::require_feature("ai.debug")?;
     match cmd {
         AiDebugCommands::Analyse(args) => handle_analyse(args).await,
         AiDebugCommands::Explain(args) => handle_explain(args).await,

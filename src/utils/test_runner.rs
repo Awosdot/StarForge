@@ -131,11 +131,11 @@ fn build_test_cases(generated: &[GeneratedTestCase]) -> Vec<String> {
     }
 }
 
-fn run_sequential(cases: &[String]) -> Result<Vec<TestCaseResult>> {
+pub fn run_sequential(cases: &[String]) -> Result<Vec<TestCaseResult>> {
     Ok(cases.iter().map(|name| execute_test_case(name)).collect())
 }
 
-fn run_parallel(cases: &[String], workers: usize) -> Result<Vec<TestCaseResult>> {
+pub fn run_parallel(cases: &[String], workers: usize) -> Result<Vec<TestCaseResult>> {
     let workers = workers.max(1).min(cases.len().max(1));
     let results: Arc<Mutex<Vec<TestCaseResult>>> = Arc::new(Mutex::new(Vec::new()));
     let chunk_size = cases.len().div_ceil(workers);
