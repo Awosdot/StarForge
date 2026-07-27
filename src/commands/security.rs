@@ -626,7 +626,7 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             for item in &items {
                 println!(
                     "  {} [{}] {} — {} ({})",
-                    &item.id[..8.min(item.id.len())].cyan(),
+                    item.id[..8.min(item.id.len())].cyan(),
                     item.severity.to_uppercase(),
                     item.title,
                     item.status,

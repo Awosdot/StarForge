@@ -262,6 +262,10 @@ enum Commands {
     #[command(subcommand)]
     AiDeploymentTest(commands::ai_deployment_test::AiDeploymentTestCommands),
 
+    /// Formal verification of Soroban contracts (harness, properties, reports)
+    #[command(subcommand)]
+    Verify(commands::verify::VerifyCommands),
+
     /// Dispatch an installed third-party plugin command
     #[command(external_subcommand)]
     External(Vec<String>),
@@ -341,6 +345,7 @@ async fn main() {
         Commands::AiIde(_) => "ai-ide",
         Commands::AiTestMaintain(_) => "ai-test-maintain",
         Commands::AiDeploymentTest(_) => "ai-deployment-test",
+        Commands::Verify(_) => "verify",
     }
     .to_string();
 
@@ -419,6 +424,7 @@ async fn main() {
         Commands::AiIde(cmd) => commands::ai_ide::handle(cmd).await,
         Commands::AiTestMaintain(cmd) => commands::ai_test_maintain::handle(cmd).await,
         Commands::AiDeploymentTest(cmd) => commands::ai_deployment_test::handle(cmd).await,
+        Commands::Verify(cmd) => commands::verify::handle(cmd).await,
     };
     let duration = start.elapsed();
 
@@ -569,11 +575,9 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             hints.push("Explain a specific category: starforge ai-debug explain auth".into());
             hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
         }
-        "benchmark" | "test" => {
-            if msg.contains("wasm") || msg.contains("not found") {
-                hints.push("Build your contract first: stellar contract build".into());
-                hints.push("Pass the correct --wasm path to the command.".into());
-            }
+        "benchmark" | "test" if (msg.contains("wasm") || msg.contains("not found")) => {
+            hints.push("Build your contract first: stellar contract build".into());
+            hints.push("Pass the correct --wasm path to the command.".into());
         }
         _ => {}
     }

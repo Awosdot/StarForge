@@ -705,9 +705,7 @@ fn handle_report(args: ReportArgs) -> Result<()> {
 
     let reports = load_reports_store()?;
     let report = reports
-        .iter()
-        .filter(|r| r.contract == args.contract)
-        .next_back()
+        .iter().rfind(|r| r.contract == args.contract)
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "No optimization report found for contract '{}'. Run `starforge optimize analyse` first.",

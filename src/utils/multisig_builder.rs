@@ -345,11 +345,10 @@ pub fn generate_proposal_signature(signer: &str, proposal: &Proposal) -> Result<
 pub fn calculate_progress(proposal: &Proposal) -> SignatureProgress {
     let signed = proposal.signatures.len() as u32;
     let required = proposal.threshold;
-    let percent = if required == 0 {
-        100
-    } else {
-        ((signed * 100) / required).min(100)
-    };
+    // A zero threshold is trivially satisfied, so report a full bar.
+    let percent = (signed * 100)
+        .checked_div(required)
+        .map_or(100, |value| value.min(100));
 
     SignatureProgress {
         signed,

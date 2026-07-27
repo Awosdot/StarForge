@@ -418,7 +418,7 @@ fn handle_show(mgr: &FlagManager, db: &Database, flag_name: &str, json: bool) ->
         return Ok(());
     }
 
-    p::header(&format!("Flag {}", &def.name));
+    p::header(&format!("Flag {}", def.name));
     p::kv("Category", def.category.slug());
     p::kv("Description", &def.description);
     if let Some(o) = &def.owner {

@@ -248,7 +248,7 @@ pub fn measure_functions(wasm_bytes: &[u8], names: &[String]) -> Vec<FunctionPro
         })
         .collect();
 
-    raw.sort_by(|a, b| b.1.cmp(&a.1));
+    raw.sort_by_key(|entry| std::cmp::Reverse(entry.1));
 
     let total_cpu: u64 = raw.iter().map(|r| r.1).sum();
 

@@ -323,7 +323,7 @@ pub fn suggest(source: &str) -> Vec<Completion> {
     }
 
     // Rank by confidence (stable, highest first).
-    out.sort_by(|a, b| b.confidence.cmp(&a.confidence));
+    out.sort_by_key(|item| std::cmp::Reverse(item.confidence));
     out
 }
 
