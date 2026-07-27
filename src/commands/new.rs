@@ -291,6 +291,13 @@ async fn scaffold_contract(
     // Scaffolding completed: keep the directory.
     target_guard.commit();
 
+    // Best-effort usage tracking for community analytics — never fail
+    // scaffolding just because analytics logging had a problem.
+    let _ = crate::utils::template_analytics::record_usage(
+        &template,
+        crate::utils::template_analytics::UsageAction::Scaffold,
+    );
+
     println!();
     p::success(&format!("Contract '{}' scaffolded!", name));
     println!();
