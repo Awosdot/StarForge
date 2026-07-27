@@ -742,3 +742,4 @@ fn handle_dashboard() -> Result<()> {
     p::success("Dashboard generated");
     Ok(())
 }
+

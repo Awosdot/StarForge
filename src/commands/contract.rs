@@ -21,6 +21,8 @@ pub enum ContractCommands {
     CallGraph(CallGraphArgs),
     /// Manage contract dependencies
     Deps(DepsArgs),
+    /// Track contract versions, resolve conflicts, and manage migrations
+    Version(VersionArgs),
 }
 
 #[derive(Args)]
@@ -74,6 +76,91 @@ pub struct DepsGraphArgs {
     /// Format: ascii or dot
     #[arg(long, default_value = "ascii")]
     pub format: String,
+}
+
+#[derive(Args)]
+pub struct VersionArgs {
+    #[command(subcommand)]
+    pub cmd: VersionCommands,
+}
+
+#[derive(Subcommand)]
+pub enum VersionCommands {
+    /// Initialize contract-versions.toml
+    Init(VersionInitArgs),
+    /// Record an explicit semantic version
+    Tag(VersionTagArgs),
+    /// Bump the current version (major, minor, patch, or prerelease)
+    Bump(VersionBumpArgs),
+    /// List tracked versions
+    List,
+    /// Show details for a specific version
+    Show(VersionShowArgs),
+    /// Mark a version as yanked (deprecated, should not be depended on)
+    Yank(VersionShowArgs),
+    /// Detect version conflicts across the dependency graph
+    Conflicts,
+    /// Show a compatibility matrix for a dependency's tracked versions
+    Matrix(VersionMatrixArgs),
+    /// Resolve the migration chain needed to go from one version to another
+    MigrationPath(MigrationPathArgs),
+}
+
+#[derive(Args)]
+pub struct VersionInitArgs {
+    /// Name of the contract being versioned
+    #[arg(long)]
+    pub name: String,
+}
+
+#[derive(Args)]
+pub struct VersionTagArgs {
+    /// Semantic version to record (e.g. 1.2.0)
+    pub version: String,
+    /// Optional release notes
+    #[arg(long)]
+    pub notes: Option<String>,
+    /// Optional wasm hash to associate with this version
+    #[arg(long)]
+    pub wasm_hash: Option<String>,
+    /// Allow tagging a version that is not greater than the current highest
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
+}
+
+#[derive(Args)]
+pub struct VersionBumpArgs {
+    /// Which part to bump
+    #[arg(value_parser = ["major", "minor", "patch", "prerelease"])]
+    pub part: String,
+    /// Optional release notes
+    #[arg(long)]
+    pub notes: Option<String>,
+}
+
+#[derive(Args)]
+pub struct VersionShowArgs {
+    /// Version to show or yank
+    pub version: String,
+}
+
+#[derive(Args)]
+pub struct VersionMatrixArgs {
+    /// Name of the dependency to build a compatibility matrix for
+    pub dependency: String,
+}
+
+#[derive(Args)]
+pub struct MigrationPathArgs {
+    /// Directory containing migration rule files (from `starforge migrate init`)
+    #[arg(long, default_value = "migrations")]
+    pub dir: PathBuf,
+    /// Version to migrate from
+    #[arg(long)]
+    pub from: String,
+    /// Version to migrate to
+    #[arg(long)]
+    pub to: String,
 }
 
 #[derive(Args)]
@@ -188,6 +275,7 @@ pub async fn handle(cmd: ContractCommands) -> Result<()> {
         ContractCommands::GenerateBindings(args) => handle_generate_bindings(args),
         ContractCommands::CallGraph(args) => handle_call_graph(args),
         ContractCommands::Deps(args) => handle_deps(args),
+        ContractCommands::Version(args) => handle_version(args),
     }
 }
 
@@ -729,6 +817,154 @@ fn handle_deps(args: DepsArgs) -> Result<()> {
                     println!("{}", out);
                 }
                 _ => anyhow::bail!("Unsupported format. Use 'ascii' or 'dot'"),
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_version(args: VersionArgs) -> Result<()> {
+    use crate::utils::contract_versioning as cv;
+    use std::str::FromStr;
+    let cwd = std::env::current_dir()?;
+
+    match args.cmd {
+        VersionCommands::Init(init_args) => {
+            cv::init(&cwd, &init_args.name)?;
+            p::success(&format!(
+                "Initialized contract-versions.toml for '{}'",
+                init_args.name
+            ));
+        }
+        VersionCommands::Tag(tag_args) => {
+            let record = cv::tag(
+                &cwd,
+                &tag_args.version,
+                tag_args.notes,
+                tag_args.wasm_hash,
+                tag_args.force,
+            )?;
+            p::success(&format!("Tagged version {}", record.version));
+        }
+        VersionCommands::Bump(bump_args) => {
+            let part = cv::BumpPart::from_str(&bump_args.part)?;
+            let record = cv::bump(&cwd, part, bump_args.notes)?;
+            p::success(&format!("Bumped to version {}", record.version));
+        }
+        VersionCommands::List => {
+            p::header("Tracked Contract Versions");
+            let versions = cv::list(&cwd)?;
+            if versions.is_empty() {
+                p::info("No versions tracked yet. Run `contract version init` first.");
+            } else {
+                let rows: Vec<Vec<String>> = versions
+                    .iter()
+                    .map(|v| {
+                        vec![
+                            v.version.clone(),
+                            v.created_at.clone(),
+                            if v.yanked { "yes".to_string() } else { "no".to_string() },
+                            v.notes.clone().unwrap_or_default(),
+                        ]
+                    })
+                    .collect();
+                p::table(&["Version", "Created", "Yanked", "Notes"], &rows);
+            }
+        }
+        VersionCommands::Show(show_args) => {
+            match cv::find(&cwd, &show_args.version)? {
+                Some(record) => {
+                    p::header(&format!("Version {}", record.version));
+                    p::kv("Created", &record.created_at);
+                    p::kv("Yanked", if record.yanked { "yes" } else { "no" });
+                    if let Some(hash) = &record.wasm_hash {
+                        p::kv("Wasm hash", hash);
+                    }
+                    if let Some(notes) = &record.notes {
+                        p::kv("Notes", notes);
+                    }
+                }
+                None => anyhow::bail!("Version '{}' not tracked", show_args.version),
+            }
+        }
+        VersionCommands::Yank(yank_args) => {
+            cv::yank(&cwd, &yank_args.version)?;
+            p::success(&format!("Yanked version {}", yank_args.version));
+        }
+        VersionCommands::Conflicts => {
+            p::header("Dependency Version Conflicts");
+            let conflicts = cv::detect_conflicts(&cwd)?;
+            if conflicts.is_empty() {
+                p::success("No version conflicts detected.");
+            } else {
+                for conflict in &conflicts {
+                    p::warn(&format!("Conflict on dependency '{}'", conflict.dependency));
+                    for (requirer, raw) in &conflict.requirers {
+                        println!("    {} requires {}", requirer.cyan(), raw);
+                    }
+                    if conflict.structurally_impossible {
+                        println!(
+                            "    {} constraints are mutually exclusive; no version can satisfy all of them",
+                            "✗".red()
+                        );
+                    } else if conflict.history_checked {
+                        println!(
+                            "    {} constraints overlap, but no tracked version of '{}' satisfies all of them",
+                            "✗".red(),
+                            conflict.dependency
+                        );
+                    }
+                    if !conflict.resolvable_versions.is_empty() {
+                        println!(
+                            "    resolvable versions: {}",
+                            conflict.resolvable_versions.join(", ").green()
+                        );
+                    }
+                }
+                anyhow::bail!("{} version conflict(s) detected", conflicts.len());
+            }
+        }
+        VersionCommands::Matrix(matrix_args) => {
+            let matrix = cv::build_matrix(&cwd, &matrix_args.dependency)?;
+            p::header(&format!("Compatibility Matrix: {}", matrix.dependency));
+            let mut headers: Vec<&str> = vec!["Version"];
+            headers.extend(matrix.requirers.iter().map(|r| r.as_str()));
+            let rows: Vec<Vec<String>> = matrix
+                .versions
+                .iter()
+                .zip(matrix.cells.iter())
+                .map(|(version, row)| {
+                    let mut cells = vec![version.clone()];
+                    cells.extend(row.iter().map(|ok| {
+                        if *ok {
+                            "✓".to_string()
+                        } else {
+                            "✗".to_string()
+                        }
+                    }));
+                    cells
+                })
+                .collect();
+            p::table(&headers, &rows);
+        }
+        VersionCommands::MigrationPath(mp_args) => {
+            let edges = cv::discover_migrations(&mp_args.dir)?;
+            let path = cv::find_migration_path(&edges, &mp_args.from, &mp_args.to)?;
+            if path.is_empty() {
+                p::info("Source and target versions are identical; no migration needed.");
+            } else {
+                p::header(&format!(
+                    "Migration Path: {} -> {}",
+                    mp_args.from, mp_args.to
+                ));
+                for (i, edge) in path.iter().enumerate() {
+                    p::step(
+                        i + 1,
+                        path.len(),
+                        &format!("{} -> {} ({})", edge.from, edge.to, edge.file.display()),
+                    );
+                }
             }
         }
     }

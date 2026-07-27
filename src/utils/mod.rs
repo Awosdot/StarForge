@@ -26,6 +26,8 @@ pub mod cost_management;
 pub mod crypto;
 pub mod database;
 pub mod debugger;
+pub mod contract_deps;
+pub mod contract_versioning;
 pub mod deploy_history;
 pub mod deploy_orchestrator;
 pub mod deployment_automation;
