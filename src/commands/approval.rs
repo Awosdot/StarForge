@@ -313,14 +313,7 @@ fn handle_show_workflow(args: ShowWorkflowArgs) -> Result<()> {
     p::kv_accent("ID", &workflow.id);
     p::kv("Name", &workflow.name);
     p::kv("Description", &workflow.description);
-    p::kv(
-        "Active",
-        if workflow.active {
-            "yes"
-        } else {
-            "no"
-        },
-    );
+    p::kv("Active", if workflow.active { "yes" } else { "no" });
     p::kv(
         "Created",
         &workflow
@@ -348,21 +341,17 @@ fn handle_show_workflow(args: ShowWorkflowArgs) -> Result<()> {
         println!("    {} {}", "Name:        ".dimmed(), level.name.white());
         println!("    {} {}", "Description: ".dimmed(), level.description);
         println!(
-            "    {} {}",
+            "    {} {} approver(s)",
             "Required:    ".dimmed(),
-            format!("{} approver(s)", level.required_approvers)
+            level.required_approvers
         );
         println!(
-            "    {} {}",
+            "    {} {:?}",
             "Roles:       ".dimmed(),
-            format!("{:?}", level.approver_roles)
+            level.approver_roles
         );
         if let Some(timeout) = level.timeout_hours {
-            println!(
-                "    {} {}",
-                "Timeout:     ".dimmed(),
-                format!("{} hours", timeout)
-            );
+            println!("    {} {} hours", "Timeout:     ".dimmed(), timeout);
         }
     }
     println!();

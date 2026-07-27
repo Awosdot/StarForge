@@ -79,6 +79,7 @@ pub struct TemplateDefinition {
     pub threshold: u32,
     pub signers: &'static [&'static str],
     pub description: &'static str,
+    pub transaction_type: &'static str,
 }
 
 impl Proposal {
@@ -205,7 +206,10 @@ pub fn validate_for_signing(proposal: &Proposal, wallet: &str) -> Result<()> {
         bail!("Proposal has expired");
     }
     if !proposal.signers.contains(&wallet.to_string()) {
-        bail!("Wallet '{}' is not an authorized signer for this proposal", wallet);
+        bail!(
+            "Wallet '{}' is not an authorized signer for this proposal",
+            wallet
+        );
     }
     if proposal.signatures.iter().any(|s| s.signer == wallet) {
         bail!("Wallet '{}' has already signed this proposal", wallet);
@@ -240,7 +244,7 @@ pub fn validate_for_submit(proposal: &Proposal) -> Result<()> {
     Ok(())
 }
 
-pub fn render_progress_bar(signed: usize, threshold: u32) -> (String, i32) {
+pub fn render_progress_blocks(signed: usize, threshold: u32) -> (String, i32) {
     let percent = if threshold == 0 {
         100
     } else {
@@ -256,18 +260,21 @@ pub fn template_definitions() -> Vec<TemplateDefinition> {
     vec![
         TemplateDefinition {
             name: "escrow",
+            transaction_type: "escrow_release",
             threshold: 2,
             signers: &["buyer", "seller", "arbiter"],
             description: "2-of-3 Escrow (buyer, seller, arbiter)",
         },
         TemplateDefinition {
             name: "company",
+            transaction_type: "company_disbursement",
             threshold: 3,
             signers: &["ceo", "cfo", "board1", "board2", "board3"],
             description: "3-of-5 Company Signers",
         },
         TemplateDefinition {
             name: "dao",
+            transaction_type: "dao_treasury",
             threshold: 5,
             signers: &[
                 "member1", "member2", "member3", "member4", "member5", "member6", "member7",
@@ -277,12 +284,14 @@ pub fn template_definitions() -> Vec<TemplateDefinition> {
         },
         TemplateDefinition {
             name: "vault",
+            transaction_type: "vault_withdrawal",
             threshold: 2,
             signers: &["key1", "key2"],
             description: "2-of-2 Cold Storage Vault",
         },
         TemplateDefinition {
             name: "payment",
+            transaction_type: "payment_authorization",
             threshold: 1,
             signers: &["approver1", "approver2"],
             description: "1-of-2 Payment Authorization",
@@ -290,7 +299,7 @@ pub fn template_definitions() -> Vec<TemplateDefinition> {
     ]
 }
 
-pub fn proposal_from_template(name: &str) -> Result<Proposal> {
+pub fn proposal_from_template(name: &str, network: String) -> Result<Proposal> {
     let template = template_definitions()
         .into_iter()
         .find(|t| t.name == name)
@@ -299,11 +308,113 @@ pub fn proposal_from_template(name: &str) -> Result<Proposal> {
     let mut proposal = Proposal::new(
         template.threshold,
         template.signers.iter().map(|s| s.to_string()).collect(),
-        "testnet".to_string(),
+        network,
     );
     proposal.metadata.title = Some(template.description.to_string());
-    proposal.metadata.transaction_type = Some(name.to_string());
+    proposal.metadata.template = Some(name.to_string());
+    proposal.metadata.transaction_type = Some(template.transaction_type.to_string());
     Ok(proposal)
+}
+
+/// Catalogue of the built-in templates for display purposes.
+///
+/// Mirrors [`template_definitions`] but owns its signer list, so callers can
+/// describe a template without instantiating a proposal from it.
+pub fn common_templates() -> Vec<MultisigTemplate> {
+    template_definitions()
+        .into_iter()
+        .map(|def| MultisigTemplate {
+            name: def.name,
+            description: def.description,
+            threshold: def.threshold,
+            signers: def.signers.to_vec(),
+            transaction_type: def.transaction_type,
+        })
+        .collect()
+}
+
+/// Signature `signer` is expected to submit for `proposal`.
+pub fn generate_proposal_signature(signer: &str, proposal: &Proposal) -> Result<String> {
+    generate_signature(&proposal.id, signer)
+}
+
+/// Collection progress for `proposal`, measured against its threshold.
+///
+/// `percent` is capped at 100 so an over-signed proposal (more signatures than
+/// the threshold requires) still renders a full bar rather than overflowing it.
+pub fn calculate_progress(proposal: &Proposal) -> SignatureProgress {
+    let signed = proposal.signatures.len() as u32;
+    let required = proposal.threshold;
+    let percent = if required == 0 {
+        100
+    } else {
+        ((signed * 100) / required).min(100)
+    };
+
+    SignatureProgress {
+        signed,
+        required,
+        total_signers: proposal.signers.len() as u32,
+        percent,
+        ready: signed >= required,
+        pending_signers: proposal.pending_signers(),
+    }
+}
+
+/// Renders `progress` as a fixed-width ASCII bar, e.g. `[#####.....] 50% (1/2)`.
+pub fn render_progress_bar(progress: &SignatureProgress, width: usize) -> String {
+    let filled = ((progress.percent as usize * width) / 100).min(width);
+    format!(
+        "[{}{}] {}% ({}/{})",
+        "#".repeat(filled),
+        ".".repeat(width - filled),
+        progress.percent,
+        progress.signed,
+        progress.required
+    )
+}
+
+/// Cryptographically checks every signature attached to `proposal`.
+///
+/// A signer counts toward `valid_signatures` only once and only when it is on
+/// the authorised list *and* its signature verifies, so a forged or replayed
+/// entry can never push a proposal over its threshold.
+pub fn validate_signatures(proposal: &Proposal) -> SignatureValidationReport {
+    let mut valid_signatures = 0u32;
+    let mut invalid_signers = Vec::new();
+    let mut duplicate_signers = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut verified: HashSet<&str> = HashSet::new();
+
+    for sig in &proposal.signatures {
+        if !seen.insert(sig.signer.as_str()) {
+            duplicate_signers.push(sig.signer.clone());
+            continue;
+        }
+        if proposal.signers.contains(&sig.signer)
+            && verify_signature(&proposal.id, &sig.signer, &sig.signature)
+        {
+            valid_signatures += 1;
+            verified.insert(sig.signer.as_str());
+        } else {
+            invalid_signers.push(sig.signer.clone());
+        }
+    }
+
+    let missing_signers = proposal
+        .signers
+        .iter()
+        .filter(|s| !verified.contains(s.as_str()))
+        .cloned()
+        .collect();
+
+    SignatureValidationReport {
+        ready: valid_signatures >= proposal.threshold,
+        valid_signatures,
+        invalid_signers,
+        duplicate_signers,
+        missing_signers,
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -335,13 +446,17 @@ pub enum NotificationChannel {
     Webhook(String),
 }
 
-pub fn parse_notification_channel(channel: &str, webhook: Option<String>) -> Result<NotificationChannel> {
+pub fn parse_notification_channel(
+    channel: &str,
+    webhook: Option<String>,
+) -> Result<NotificationChannel> {
     match channel.to_lowercase().as_str() {
         "email" => Ok(NotificationChannel::Email),
         "slack" => Ok(NotificationChannel::Slack),
         "discord" => Ok(NotificationChannel::Discord),
         "webhook" => {
-            let url = webhook.ok_or_else(|| anyhow::anyhow!("--webhook is required for webhook channel"))?;
+            let url = webhook
+                .ok_or_else(|| anyhow::anyhow!("--webhook is required for webhook channel"))?;
             Ok(NotificationChannel::Webhook(url))
         }
         other => bail!("Unknown notification channel: {}", other),
@@ -361,12 +476,14 @@ pub fn send_notification(
             Ok(())
         }
         NotificationChannel::Slack => {
-            let url = webhook.ok_or_else(|| anyhow::anyhow!("--webhook is required for slack channel"))?;
+            let url = webhook
+                .ok_or_else(|| anyhow::anyhow!("--webhook is required for slack channel"))?;
             println!("💬 Slack message sent");
             post_webhook(url, &notification)
         }
         NotificationChannel::Discord => {
-            let url = webhook.ok_or_else(|| anyhow::anyhow!("--webhook is required for discord channel"))?;
+            let url = webhook
+                .ok_or_else(|| anyhow::anyhow!("--webhook is required for discord channel"))?;
             println!("🎮 Discord message sent");
             post_webhook(url, &notification)
         }
@@ -407,7 +524,10 @@ fn post_webhook(url: &str, notification: &NotificationRequest) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("Webhook worker exited unexpectedly"))??;
 
     if !response.status().is_success() {
-        bail!("Webhook notification failed with status {}", response.status());
+        bail!(
+            "Webhook notification failed with status {}",
+            response.status()
+        );
     }
 
     println!("🔔 Webhook notification queued for {}", url);
@@ -490,14 +610,14 @@ mod tests {
     fn test_template_definitions() {
         let templates = template_definitions();
         assert_eq!(templates.len(), 5);
-        let escrow = proposal_from_template("escrow").unwrap();
+        let escrow = proposal_from_template("escrow", "testnet".to_string()).unwrap();
         assert_eq!(escrow.threshold, 2);
         assert_eq!(escrow.signers.len(), 3);
     }
 
     #[test]
     fn test_progress_bar() {
-        let (bar, percent) = render_progress_bar(1, 2);
+        let (bar, percent) = render_progress_blocks(1, 2);
         assert_eq!(percent, 50);
         assert!(bar.contains('█'));
         assert!(bar.contains('░'));

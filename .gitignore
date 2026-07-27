@@ -182,3 +182,6 @@ local-bin/
 # Container files
 Dockerfile.local
 docker-compose.override.yml
+
+# Soroban test snapshots emitted by soroban-sdk testutils during `cargo test`
+test_snapshots/

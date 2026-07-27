@@ -40,24 +40,12 @@ impl BuiltInScenario {
 
     pub fn description(&self) -> &'static str {
         match self {
-            BuiltInScenario::SimpleCounter => {
-                "A single counter contract with one account"
-            }
-            BuiltInScenario::TokenTransfer => {
-                "A token contract with a minter and a user account"
-            }
-            BuiltInScenario::Escrow => {
-                "An escrow contract with sender, receiver, and arbiter"
-            }
-            BuiltInScenario::MultisigVault => {
-                "A multi-sig vault with 2/3 threshold"
-            }
-            BuiltInScenario::Empty => {
-                "An empty network with no accounts or contracts"
-            }
-            BuiltInScenario::LoadTest => {
-                "10 accounts and 3 contracts for load/performance testing"
-            }
+            BuiltInScenario::SimpleCounter => "A single counter contract with one account",
+            BuiltInScenario::TokenTransfer => "A token contract with a minter and a user account",
+            BuiltInScenario::Escrow => "An escrow contract with sender, receiver, and arbiter",
+            BuiltInScenario::MultisigVault => "A multi-sig vault with 2/3 threshold",
+            BuiltInScenario::Empty => "An empty network with no accounts or contracts",
+            BuiltInScenario::LoadTest => "10 accounts and 3 contracts for load/performance testing",
         }
     }
 }
@@ -110,11 +98,7 @@ impl ScenarioRunner {
 
     /// Apply a scenario to a simulator, returning the mapping of
     /// logical names → public keys / contract IDs.
-    pub fn apply(
-        &self,
-        sim: &mut NetworkSimulator,
-        scenario: &Scenario,
-    ) -> Result<ScenarioResult> {
+    pub fn apply(&self, sim: &mut NetworkSimulator, scenario: &Scenario) -> Result<ScenarioResult> {
         let mut result = ScenarioResult::new(&scenario.name);
 
         // Create accounts.
@@ -131,7 +115,9 @@ impl ScenarioRunner {
                 .accounts
                 .get(&ctr.deployer_account)
                 .cloned()
-                .unwrap_or_else(|| derive_public_key(sim.config.deterministic.seed, sim.accounts.len() as u32));
+                .unwrap_or_else(|| {
+                    derive_public_key(sim.config.deterministic.seed, sim.accounts.len() as u32)
+                });
 
             // Ensure the deployer account exists.
             if sim.get_account(&deployer_pk).is_none() {
@@ -177,10 +163,11 @@ impl ScenarioRunner {
             description: "A single counter contract with one account".to_string(),
             built_in: Some(BuiltInScenario::SimpleCounter),
             config: SimulatorConfig {
-                deterministic: crate::utils::network_simulator::deterministic::DeterministicConfig {
-                    seed,
-                    ..Default::default()
-                },
+                deterministic:
+                    crate::utils::network_simulator::deterministic::DeterministicConfig {
+                        seed,
+                        ..Default::default()
+                    },
                 ..Default::default()
             },
             accounts_to_create: vec![ScenarioAccount {
@@ -202,10 +189,11 @@ impl ScenarioRunner {
             description: "A token contract with a minter and a user account".to_string(),
             built_in: Some(BuiltInScenario::TokenTransfer),
             config: SimulatorConfig {
-                deterministic: crate::utils::network_simulator::deterministic::DeterministicConfig {
-                    seed,
-                    ..Default::default()
-                },
+                deterministic:
+                    crate::utils::network_simulator::deterministic::DeterministicConfig {
+                        seed,
+                        ..Default::default()
+                    },
                 ..Default::default()
             },
             accounts_to_create: vec![
@@ -226,10 +214,7 @@ impl ScenarioRunner {
                     ("name".to_string(), "\"SimToken\"".to_string()),
                     ("symbol".to_string(), "\"SIM\"".to_string()),
                     ("decimals".to_string(), "7".to_string()),
-                    (
-                        "total_supply".to_string(),
-                        "10000000000000".to_string(),
-                    ),
+                    ("total_supply".to_string(), "10000000000000".to_string()),
                     ("balance_minter".to_string(), "10000000000000".to_string()),
                 ]),
             }],
@@ -242,10 +227,11 @@ impl ScenarioRunner {
             description: "An escrow contract with sender, receiver, and arbiter".to_string(),
             built_in: Some(BuiltInScenario::Escrow),
             config: SimulatorConfig {
-                deterministic: crate::utils::network_simulator::deterministic::DeterministicConfig {
-                    seed,
-                    ..Default::default()
-                },
+                deterministic:
+                    crate::utils::network_simulator::deterministic::DeterministicConfig {
+                        seed,
+                        ..Default::default()
+                    },
                 ..Default::default()
             },
             accounts_to_create: vec![
@@ -283,10 +269,11 @@ impl ScenarioRunner {
             description: "A multi-sig vault with 2/3 threshold".to_string(),
             built_in: Some(BuiltInScenario::MultisigVault),
             config: SimulatorConfig {
-                deterministic: crate::utils::network_simulator::deterministic::DeterministicConfig {
-                    seed,
-                    ..Default::default()
-                },
+                deterministic:
+                    crate::utils::network_simulator::deterministic::DeterministicConfig {
+                        seed,
+                        ..Default::default()
+                    },
                 ..Default::default()
             },
             accounts_to_create: vec![

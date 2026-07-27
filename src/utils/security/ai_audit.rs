@@ -148,9 +148,15 @@ impl SecurityPatterns {
                 continue;
             }
 
+            // A declaration such as `pub fn transfer(..)` names a transfer but
+            // does not perform one, so it must not anchor a CEI violation.
+            let is_declaration = trimmed.contains("fn ");
             if (trimmed.contains("transfer") || trimmed.contains("invoke_contract"))
                 && !trimmed.contains("storage")
+                && !is_declaration
             {
+                // A state write *after* the external call is the CEI violation.
+                // A transfer that happens last is the safe ordering.
                 let mut found_storage_after = false;
                 for j in (i + 1)..std::cmp::min(i + 10, lines.len()) {
                     let candidate = lines[j].trim();
@@ -160,7 +166,7 @@ impl SecurityPatterns {
                     }
                 }
 
-                if !found_storage_after {
+                if found_storage_after {
                     violations.push((i + 1, line.to_string()));
                 }
             }
@@ -192,12 +198,15 @@ impl SecurityPatterns {
                 {
                     // Look for require_auth in next 20 lines
                     let mut has_auth = false;
-                    for j in i..std::cmp::min(i + 20, lines.len()) {
-                        if lines[j].contains("require_auth") {
+                    for j in (i + 1)..std::cmp::min(i + 20, lines.len()) {
+                        // Ignore comments: a line reading `// Missing
+                        // require_auth() check` must not satisfy the check.
+                        let code_only = lines[j].split("//").next().unwrap_or(lines[j]);
+                        if code_only.contains("require_auth") {
                             has_auth = true;
                             break;
                         }
-                        if lines[j].contains("pub fn ") {
+                        if code_only.contains("pub fn ") {
                             break; // Stop if we hit next function
                         }
                     }
@@ -226,10 +235,19 @@ impl SecurityPatterns {
         let lines: Vec<&str> = code.lines().collect();
         let mut violations = Vec::new();
 
-        for (i, line) in lines.iter().enumerate() {
-            if line.trim().starts_with("//") {
+        for (i, raw_line) in lines.iter().enumerate() {
+            if raw_line.trim().starts_with("//") {
                 continue;
             }
+
+            // Analyse the code before any trailing comment, so an annotated
+            // line such as `balance + amount; // could overflow` still counts.
+            // `->` in a return type is not a subtraction.
+            let line = raw_line
+                .split("//")
+                .next()
+                .unwrap_or(raw_line)
+                .replace("->", "  ");
 
             // Look for arithmetic without checked_ prefix
             let arithmetic_ops = vec![
@@ -244,8 +262,8 @@ impl SecurityPatterns {
                     && !line.contains(&format!("{}{}", op, op))
                 {
                     // Avoid false positives on operators like +=, -=, etc in checked context
-                    if !line.contains("//") && !line.contains("string") {
-                        violations.push((i + 1, line.to_string()));
+                    if !line.contains("string") {
+                        violations.push((i + 1, raw_line.to_string()));
                         break;
                     }
                 }
@@ -267,14 +285,13 @@ impl SecurityPatterns {
     /// Sensitive data storage on-chain.
     pub fn check_privacy_leak(code: &str) -> Option<StaticCheckResult> {
         let sensitive_patterns = ["password", "secret", "private_key", "private key"];
-        let lines: Vec<&str> = code.lines().collect();
         let mut violations = Vec::new();
 
-        for (i, line) in lines.iter().enumerate() {
-            if line.contains("storage") && line.contains("set") {
+        for (line_no, statement) in logical_statements(code) {
+            if statement.contains("storage") && statement.contains("set") {
                 for pattern in &sensitive_patterns {
-                    if line.to_lowercase().contains(pattern) {
-                        violations.push((i + 1, line.to_string()));
+                    if statement.to_lowercase().contains(pattern) {
+                        violations.push((line_no, statement.clone()));
                         break;
                     }
                 }
@@ -302,8 +319,7 @@ impl SecurityPatterns {
             if line.contains("persistent()") && line.contains("set") {
                 // Look for extend_ttl in nearby lines
                 let mut has_ttl = false;
-                for j in std::cmp::max(0, i.saturating_sub(5))..std::cmp::min(i + 5, lines.len())
-                {
+                for j in std::cmp::max(0, i.saturating_sub(5))..std::cmp::min(i + 5, lines.len()) {
                     if lines[j].contains("extend_ttl") {
                         has_ttl = true;
                         break;
@@ -327,6 +343,41 @@ impl SecurityPatterns {
         }
         None
     }
+}
+
+/// Joins method-chain continuations into single logical statements.
+///
+/// Returns `(1-based line number of the first physical line, joined text)`.
+/// The line-oriented checks would otherwise miss idiomatic Soroban code such as
+/// `env.storage()\n    .persistent()\n    .set(&key, &value);`, where the
+/// tokens that matter are spread across three physical lines.
+fn logical_statements(code: &str) -> Vec<(usize, String)> {
+    let lines: Vec<&str> = code.lines().collect();
+    let mut statements = Vec::new();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let start = i;
+        let mut statement = lines[i].trim().to_string();
+
+        // Keep absorbing lines while the chain is obviously unfinished: either
+        // the next line continues a method chain, or parens are still open.
+        while i + 1 < lines.len() {
+            let next = lines[i + 1].trim();
+            let unbalanced = statement.matches('(').count() > statement.matches(')').count();
+            if next.starts_with('.') || unbalanced {
+                statement.push_str(next);
+                i += 1;
+            } else {
+                break;
+            }
+        }
+
+        statements.push((start + 1, statement));
+        i += 1;
+    }
+
+    statements
 }
 
 /// Run static security checks on contract code.
@@ -461,21 +512,31 @@ pub fn build_fallback_report(
     }
 
     if include_attack_simulation {
-        if vulnerabilities.iter().any(|v| v.category == "access-control") {
+        if vulnerabilities
+            .iter()
+            .any(|v| v.category == "access-control")
+        {
             attack_scenarios.push(AttackScenario {
                 name: "Unauthorized state mutation".to_string(),
-                description: "An attacker reuses a public entry point to mutate state without authorization.".to_string(),
+                description:
+                    "An attacker reuses a public entry point to mutate state without authorization."
+                        .to_string(),
                 steps: vec![
-                    "Identify a public function that changes storage or transfers value.".to_string(),
+                    "Identify a public function that changes storage or transfers value."
+                        .to_string(),
                     "Invoke the function without a valid auth context.".to_string(),
-                    "Observe whether the contract accepts the request and mutates state.".to_string(),
+                    "Observe whether the contract accepts the request and mutates state."
+                        .to_string(),
                 ],
                 impact: "Unauthorized balance changes or privileged state updates".to_string(),
                 likelihood: "high".to_string(),
             });
         }
 
-        if vulnerabilities.iter().any(|v| v.category == "integer-overflow") {
+        if vulnerabilities
+            .iter()
+            .any(|v| v.category == "integer-overflow")
+        {
             attack_scenarios.push(AttackScenario {
                 name: "Arithmetic boundary exploit".to_string(),
                 description: "An attacker submits values near the numeric boundary to trigger overflow or underflow.".to_string(),
@@ -682,15 +743,31 @@ mod tests {
 
     #[test]
     fn test_reentrancy_detection() {
+        // CEI violation: the balance is written *after* the external call.
         let code = r#"
 pub fn transfer(env: Env, to: Address, amount: i128) {
     token.transfer(to, amount);
-    let balance = 0;
+    storage.set(&DataKey::Balance, balance - amount);
 }
 "#;
         let result = SecurityPatterns::check_reentrancy_risk(code);
         assert!(result.is_some(), "expected a reentrancy risk signal");
         assert_eq!(result.unwrap().severity, "critical");
+    }
+
+    #[test]
+    fn test_reentrancy_not_flagged_when_transfer_is_last() {
+        // Correct ordering: state settled first, external call last.
+        let code = r#"
+pub fn transfer(env: Env, to: Address, amount: i128) {
+    storage.set(&DataKey::Balance, balance - amount);
+    token.transfer(to, amount);
+}
+"#;
+        assert!(
+            SecurityPatterns::check_reentrancy_risk(code).is_none(),
+            "checks-effects-interactions ordering must not be flagged"
+        );
     }
 
     #[test]
@@ -771,9 +848,15 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
         );
 
         assert_eq!(report.contract_name, "TokenContract");
-        assert!(report.vulnerabilities.iter().any(|v| v.category == "access-control"));
+        assert!(report
+            .vulnerabilities
+            .iter()
+            .any(|v| v.category == "access-control"));
         assert!(!report.attack_scenarios.is_empty());
-        assert!(report.best_practice_violations.iter().any(|v| v.contains("Compliance")));
+        assert!(report
+            .best_practice_violations
+            .iter()
+            .any(|v| v.contains("Compliance")));
         assert!(!report.fix_suggestions.is_empty());
         assert!(report.security_score <= 100.0);
     }

@@ -37,6 +37,8 @@ pub enum SecurityCommands {
     Pentest(PentestArgs),
     /// Track remediation of findings from audit/pentest/checklist runs
     Remediation(RemediationArgs),
+    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
+    Dashboard,
 }
 
 #[derive(Args)]
@@ -182,6 +184,7 @@ pub async fn handle(cmd: SecurityCommands) -> Result<()> {
         SecurityCommands::Audit(args) => handle_audit(args),
         SecurityCommands::Pentest(args) => handle_pentest(args),
         SecurityCommands::Remediation(args) => handle_remediation(args),
+        SecurityCommands::Dashboard => handle_dashboard(),
     }
 }
 
@@ -662,8 +665,9 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             Ok(())
         }
     }
+}
 
-    fn handle_dashboard() -> Result<()> {
+fn handle_dashboard() -> Result<()> {
     p::header("Security Dashboard");
 
     let mut incidents = IncidentStore::load_all()?;
@@ -672,12 +676,12 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
         .iter()
         .filter(|i| {
             i.severity.eq_ignore_ascii_case("critical")
-                && !matches!(i.status, crate::utils::security::IncidentStatus::Resolved)
+                && !matches!(i.status, crate::utils::security::IncidentStatus::Closed)
         })
         .count();
     let open_incidents = incidents
         .iter()
-        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Resolved))
+        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Closed))
         .count();
 
     let remediation_items = crate::utils::security::remediation::load_all()?;
@@ -726,19 +730,15 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
     );
     p::kv(
         "Remediation backlog clear",
-        if open_remediation == 0 { "PASS" } else { "FAIL" },
+        if open_remediation == 0 {
+            "PASS"
+        } else {
+            "FAIL"
+        },
     );
     println!();
 
     p::info("Run `starforge security audit <path>` for a live per-contract score.");
     p::success("Dashboard generated");
     Ok(())
-}
-
-    /// Track remediation of findings from audit/pentest/checklist runs
-    Remediation(RemediationArgs),
-    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
-    Dashboard,
-}
-
 }

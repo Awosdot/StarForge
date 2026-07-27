@@ -44,10 +44,8 @@ use soroban_sdk::{Env, IntoVal, Val};
 /// Adding a new variant to `DataKey` MUST update this slice: the diff is
 /// surfaced at code-review time, forcing the contributor to reason about
 /// discriminant uniqueness in the same change set.
-const DATA_KEY_VARIANTS: &[(&str, DataKey)] = &[
-    ("Admin", DataKey::Admin),
-    ("Count", DataKey::Count),
-];
+const DATA_KEY_VARIANTS: &[(&str, DataKey)] =
+    &[("Admin", DataKey::Admin), ("Count", DataKey::Count)];
 
 #[test]
 fn pairwise_distinct_payloads_across_all_data_key_variants() {
@@ -59,10 +57,10 @@ fn pairwise_distinct_payloads_across_all_data_key_variants() {
     // existing one, this assertion fails and CI flags the regression.
     for i in 0..DATA_KEY_VARIANTS.len() {
         for j in (i + 1)..DATA_KEY_VARIANTS.len() {
-            let (name_a, key_a) = DATA_KEY_VARIANTS[i];
-            let (name_b, key_b) = DATA_KEY_VARIANTS[j];
-            let val_a: Val = key_a.into_val(&env);
-            let val_b: Val = key_b.into_val(&env);
+            let (name_a, key_a) = &DATA_KEY_VARIANTS[i];
+            let (name_b, key_b) = &DATA_KEY_VARIANTS[j];
+            let val_a: Val = key_a.clone().into_val(&env);
+            let val_b: Val = key_b.clone().into_val(&env);
             assert_ne!(
                 val_a.get_payload(),
                 val_b.get_payload(),

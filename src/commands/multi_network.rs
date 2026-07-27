@@ -3,13 +3,12 @@
 //! Provides CLI commands for AI-driven multi-network deployment support.
 
 use crate::utils::{
-    multi_network_deploy::{
-        MultiNetworkDeployer, MultiNetworkConfig, DeploymentStrategy,
-    },
+    multi_network_deploy::{DeploymentStrategy, MultiNetworkConfig, MultiNetworkDeployer},
     print as p,
 };
 use anyhow::Result;
 use clap::Subcommand;
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -93,7 +92,17 @@ pub async fn handle(cmd: MultiNetworkCommands) -> Result<()> {
             cost_optimization,
             risk_assessment,
             json,
-        } => handle_deploy(wasm, networks, strategy, cost_optimization, risk_assessment, json).await,
+        } => {
+            handle_deploy(
+                wasm,
+                networks,
+                strategy,
+                cost_optimization,
+                risk_assessment,
+                json,
+            )
+            .await
+        }
         MultiNetworkCommands::Compare { include_custom } => handle_compare(include_custom),
         MultiNetworkCommands::AddNetwork {
             name,
@@ -123,13 +132,16 @@ async fn handle_deploy(
         "sequential" => DeploymentStrategy::Sequential,
         "testnet_first" => DeploymentStrategy::TestnetFirst,
         _ => {
-            p::warn(&format!("Unknown strategy '{}', using 'testnet_first'", strategy));
+            p::warn(&format!(
+                "Unknown strategy '{}', using 'testnet_first'",
+                strategy
+            ));
             DeploymentStrategy::TestnetFirst
         }
     };
 
     let mut config = MultiNetworkDeployer::create_default_config();
-    config.deployment_strategy = deployment_strategy;
+    config.deployment_strategy = deployment_strategy.clone();
     config.cost_optimization_enabled = cost_optimization;
     config.risk_assessment_enabled = risk_assessment;
 
@@ -138,16 +150,31 @@ async fn handle_deploy(
     p::kv("WASM File", &wasm.display().to_string());
     p::kv("Target Networks", &target_networks.join(", "));
     p::kv("Deployment Strategy", &format!("{:?}", deployment_strategy));
-    p::kv("Cost Optimization", if cost_optimization { "enabled" } else { "disabled" });
-    p::kv("Risk Assessment", if risk_assessment { "enabled" } else { "disabled" });
+    p::kv(
+        "Cost Optimization",
+        if cost_optimization {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    p::kv(
+        "Risk Assessment",
+        if risk_assessment {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
     println!();
 
     let spinner = p::spinner("Deploying to multiple networks...");
     let result = MultiNetworkDeployer::deploy_to_networks(
         &config,
-        &wasm.to_string_lossy().to_string(),
+        wasm.to_string_lossy().as_ref(),
         target_networks,
-    ).await?;
+    )
+    .await?;
     spinner.finish_and_clear();
 
     if json {
@@ -160,7 +187,9 @@ async fn handle_deploy(
     Ok(())
 }
 
-fn print_deployment_result(result: &crate::utils::multi_network_deploy::MultiNetworkDeploymentResult) {
+fn print_deployment_result(
+    result: &crate::utils::multi_network_deploy::MultiNetworkDeploymentResult,
+) {
     p::kv("Deployment ID", &result.deployment_id);
     p::kv("Timestamp", &result.timestamp);
     p::kv("Strategy", &result.strategy);
@@ -174,10 +203,15 @@ fn print_deployment_result(result: &crate::utils::multi_network_deploy::MultiNet
             crate::utils::multi_network_deploy::DeploymentStatus::Failed => "red",
             _ => "yellow",
         };
-        
+
         println!();
         println!("  Network: {}", network_name);
-        println!("  Status: {}", format!("{:?}", network_result.status).color(status_color));
+        println!(
+            "  Status: {}",
+            format!("{:?}", network_result.status)
+                .as_str()
+                .color(status_color)
+        );
         if let Some(contract_id) = &network_result.contract_id {
             println!("  Contract ID: {}", contract_id);
         }
@@ -186,7 +220,10 @@ fn print_deployment_result(result: &crate::utils::multi_network_deploy::MultiNet
         }
         println!("  Gas Used: {} stroops", network_result.gas_used);
         println!("  Cost: ${:.6}", network_result.cost_usd);
-        println!("  Deployment Time: {} ms", network_result.deployment_time_ms);
+        println!(
+            "  Deployment Time: {} ms",
+            network_result.deployment_time_ms
+        );
         if let Some(error) = &network_result.error_message {
             println!("  Error: {}", error);
         }
@@ -195,9 +232,18 @@ fn print_deployment_result(result: &crate::utils::multi_network_deploy::MultiNet
 
     // Cost summary
     p::header("Cost Summary");
-    p::kv("Total Cost", &format!("${:.6}", result.cost_summary.total_cost_usd));
-    p::kv("Cost Savings", &format!("{:.1}%", result.cost_summary.cost_savings_percentage));
-    p::kv("Most Cost-Effective", &result.cost_summary.most_cost_effective_network);
+    p::kv(
+        "Total Cost",
+        &format!("${:.6}", result.cost_summary.total_cost_usd),
+    );
+    p::kv(
+        "Cost Savings",
+        &format!("{:.1}%", result.cost_summary.cost_savings_percentage),
+    );
+    p::kv(
+        "Most Cost-Effective",
+        &result.cost_summary.most_cost_effective_network,
+    );
     println!();
     p::info("Cost by Network:");
     for (network, cost) in &result.cost_summary.cost_by_network {
@@ -207,9 +253,19 @@ fn print_deployment_result(result: &crate::utils::multi_network_deploy::MultiNet
 
     // Risk assessment
     p::header("Risk Assessment");
-    p::kv("Overall Risk Level", &result.risk_assessment.overall_risk_level);
-    p::kv("Approved for Deployment", if result.risk_assessment.approved_for_deployment { "yes" } else { "no" });
-    
+    p::kv(
+        "Overall Risk Level",
+        &result.risk_assessment.overall_risk_level,
+    );
+    p::kv(
+        "Approved for Deployment",
+        if result.risk_assessment.approved_for_deployment {
+            "yes"
+        } else {
+            "no"
+        },
+    );
+
     if !result.risk_assessment.risk_factors.is_empty() {
         println!();
         p::info("Risk Factors:");
@@ -219,7 +275,7 @@ fn print_deployment_result(result: &crate::utils::multi_network_deploy::MultiNet
             println!("    Mitigation: {}", factor.mitigation);
         }
     }
-    
+
     if !result.risk_assessment.recommendations.is_empty() {
         println!();
         p::info("Recommendations:");
@@ -231,17 +287,31 @@ fn print_deployment_result(result: &crate::utils::multi_network_deploy::MultiNet
 
     // Synchronization status
     p::header("Synchronization Status");
-    p::kv("Synchronized", if result.synchronization_status.synchronized { "yes" } else { "no" });
-    p::kv("Last Sync", &result.synchronization_status.last_sync_timestamp);
-    
-    if !result.synchronization_status.synchronized_networks.is_empty() {
+    p::kv(
+        "Synchronized",
+        if result.synchronization_status.synchronized {
+            "yes"
+        } else {
+            "no"
+        },
+    );
+    p::kv(
+        "Last Sync",
+        &result.synchronization_status.last_sync_timestamp,
+    );
+
+    if !result
+        .synchronization_status
+        .synchronized_networks
+        .is_empty()
+    {
         println!();
         p::info("Synchronized Networks:");
         for net in &result.synchronization_status.synchronized_networks {
             println!("  ✓ {}", net);
         }
     }
-    
+
     if !result.synchronization_status.failed_networks.is_empty() {
         println!();
         p::warn("Failed Networks:");
@@ -259,7 +329,10 @@ fn handle_compare(include_custom: bool) -> Result<()> {
     let config = MultiNetworkDeployer::create_default_config();
     let comparison = MultiNetworkDeployer::compare_networks(&config);
 
-    p::kv("Recommended Network", &comparison.recommended_for_deployment);
+    p::kv(
+        "Recommended Network",
+        &comparison.recommended_for_deployment,
+    );
     println!();
 
     p::header("Network Scores");
@@ -270,12 +343,12 @@ fn handle_compare(include_custom: bool) -> Result<()> {
         println!("  Speed Score: {:.1}/100", entry.speed_score);
         println!("  Reliability Score: {:.1}/100", entry.reliability_score);
         println!("  Overall Score: {:.1}/100", entry.overall_score);
-        
+
         println!("  Pros:");
         for pro in &entry.pros {
             println!("    • {}", pro);
         }
-        
+
         println!("  Cons:");
         for con in &entry.cons {
             println!("    • {}", con);
@@ -327,8 +400,14 @@ fn handle_list_networks() -> Result<()> {
         println!("  Soroban RPC URL: {}", net_config.soroban_rpc_url);
         println!("  Gas Price: {} stroops", net_config.gas_price);
         println!("  Reliability Score: {:.2}", net_config.reliability_score);
-        println!("  Estimated Cost per TX: ${:.6}", net_config.estimated_cost_per_tx);
-        println!("  Confirmation Time: {:.1} seconds", net_config.confirmation_time_seconds);
+        println!(
+            "  Estimated Cost per TX: ${:.6}",
+            net_config.estimated_cost_per_tx
+        );
+        println!(
+            "  Confirmation Time: {:.1} seconds",
+            net_config.confirmation_time_seconds
+        );
     }
 
     p::separator();

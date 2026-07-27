@@ -3,13 +3,12 @@
 //! Provides CLI commands for AI-powered deployment automation.
 
 use crate::utils::{
-    deployment_automation::{
-        run_automation_pipeline, AutomationLevel, DeploymentAutomationConfig,
-    },
+    deployment_automation::{run_automation_pipeline, AutomationLevel, DeploymentAutomationConfig},
     print as p,
 };
 use anyhow::Result;
 use clap::Subcommand;
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -105,19 +104,21 @@ pub async fn handle(cmd: DeploymentAutomateCommands) -> Result<()> {
             rollback_automation,
             monitoring_setup,
             json,
-        } => handle_run(
-            wasm,
-            network,
-            wallet,
-            level,
-            pre_deployment_checks,
-            automated_testing,
-            post_deployment_verification,
-            rollback_automation,
-            monitoring_setup,
-            json,
-        )
-        .await,
+        } => {
+            handle_run(
+                wasm,
+                network,
+                wallet,
+                level,
+                pre_deployment_checks,
+                automated_testing,
+                post_deployment_verification,
+                rollback_automation,
+                monitoring_setup,
+                json,
+            )
+            .await
+        }
         DeploymentAutomateCommands::History { limit } => handle_history(limit),
         DeploymentAutomateCommands::Config {
             level,
@@ -157,7 +158,10 @@ async fn handle_run(
         "standard" => AutomationLevel::Standard,
         "full" => AutomationLevel::Full,
         _ => {
-            p::warn(&format!("Unknown automation level '{}', using 'standard'", level));
+            p::warn(&format!(
+                "Unknown automation level '{}', using 'standard'",
+                level
+            ));
             AutomationLevel::Standard
         }
     };
@@ -180,11 +184,46 @@ async fn handle_run(
         p::kv("Wallet", wallet);
     }
     p::kv("Automation Level", &automation_level.to_string());
-    p::kv("Pre-deployment Checks", if pre_deployment_checks { "enabled" } else { "disabled" });
-    p::kv("Automated Testing", if automated_testing { "enabled" } else { "disabled" });
-    p::kv("Post-deployment Verification", if post_deployment_verification { "enabled" } else { "disabled" });
-    p::kv("Rollback Automation", if rollback_automation { "enabled" } else { "disabled" });
-    p::kv("Monitoring Setup", if monitoring_setup { "enabled" } else { "disabled" });
+    p::kv(
+        "Pre-deployment Checks",
+        if pre_deployment_checks {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    p::kv(
+        "Automated Testing",
+        if automated_testing {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    p::kv(
+        "Post-deployment Verification",
+        if post_deployment_verification {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    p::kv(
+        "Rollback Automation",
+        if rollback_automation {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
+    p::kv(
+        "Monitoring Setup",
+        if monitoring_setup {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    );
     println!();
 
     let spinner = p::spinner("Running automation pipeline...");
@@ -205,7 +244,10 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
     p::kv("Automation ID", &result.automation_id);
     p::kv("Timestamp", &result.timestamp);
     p::kv("Automation Level", &result.automation_level);
-    p::kv("Overall Success", if result.overall_success { "yes" } else { "no" });
+    p::kv(
+        "Overall Success",
+        if result.overall_success { "yes" } else { "no" },
+    );
     p::kv("Summary", &result.summary);
     println!();
 
@@ -213,13 +255,28 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
     if let Some(ref validation) = result.pre_deployment_validation {
         p::header("Pre-deployment Validation");
         p::kv("Status", &validation.overall_status);
-        p::kv("Approved", if validation.approved_for_deployment { "yes" } else { "no" });
-        
+        p::kv(
+            "Approved",
+            if validation.approved_for_deployment {
+                "yes"
+            } else {
+                "no"
+            },
+        );
+
         println!();
         p::info("Validation Checks:");
         for check in &validation.checks {
-            let status_color = if check.status == "pass" { "green" } else { "red" };
-            println!("  [{}] {}", check.status.color(status_color), check.check_name);
+            let status_color = if check.status == "pass" {
+                "green"
+            } else {
+                "red"
+            };
+            println!(
+                "  [{}] {}",
+                check.status.as_str().color(status_color),
+                check.check_name
+            );
             println!("    Description: {}", check.description);
             if let Some(ref details) = check.details {
                 println!("    Details: {}", details);
@@ -228,11 +285,20 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
                 println!("    Fix: {}", fix);
             }
         }
-        
+
         println!();
         p::info("Gas Estimation:");
-        p::kv("Estimated Gas", &format!("{} stroops", validation.gas_estimation.estimated_gas_stroops));
-        p::kv("Estimated Cost", &format!("${:.6}", validation.gas_estimation.estimated_cost_usd));
+        p::kv(
+            "Estimated Gas",
+            &format!(
+                "{} stroops",
+                validation.gas_estimation.estimated_gas_stroops
+            ),
+        );
+        p::kv(
+            "Estimated Cost",
+            &format!("${:.6}", validation.gas_estimation.estimated_cost_usd),
+        );
         p::kv("Confidence", &validation.gas_estimation.confidence_level);
         println!();
     }
@@ -245,12 +311,21 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
         p::kv("Passed", &testing.passed_tests.to_string());
         p::kv("Failed", &testing.failed_tests.to_string());
         p::kv("Skipped", &testing.skipped_tests.to_string());
-        
+
         println!();
         p::info("Test Results:");
         for test in &testing.test_results {
-            let status_color = if test.status == "pass" { "green" } else { "red" };
-            println!("  [{}] {} ({}ms)", test.status.color(status_color), test.test_name, test.duration_ms);
+            let status_color = if test.status == "pass" {
+                "green"
+            } else {
+                "red"
+            };
+            println!(
+                "  [{}] {} ({}ms)",
+                test.status.as_str().color(status_color),
+                test.test_name,
+                test.duration_ms
+            );
             if let Some(ref output) = test.output {
                 println!("    Output: {}", output);
             }
@@ -274,7 +349,10 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
         }
         p::kv("Gas Used", &format!("{} stroops", deployment.gas_used));
         p::kv("Cost", &format!("${:.6}", deployment.cost_usd));
-        p::kv("Deployment Time", &format!("{} ms", deployment.deployment_time_ms));
+        p::kv(
+            "Deployment Time",
+            &format!("{} ms", deployment.deployment_time_ms),
+        );
         if let Some(ref error) = deployment.error_message {
             p::kv("Error", error);
         }
@@ -285,23 +363,34 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
     if let Some(ref verification) = result.post_deployment_verification {
         p::header("Post-deployment Verification");
         p::kv("Status", &verification.overall_status);
-        
+
         println!();
         p::info("Verification Checks:");
         for check in &verification.verifications {
-            let status_color = if check.status == "pass" { "green" } else { "red" };
-            println!("  [{}] {}", check.status.color(status_color), check.check_name);
+            let status_color = if check.status == "pass" {
+                "green"
+            } else {
+                "red"
+            };
+            println!(
+                "  [{}] {}",
+                check.status.as_str().color(status_color),
+                check.check_name
+            );
             println!("    Description: {}", check.description);
             if let Some(ref details) = check.details {
                 println!("    Details: {}", details);
             }
         }
-        
+
         println!();
         p::info("Contract Inspection:");
         p::kv("Contract ID", &verification.contract_inspection.contract_id);
         p::kv("WASM Hash", &verification.contract_inspection.wasm_hash);
-        p::kv("Storage Entries", &verification.contract_inspection.storage_entries.to_string());
+        p::kv(
+            "Storage Entries",
+            &verification.contract_inspection.storage_entries.to_string(),
+        );
         p::kv("Status", &verification.contract_inspection.status);
         println!();
     }
@@ -325,7 +414,7 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
     if let Some(ref monitoring) = result.monitoring_setup {
         p::header("Monitoring Setup");
         p::kv("Status", &monitoring.status);
-        
+
         println!();
         p::info("Monitoring Configuration:");
         p::kv("Contract ID", &monitoring.monitoring_config.contract_id);
@@ -334,14 +423,33 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
             println!("    • {}", event);
         }
         println!("  Alert Thresholds:");
-        println!("    • Balance: {} XLM", monitoring.monitoring_config.alert_thresholds.balance_threshold_xlm);
-        println!("    • Error Rate: {:.1}%", monitoring.monitoring_config.alert_thresholds.error_rate_threshold * 100.0);
-        println!("    • Gas Cost: {} stroops", monitoring.monitoring_config.alert_thresholds.gas_cost_threshold_stroops);
+        println!(
+            "    • Balance: {} XLM",
+            monitoring
+                .monitoring_config
+                .alert_thresholds
+                .balance_threshold_xlm
+        );
+        println!(
+            "    • Error Rate: {:.1}%",
+            monitoring
+                .monitoring_config
+                .alert_thresholds
+                .error_rate_threshold
+                * 100.0
+        );
+        println!(
+            "    • Gas Cost: {} stroops",
+            monitoring
+                .monitoring_config
+                .alert_thresholds
+                .gas_cost_threshold_stroops
+        );
         println!("  Notification Channels:");
         for channel in &monitoring.monitoring_config.notification_channels {
             println!("    • {}", channel);
         }
-        
+
         println!();
         p::info("Alerts Configured:");
         for alert in &monitoring.alerts_configured {
@@ -354,10 +462,10 @@ fn print_automation_result(result: &crate::utils::deployment_automation::Complet
 fn handle_history(limit: usize) -> Result<()> {
     p::header("Deployment Automation History");
     p::separator();
-    
+
     p::info("Automation history feature coming soon");
     p::info("Automation results are currently stored in-memory only");
-    
+
     p::separator();
     Ok(())
 }
@@ -372,28 +480,43 @@ fn handle_config(
 ) -> Result<()> {
     p::header("Deployment Automation Configuration");
     p::separator();
-    
+
     if let Some(lvl) = level {
         p::kv("Default Automation Level", &lvl);
     }
     if let Some(pre_check) = pre_deployment_checks {
-        p::kv("Pre-deployment Checks", if pre_check { "enabled" } else { "disabled" });
+        p::kv(
+            "Pre-deployment Checks",
+            if pre_check { "enabled" } else { "disabled" },
+        );
     }
     if let Some(auto_test) = automated_testing {
-        p::kv("Automated Testing", if auto_test { "enabled" } else { "disabled" });
+        p::kv(
+            "Automated Testing",
+            if auto_test { "enabled" } else { "disabled" },
+        );
     }
     if let Some(post_verify) = post_deployment_verification {
-        p::kv("Post-deployment Verification", if post_verify { "enabled" } else { "disabled" });
+        p::kv(
+            "Post-deployment Verification",
+            if post_verify { "enabled" } else { "disabled" },
+        );
     }
     if let Some(rollback) = rollback_automation {
-        p::kv("Rollback Automation", if rollback { "enabled" } else { "disabled" });
+        p::kv(
+            "Rollback Automation",
+            if rollback { "enabled" } else { "disabled" },
+        );
     }
     if let Some(monitor) = monitoring_setup {
-        p::kv("Monitoring Setup", if monitor { "enabled" } else { "disabled" });
+        p::kv(
+            "Monitoring Setup",
+            if monitor { "enabled" } else { "disabled" },
+        );
     }
-    
+
     p::info("Configuration saved to ~/.starforge/config.toml");
-    
+
     p::separator();
     Ok(())
 }
