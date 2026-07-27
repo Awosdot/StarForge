@@ -1,10 +1,5 @@
 pub mod ai_debugger;
-pub mod ai_deployment_testing;
-pub mod ai_docs;
-pub mod ai_gas_estimation;
-pub mod ai_ide_integration;
-pub mod ai_performance_profiler;
-pub mod ai_test_maintenance;
+pub mod ai_refactor;
 pub mod approval_engine;
 pub mod audit;
 pub mod backup;
