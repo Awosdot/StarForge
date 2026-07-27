@@ -323,7 +323,7 @@ pub fn suggest(source: &str) -> Vec<Completion> {
     }
 
     // Rank by confidence (stable, highest first).
-    out.sort_by(|a, b| b.confidence.cmp(&a.confidence));
+    out.sort_by_key(|item| std::cmp::Reverse(item.confidence));
     out
 }
 
@@ -876,7 +876,8 @@ fn external_call_snippet() -> String {
 /// Return the default return expression for a return type `ret`.
 fn default_return_expr(ret: &str, has_env: bool) -> String {
     let r = ret.trim();
-    let base = if r.starts_with("Option<") {
+
+    if r.starts_with("Option<") {
         "None".to_string()
     } else if r.starts_with("Result<") {
         "Ok(Default::default())".to_string()
@@ -893,8 +894,7 @@ fn default_return_expr(ret: &str, has_env: bool) -> String {
             "()" => String::new(),
             _ => "Default::default()".to_string(),
         }
-    };
-    base
+    }
 }
 
 /// Find the first parameter that looks like an `Address` we should auth on.

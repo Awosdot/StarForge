@@ -10,8 +10,9 @@
 )]
 
 mod commands;
-pub use starforge::plugins;
-pub use starforge::utils;
+pub mod curation;
+pub mod plugins;
+mod utils;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -46,13 +47,22 @@ enum Commands {
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
 
+    /// AI Assistant for local Ollama-powered development, explanation, and translation
+    #[command(subcommand)]
+    Ai(commands::ai::AiCommands),
+
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
     /// Generate Soroban project boilerplate
-    /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
+    /// Generate contract scaffolding, bindings, and docs
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+    /// AI-assisted code completion (suggestions, boilerplate, stubs, imports)
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
     /// Generate smart contracts from natural language prompts
@@ -81,7 +91,7 @@ enum Commands {
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
 
-    /// Manage telemetry collection
+    /// Manage telemetry settings directly
     #[command(subcommand)]
     Telemetry(commands::telemetry::TelemetryCommands),
 
@@ -141,12 +151,20 @@ enum Commands {
     #[command(subcommand)]
     Gas(commands::gas::GasCommands),
 
+    /// AI-assisted deployment cost management: budgets, forecasting,
+    /// cross-network comparison, and reporting
+    #[command(subcommand)]
+    Cost(commands::cost::CostCommands),
+
     /// Manage third-party plugins
     #[command(subcommand)]
     Plugin(commands::plugin::PluginCommands),
     /// Privacy protection, anonymization, consent, and reporting
     #[command(subcommand)]
     Privacy(commands::privacy::PrivacyCommands),
+    /// AI-driven project management for task tracking, sprints, resources, risks, and timelines
+    #[command(subcommand)]
+    Project(commands::project::ProjectCommands),
     /// Manage community contract templates from the marketplace
     #[command(subcommand)]
     Template(commands::template::TemplateCommands),
@@ -184,6 +202,10 @@ enum Commands {
 
     /// AI-powered security audit for Soroban contracts using Claude
     AiAudit(commands::ai_audit::AiAuditArgs),
+
+    /// AI-driven code refactoring and improvement
+    #[command(subcommand)]
+    Ai(commands::refactor::RefactorCommands),
 
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
@@ -227,9 +249,24 @@ enum Commands {
     #[command(subcommand)]
     Approval(commands::approval::ApprovalCommands),
 
+    /// Manage feature flags for AI features (rollouts, A/B tests, rollback)
+    FeatureFlags(commands::feature_flags_cmd::FeatureFlagsArgs),
+
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+
+    /// Generate a Soroban smart contract from a natural language prompt (OpenAI)
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+
+    /// AI Contract Completion Assistant (offline code completion, boilerplate, stubs)
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+
+    /// Run an installed external plugin by name
+    #[command(external_subcommand)]
+    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -249,10 +286,13 @@ async fn main() {
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
+        Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
+        Commands::Complete(_) => "complete",
+        Commands::FeatureFlags(_) => "feature-flags",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
         Commands::Deploy(_) => "deploy",
@@ -272,10 +312,12 @@ async fn main() {
         Commands::Benchmark(_) => "benchmark",
         Commands::Test(_) => "test",
         Commands::Gas(_) => "gas",
+        Commands::Cost(_) => "cost",
         Commands::Plugin(_) => "plugin",
         Commands::Privacy(_) => "privacy",
+        Commands::Project(_) => "project",
         Commands::Template(_) => "template",
-        Commands::Registry(_) => "registry",
+        Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -283,6 +325,7 @@ async fn main() {
         Commands::Security(_) => "security",
         Commands::Audit(_) => "audit",
         Commands::AiAudit(_) => "ai-audit",
+        Commands::Ai(_) => "ai",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -295,6 +338,7 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
+        Commands::Generate(_) => "generate",
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
     }
@@ -516,11 +560,9 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             hints.push("Explain a specific category: starforge ai-debug explain auth".into());
             hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
         }
-        "benchmark" | "test" => {
-            if msg.contains("wasm") || msg.contains("not found") {
-                hints.push("Build your contract first: stellar contract build".into());
-                hints.push("Pass the correct --wasm path to the command.".into());
-            }
+        "benchmark" | "test" if (msg.contains("wasm") || msg.contains("not found")) => {
+            hints.push("Build your contract first: stellar contract build".into());
+            hints.push("Pass the correct --wasm path to the command.".into());
         }
         _ => {}
     }

@@ -272,7 +272,7 @@ impl AutocompleteEngine {
                 let prefix = entry.command.split_whitespace().next().unwrap_or("");
                 command_groups
                     .entry(prefix.to_string())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(entry);
             }
         }

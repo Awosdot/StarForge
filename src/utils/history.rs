@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Represents a single entry in the command history
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,12 +20,12 @@ pub struct HistoryFile {
 }
 
 /// Get the path to the history file: ~/.starforge/history.json
-pub fn history_file_path(config_dir: &PathBuf) -> PathBuf {
+pub fn history_file_path(config_dir: &Path) -> PathBuf {
     config_dir.join("history.json")
 }
 
 /// Load command history from disk
-pub fn load_history(config_dir: &PathBuf) -> Result<Vec<HistoryEntry>> {
+pub fn load_history(config_dir: &Path) -> Result<Vec<HistoryEntry>> {
     let path = history_file_path(config_dir);
 
     if !path.exists() {

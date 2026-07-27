@@ -294,8 +294,17 @@ async fn scaffold_contract(
     // Scaffolding completed: keep the directory.
     target_guard.commit();
 
+    // Best-effort usage tracking for community analytics — never fail
+    // scaffolding just because analytics logging had a problem.
+    let _ = crate::utils::template_analytics::record_usage(
+        &template,
+        crate::utils::template_analytics::UsageAction::Scaffold,
+    );
+
     println!();
     p::success(&format!("Contract '{}' scaffolded!", name));
+    // Record usage for recommendation personalisation.
+    let _ = crate::utils::template_recommender::record_usage(&template, "new");
     println!();
     println!("  Next steps:");
     p::info(&format!("  cd {}", name));
@@ -1198,6 +1207,8 @@ async fn scaffold_from_marketplace(name: String, template_name: String) -> Resul
 
     println!();
     p::success(&format!("Contract '{}' scaffolded from marketplace!", name));
+    // Record usage for recommendation personalisation.
+    let _ = crate::utils::template_recommender::record_usage(&template_name, "new");
     println!();
     println!("  Next steps:");
     p::info(&format!("  cd {}", name));

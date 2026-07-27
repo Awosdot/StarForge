@@ -917,10 +917,11 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn temp_home() -> TempDir {
+    fn temp_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::utils::lock_home_env();
         let home = TempDir::new().unwrap();
         std::env::set_var("HOME", home.path());
-        home
+        (home, guard)
     }
 
     fn write_minimal_wasm(path: &Path) {

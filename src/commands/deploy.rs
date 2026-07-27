@@ -2,10 +2,10 @@ use crate::commands::analytics as analytics_cmds;
 use crate::utils::{
     config, confirmation,
     deploy_history::{
-        self, last_successful, record_deployment, set_contract_id, update_status, DeployRecord,
-        DeployStatus,
+        self, last_successful, record_deployment, set_contract_id, set_duration, update_status,
+        DeployRecord, DeployStatus,
     },
-    horizon, optimizer, print as p, soroban, wallet_signer,
+    deployment_monitor, horizon, notifications, optimizer, print as p, soroban, wallet_signer,
 };
 
 use crate::utils::hardware_wallet::HardwareWalletKind;
@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Instant;
 
 const SOROBAN_WASM_LIMIT_KB: f64 = 128.0;
 
@@ -65,6 +66,16 @@ pub struct DeployArgs {
 }
 
 /// Extract a Soroban contract id (56-char `C…` strkey) from CLI stdout/stderr.
+/// Records a deployment analytics event.
+///
+/// Analytics must never fail a deploy, so a reporting error is logged and
+/// swallowed rather than propagated.
+async fn record_analytics(cmd: analytics_cmds::AnalyticsCommands) {
+    if let Err(e) = analytics_cmds::handle(cmd).await {
+        tracing::debug!("failed to record deployment analytics: {e}");
+    }
+}
+
 fn parse_contract_id_from_stdout(output: &str) -> Option<String> {
     output.split_whitespace().find_map(|token| {
         let cleaned = token.trim_matches(|c: char| !c.is_ascii_alphanumeric());
@@ -358,8 +369,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             wasm_size_kb,
             wallet,
             &args.network,
-        )
-        .await;
+        );
     }
 
     if args.simulate {
@@ -508,6 +518,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         let record_id = record_deployment(record)?;
 
         let deploy_args = build_stellar_deploy_args(&wasm_path, &wallet.public_key, &args.network);
+        let started_at = Instant::now();
         let output = Command::new("stellar")
             .args(&deploy_args)
             .output()
@@ -515,16 +526,18 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 let _ = update_status(&record_id, DeployStatus::Failed, Some(e.to_string()));
                 anyhow::anyhow!("Failed to execute stellar CLI: {}", e)
             })?;
+        let duration_ms = started_at.elapsed().as_millis() as u64;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             update_status(&record_id, DeployStatus::Failed, Some(stderr.clone()))?;
+            let _ = set_duration(&record_id, duration_ms);
             p::error(&format!("Stellar CLI deployment failed: {}", stderr));
 
             // Record deployment analytics event (execute attempt failed).
             // Try to parse a contract id, even though the command failed.
             let contract_id_for_analytics = parse_contract_id_from_stdout(&stderr);
-            let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
+            record_analytics(analytics_cmds::AnalyticsCommands::Track(
                 analytics_cmds::TrackArgs {
                     contract_id: contract_id_for_analytics.unwrap_or_default(),
 
@@ -548,6 +561,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 &args.network,
             )?;
 
+            let _ = emit_deployment_monitoring_alert(&args.network, None);
             anyhow::bail!("Stellar CLI deployment failed: {}", stderr);
         }
 
@@ -559,9 +573,10 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             parsed_contract_id = Some(contract_id);
         }
         update_status(&record_id, DeployStatus::Success, None)?;
+        let _ = set_duration(&record_id, duration_ms);
 
         // Record deployment analytics event (execute attempt succeeded).
-        let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
+        record_analytics(analytics_cmds::AnalyticsCommands::Track(
             analytics_cmds::TrackArgs {
                 contract_id: parsed_contract_id.clone().unwrap_or_default(),
                 network: args.network.clone(),
@@ -588,6 +603,33 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
 
 /// On a failed `--execute`, automatically record a rollback to the previous
 /// successful deployment (unless disabled) and print the on-chain revert command.
+fn emit_deployment_monitoring_alert(network: &str, contract_id: Option<&str>) -> Result<()> {
+    let report = deployment_monitor::analyze_deployments(network, contract_id)?;
+    let high_priority = report
+        .alerts
+        .iter()
+        .filter(|alert| alert.severity != "low")
+        .collect::<Vec<_>>();
+
+    if !high_priority.is_empty() {
+        for alert in high_priority {
+            p::warn(&format!("{} — {}", alert.title, alert.detail));
+            notifications::alert(&format!("{}: {}", alert.title, alert.recommendation));
+        }
+    } else if let Some(alert) = report.alerts.first() {
+        p::info(&format!("{} — {}", alert.title, alert.detail));
+    }
+
+    if let Some(prediction) = report.predictions.first() {
+        p::info(&format!(
+            "Prediction: {} [{}] {}",
+            prediction.title, prediction.confidence, prediction.recommended_action
+        ));
+    }
+
+    Ok(())
+}
+
 fn handle_failed_deploy_rollback(
     disabled: bool,
     previous: Option<DeployRecord>,

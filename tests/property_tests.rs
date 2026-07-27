@@ -270,7 +270,10 @@ proptest! {
     /// Passphrases shorter than MIN_PASSPHRASE_LEN must always fail.
     #[test]
     fn prop_short_passphrase_always_fails(
-        passphrase in proptest::string::string_regex(".{0,11}").unwrap()
+        // Printable ASCII so one character is one byte: `.{0,11}` can emit
+        // multi-byte characters whose *byte* length reaches the minimum, and
+        // rejecting those aborts the run with "too many global rejects".
+        passphrase in proptest::string::string_regex("[ -~]{0,11}").unwrap()
     ) {
         // Only test strings shorter than the minimum length.
         prop_assume!(passphrase.len() < starforge::utils::crypto::MIN_PASSPHRASE_LEN);

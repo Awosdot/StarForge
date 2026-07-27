@@ -30,8 +30,8 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Import a template from a directory or .zip archive into the local registry
-    Import {
+    /// Install a template package into the local registry
+    Install {
         /// Path to template directory or .zip package
         path: PathBuf,
         /// Template name (defaults to directory/archive stem)
@@ -110,8 +110,8 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Install a template from a Git URL, local path, or marketplace registry name
-    Install {
+    /// Fetch and install a template from a Git URL, local path, or marketplace registry name
+    Fetch {
         /// Source: git URL (https://...), local filesystem path, or registry template name
         source: String,
         /// Override the installed template name (defaults to the template name or URL basename)
@@ -153,6 +153,30 @@ pub enum TemplateCommands {
     Audit {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
+    },
+    /// Get AI-powered template recommendations based on your project requirements
+    Recommend {
+        /// Free-form description of what you want to build (e.g. "decentralized exchange")
+        #[arg(default_value = "")]
+        query: String,
+        /// Filter by tags (comma-separated, e.g. "defi,amm")
+        #[arg(long)]
+        tags: Option<String>,
+        /// Your skill level: beginner, intermediate, or advanced
+        #[arg(long)]
+        skill: Option<String>,
+        /// Maximum number of recommendations to show (default 5)
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+        /// Show detailed scoring breakdown for each recommendation
+        #[arg(long)]
+        explain: bool,
+        /// Ignore past usage history when ranking recommendations
+        #[arg(long)]
+        no_personalise: bool,
+        /// Ignore community popularity when ranking recommendations
+        #[arg(long)]
+        no_community: bool,
     },
 }
 
@@ -221,17 +245,14 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Show { name } => show(name).await,
         TemplateCommands::Remove { name, purge } => remove(name, purge).await,
         TemplateCommands::Init => init(),
-        TemplateCommands::Info { name } => info(name).await,
-        TemplateCommands::Install {
+        TemplateCommands::Info { name } => info(name),
+        TemplateCommands::Fetch {
             source,
             name,
             version,
             force,
-        } => install(source, name, version, force).await,
-        TemplateCommands::Update { name, all } => update(name, all).await,
-        TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
-        TemplateCommands::Docs { name, output } => template_docs(name, output).await,
-        TemplateCommands::Audit { name } => template_audit(name).await,
+        } => fetch(source, name, version, force),
+        TemplateCommands::Update { name, all } => update(name, all),
     }
 }
 
@@ -333,7 +354,7 @@ async fn publish(
     if let Some(lic) = template.license.as_ref() {
         p::kv("License", lic);
     }
-    if let Some(repo) = template.repository.as_ref() {
+    if let Some(repo) = template.repository_url.as_ref() {
         p::kv("Repository", repo);
     }
     if let Some(path) = template.path.as_ref() {
@@ -404,7 +425,10 @@ async fn search(
 
     let filters = templates::SearchFilters {
         tags: tag_list,
+        categories: Vec::new(),
         verified_only: verified,
+        featured_only: false,
+        hide_spam: false,
         min_quality,
     };
 
@@ -509,7 +533,7 @@ async fn show(name: String) -> Result<()> {
     if let Some(ref license) = template.license {
         p::kv("License", license);
     }
-    if let Some(ref repo) = template.repository {
+    if let Some(ref repo) = template.repository_url {
         p::kv("Repository", repo);
     }
     if let Some(ref hp) = template.homepage {
@@ -694,12 +718,7 @@ async fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-async fn install(
-    source: String,
-    name: Option<String>,
-    version: Option<String>,
-    force: bool,
-) -> Result<()> {
+fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
     p::header("Template Install");
     p::kv("Source", &source);
     if let Some(ref n) = name {
@@ -723,6 +742,8 @@ async fn install(
     if let Some(ref path) = entry.path {
         p::kv("Local path", path);
     }
+    // Record this install for community-learning / personalisation.
+    let _ = crate::utils::template_recommender::record_usage(&entry.name, "install");
     p::info(&format!(
         "Use it with: starforge template info {}",
         entry.name

@@ -586,12 +586,11 @@ pub fn emergency_upgrade(
         anyhow::bail!("Emergency proposal '{}' already exists", proposal_id);
     }
 
-    let mut emergency_votes = Vec::new();
-    emergency_votes.push(Vote {
+    let emergency_votes = vec![Vote {
         voter: guardian.clone(),
         choice: VoteChoice::For,
         voted_at: Utc::now().to_rfc3339(),
-    });
+    }];
 
     let quorum_met = cfg.emergency_quorum <= 1;
     let status = if quorum_met {
@@ -700,6 +699,7 @@ mod tests {
     }
 
     fn with_isolated_governance<F: FnOnce()>(f: F) {
+        let _home_guard = crate::utils::lock_home_env();
         let _guard = TEST_MUTEX.get_or_init(|| Mutex::new(())).lock().unwrap();
         let home = test_home();
         env::set_var("HOME", home.path());

@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Args, Debug)]
 pub struct AiAuditArgs {
@@ -70,7 +70,7 @@ fn read_contract_code(path: &PathBuf) -> Result<String> {
             "No src/lib.rs or src/main.rs found in {}",
             path.display()
         ))
-    } else if path.is_file() && path.extension().map_or(false, |ext| ext == "rs") {
+    } else if path.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
         fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", path.display(), e))
     } else {
@@ -82,7 +82,7 @@ fn read_contract_code(path: &PathBuf) -> Result<String> {
 }
 
 /// Get contract name from path or use provided name.
-fn get_contract_name(path: &PathBuf, provided_name: Option<String>) -> String {
+fn get_contract_name(path: &Path, provided_name: Option<String>) -> String {
     if let Some(name) = provided_name {
         return name;
     }
@@ -375,6 +375,11 @@ fn format_html_report(report: &crate::utils::security::SecurityAuditReport) -> S
 
 /// Handle the `starforge ai-audit` command.
 pub async fn handle(args: AiAuditArgs) -> Result<()> {
+    // Feature-flag gate: the audit pipeline is gated on `ai.audit` so we can
+    // do gradual rollouts and A/B experiments. Admins can flip the flag with
+    // `starforge feature-flags enable ai.audit` / `rollout ai.audit --percent 25`.
+    crate::commands::feature_flags_cmd::require_feature("ai.audit")?;
+
     // Get API key
     let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
         anyhow::anyhow!(

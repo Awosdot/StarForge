@@ -57,7 +57,7 @@ impl LocalSorobanSandbox {
             self.wasm_path.display()
         ));
         output.push_str(&format!("  {} Network: {}\n", "  └".dimmed(), self.network));
-        output.push_str("\n");
+        output.push('\n');
 
         match self.invoke(function, args) {
             Ok(result) => {

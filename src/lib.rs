@@ -10,5 +10,6 @@
     clippy::unnecessary_lazy_evaluations
 )]
 
+pub mod commands;
 pub mod plugins;
 pub mod utils;

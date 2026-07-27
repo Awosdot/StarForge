@@ -35,6 +35,12 @@ pub struct AiGasEstimator {
     model_version: String,
 }
 
+impl Default for AiGasEstimator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AiGasEstimator {
     pub fn new() -> Self {
         Self {

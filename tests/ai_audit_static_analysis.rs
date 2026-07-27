@@ -65,7 +65,7 @@ pub fn set_secret(env: Env, password: String) {
         "Should detect sensitive data stored on-chain"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("sensitive")),
+        findings.iter().any(|f| f.pattern_name == "privacy_leak"),
         "Should identify sensitive data storage"
     );
 }
@@ -242,17 +242,20 @@ pub fn function_{i}(env: Env) {{
     env.storage().instance().set(&key_{i}, &value_{i});
 }}
 "#,
-            i = i,
-            key_i = i,
-            value_i = i
+            i = i
         ));
     }
 
     let findings = run_static_checks(&code);
-    // Should complete without crashing and find issues
+    // `run_static_checks` aggregates each pattern into a single result, so the
+    // breadth of a match shows up in `line_numbers`, not in the finding count.
+    let missing_auth = findings
+        .iter()
+        .find(|f| f.pattern_name == "missing_auth")
+        .expect("large contract should trigger the missing-auth pattern");
     assert!(
-        findings.len() >= 100,
-        "Should detect pattern in large contract"
+        missing_auth.line_numbers.len() >= 100,
+        "Should detect the pattern in every generated function"
     );
 }
 

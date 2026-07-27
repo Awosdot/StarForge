@@ -217,8 +217,7 @@ pub async fn handle(cmd: PipelineCommands) -> Result<()> {
 
 fn handle_create(args: CreateArgs) -> Result<()> {
     p::header("Contract Deployment Pipeline Builder");
-    let mut pipeline =
-        pipeline_builder::create_pipeline(&args.name, &args.description, &args.network)?;
+    let pipeline = pipeline_builder::create_pipeline(&args.name, &args.description, &args.network)?;
     let path = pipeline_builder::save_pipeline(&pipeline)?;
 
     p::kv("Pipeline ID", &pipeline.id);
@@ -330,7 +329,7 @@ fn handle_list(args: ListArgs) -> Result<()> {
     for pipeline in &pipelines {
         println!(
             "  {:<10}  {:<24}  {:<10}  {:?}",
-            &pipeline.id[..8.min(pipeline.id.len())].cyan(),
+            pipeline.id[..8.min(pipeline.id.len())].cyan(),
             pipeline.name,
             pipeline.network,
             pipeline.status

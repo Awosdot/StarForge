@@ -254,7 +254,7 @@ pub fn analyse_wasm(bytes: &[u8]) -> Vec<OptimizationIssue> {
     let large_data_threshold = 512usize;
     let data_runs = bytes
         .windows(large_data_threshold)
-        .filter(|w| w.iter().all(|&b| b >= 0x20 && b <= 0x7E))
+        .filter(|w| w.iter().all(|&b| (0x20..=0x7E).contains(&b)))
         .count();
     if data_runs > 0 {
         issues.push(OptimizationIssue {
@@ -355,7 +355,6 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
                     suggested: line.replace("std::vec::Vec", "soroban_sdk::Vec").to_string(),
                     reason: "Prefer soroban_sdk::Vec over std::vec::Vec in contract code for Soroban compatibility.".to_string(),
                 });
-            }
         }
 
         // Flag large string literals in contract code
@@ -705,9 +704,7 @@ fn handle_report(args: ReportArgs) -> Result<()> {
 
     let reports = load_reports_store()?;
     let report = reports
-        .iter()
-        .filter(|r| r.contract == args.contract)
-        .last()
+        .iter().rfind(|r| r.contract == args.contract)
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "No optimization report found for contract '{}'. Run `starforge optimize analyse` first.",
