@@ -9,9 +9,10 @@
     clippy::needless_borrow
 )]
 
-pub use starforge::commands;
-pub use starforge::plugins;
-pub use starforge::utils;
+mod commands;
+pub mod curation;
+pub mod plugins;
+mod utils;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -81,7 +82,7 @@ enum Commands {
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
 
-    /// Manage telemetry collection
+    /// Manage telemetry settings directly
     #[command(subcommand)]
     Telemetry(commands::telemetry::TelemetryCommands),
 
@@ -307,7 +308,7 @@ async fn main() {
         Commands::Privacy(_) => "privacy",
         Commands::Project(_) => "project",
         Commands::Template(_) => "template",
-        Commands::Registry(_) => "registry",
+        Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -336,74 +337,29 @@ async fn main() {
 
     let start = std::time::Instant::now();
     let result = match cli.command {
-        Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
-        Commands::Ai(cmd) => commands::ai::handle(cmd).await,
-        Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
-        Commands::New(cmd) => commands::new::handle(cmd).await,
-        Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
-        Commands::Contract(cmd) => commands::contract::handle(cmd).await,
-        Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
-        Commands::Debug(cmd) => commands::debug::handle(cmd).await,
-        Commands::Deploy(args) => commands::deploy::handle(args).await,
-        Commands::Deployments(cmd) => commands::deployments::handle(cmd).await,
-        Commands::Info => commands::info::handle().await,
-        Commands::Config(cmd) => commands::config::handle(cmd).await,
-        Commands::Telemetry(cmd) => commands::telemetry::handle(cmd).await,
-        Commands::Tx(args) => commands::tx::handle(args).await,
-        Commands::Network(cmd) => commands::network::handle(cmd).await,
-        Commands::Node(cmd) => commands::node::handle(cmd).await,
-        Commands::Completions(shell) => commands::completions::handle(shell).await,
-        Commands::Autocomplete {
-            suggest,
-            record,
-            interactive,
-            clear_history,
-            stats,
-        } => {
-            commands::autocomplete::handle_autocomplete(
-                suggest,
-                record,
-                interactive,
-                clear_history,
-                stats,
-            )
-            .await
-        }
-        Commands::Shell(args) => commands::shell::handle(args).await,
-        Commands::Monitor(args) => commands::monitor::handle(args).await,
-        Commands::Multisig(cmd) => commands::multisig_builder::handle(cmd).await,
-        Commands::Tutorial(cmd) => commands::tutorial::handle(cmd).await,
-        Commands::Benchmark(args) => commands::benchmark::handle(args).await,
-        Commands::Test(args) => commands::test::handle(args).await,
-        Commands::Gas(args) => commands::gas::handle(args).await,
-        Commands::Cost(args) => commands::cost::handle(args).await,
-        Commands::Plugin(args) => commands::plugin::handle(args).await,
-        Commands::Privacy(cmd) => commands::privacy::handle(cmd).await,
-        Commands::Project(cmd) => commands::project::handle(cmd).await,
-        Commands::Template(args) => commands::template::handle(args).await,
-        Commands::Registry(cmd) => commands::registry::handle(cmd).await,
-        Commands::Upgrade(cmd) => commands::upgrade::handle(cmd).await,
-        Commands::Governance(cmd) => commands::governance::handle(cmd).await,
-        Commands::Orchestrate(cmd) => commands::orchestrate::handle(cmd).await,
-        Commands::Pipeline(cmd) => commands::pipeline_builder::handle(cmd).await,
-        Commands::Security(cmd) => commands::security::handle(cmd).await,
-        Commands::Audit(args) => commands::audit::handle(args).await,
-        Commands::AiAudit(args) => commands::ai_audit::handle(args).await,
-        Commands::Ai(cmd) => commands::refactor::handle(cmd).await,
-        Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
-        Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
-        Commands::Backup(cmd) => commands::backup::handle(cmd).await,
-        Commands::Lint(args) => commands::lint::handle(args).await,
-        Commands::Diagnostics(args) => commands::diagnostics::handle(args).await,
-        Commands::TemplateVcs(cmd) => commands::template_vcs::handle(cmd).await,
-        Commands::Perf(cmd) => commands::perf::handle(cmd).await,
-        Commands::AdvancedPerf(cmd) => commands::perf::handle_advanced(cmd).await,
-        Commands::Docs(cmd) => commands::docs::handle(cmd).await,
-        Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
-        Commands::Approval(cmd) => commands::approval::handle(cmd).await,
-        Commands::FeatureFlags(args) => commands::feature_flags_cmd::handle(args).await,
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
-        Commands::Complete(cmd) => commands::complete::handle(cmd).await,
+        Commands::Wallet(cmd) => commands::wallet::handle(cmd),
+        Commands::New(cmd) => commands::new::handle(cmd),
+        Commands::Contract(cmd) => commands::contract::handle(cmd),
+        Commands::Inspect(cmd) => commands::inspect::handle(cmd),
+        Commands::Deploy(args) => commands::deploy::handle(args),
+        Commands::Info => commands::info::handle(), // This line was missing a comma
+        Commands::Config(cmd) => commands::config::handle(cmd),
+        Commands::Tx(args) => commands::tx::handle(args),
+        Commands::Network(cmd) => commands::network::handle(cmd),
+        Commands::Node(cmd) => commands::node::handle(cmd),
+        Commands::Completions(shell) => commands::completions::handle(shell),
+        Commands::Shell(args) => commands::shell::handle(args),
+        Commands::Monitor(args) => commands::monitor::handle(args),
+        Commands::Tutorial(cmd) => commands::tutorial::handle(cmd),
+        Commands::Benchmark(args) => commands::benchmark::handle(args),
+        Commands::Test(args) => commands::test::handle(args),
+        Commands::Gas(args) => commands::gas::handle(args),
+        Commands::Plugin(args) => commands::plugin::handle(args),
+        Commands::Template(args) => commands::template::handle(args),
+        Commands::Telemetry(cmd) => commands::telemetry::handle(cmd),
+        Commands::Upgrade(cmd) => commands::upgrade::handle(cmd),
+        Commands::Lint(args) => commands::lint::handle(args),
+        Commands::Diagnostics(args) => commands::diagnostics::handle(args),
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();

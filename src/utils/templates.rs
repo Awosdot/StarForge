@@ -115,44 +115,19 @@ pub struct TemplateEntry {
     pub license: Option<String>,
     /// URL of the template's source repository (e.g. GitHub link).
     #[serde(default)]
-    pub repository: Option<String>,
+    pub repository_url: Option<String>,
+    /// Optional homepage for the template project.
     #[serde(default)]
     pub homepage: Option<String>,
+    /// Optional documentation URL for the template.
     #[serde(default)]
     pub documentation: Option<String>,
-    /// Security review metadata for the template.
+    /// Categories that describe the template's purpose or domain.
     #[serde(default)]
-    pub security_review: Option<SecurityReview>,
-    /// Version history / changelog entries (newest first).
+    pub categories: Vec<String>,
+    /// Whether this template has been selected as featured by curators.
     #[serde(default)]
-    pub changelog: Vec<ChangelogEntry>,
-}
-
-/// Security review status and results for a template.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SecurityReview {
-    /// Audit status: "audited", "pending", or "not-reviewed".
-    pub status: String,
-    /// ISO-8601 timestamp of the most recent audit. `None` if not yet audited.
-    #[serde(default)]
-    pub audited_at: Option<String>,
-    /// Name of the auditing entity. `None` if not yet audited.
-    #[serde(default)]
-    pub auditor: Option<String>,
-    /// Number of findings identified. `None` if not yet audited.
-    #[serde(default)]
-    pub findings: Option<u32>,
-    /// Audit score out of 100. `None` if not yet audited.
-    #[serde(default)]
-    pub score: Option<f64>,
-}
-
-/// A single changelog entry describing what changed in a version.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChangelogEntry {
-    pub version: String,
-    pub date: String,
-    pub notes: String,
+    pub featured: bool,
 }
 
 /// Outcome of a template-vs-CLI compatibility check.
@@ -347,8 +322,73 @@ impl TemplateEntry {
         if self.downloads >= 1000 {
             badges.push("[POPULAR]".to_string());
         }
+        if self.featured {
+            badges.push("[FEATURED]".to_string());
+        }
+        if self.is_trending() {
+            badges.push("[TRENDING]".to_string());
+        }
+        if self.is_spam_suspected() {
+            badges.push("[SUSPECT]".to_string());
+        }
 
         badges
+    }
+
+    /// Estimate whether the template is likely a low-quality or spammy submission.
+    pub fn is_spam_suspected(&self) -> bool {
+        if self.verified {
+            return false;
+        }
+
+        let low_confidence = self.description.len() < 50 || self.tags.is_empty();
+        let poor_quality = self.quality_score() < 30;
+        let deprecated = self.maintenance == MaintenanceStatus::Deprecated;
+
+        poor_quality && (low_confidence || deprecated)
+    }
+
+    /// Return whether the template has recently shown activity or popularity.
+    pub fn is_trending(&self) -> bool {
+        if self.downloads >= 500 {
+            return true;
+        }
+        self.updated_recently()
+    }
+
+    pub fn updated_recently(&self) -> bool {
+        if self.updated_at.trim().is_empty() {
+            return false;
+        }
+
+        if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(&self.updated_at) {
+            let age =
+                chrono::Utc::now().signed_duration_since(timestamp.with_timezone(&chrono::Utc));
+            age.num_days() <= 30
+        } else {
+            false
+        }
+    }
+
+    /// A broad health score reflecting quality, maintenance, trending, and
+    /// featured status.
+    pub fn health_score(&self) -> u8 {
+        let mut score = self.quality_score() as i32;
+
+        if self.is_trending() {
+            score += 5;
+        }
+        if self.featured {
+            score += 5;
+        }
+        if self.is_spam_suspected() {
+            score -= 15;
+        }
+        if self.maintenance == MaintenanceStatus::Deprecated {
+            score -= 10;
+        }
+
+        score.clamp(0, 100) as u8
     }
 }
 
@@ -675,8 +715,14 @@ async fn fetch_and_cache_remote(url: &str) -> Result<TemplateRegistry> {
 pub struct SearchFilters {
     /// Templates must carry all of these tags (case-insensitive).
     pub tags: Vec<String>,
+    /// Templates must carry all of these categories.
+    pub categories: Vec<String>,
     /// Only include templates flagged as verified.
     pub verified_only: bool,
+    /// Only include only featured templates.
+    pub featured_only: bool,
+    /// Hide templates that are likely low-quality or spammy.
+    pub hide_spam: bool,
     /// Only include templates whose quality score is at least this value.
     pub min_quality: u8,
 }
@@ -760,7 +806,20 @@ pub async fn search_templates_ranked(
             if !has_all_tags {
                 return None;
             }
+            let has_all_categories = filters
+                .categories
+                .iter()
+                .all(|fc| entry.categories.iter().any(|c| c.eq_ignore_ascii_case(fc)));
+            if !has_all_categories {
+                return None;
+            }
             if filters.verified_only && !entry.verified {
+                return None;
+            }
+            if filters.featured_only && !entry.featured {
+                return None;
+            }
+            if filters.hide_spam && entry.is_spam_suspected() {
                 return None;
             }
             if entry.quality_score() < filters.min_quality {
@@ -781,13 +840,12 @@ pub async fn search_templates_ranked(
         })
         .collect();
 
-    // Rank by relevance, then quality, then downloads. This keeps the most
-    // pertinent matches at the top while still favouring trusted, well-
-    // documented and well-maintained templates.
+    // Rank by relevance, then quality, then trending, then downloads.
     results.sort_by(|a, b| {
         b.relevance
             .cmp(&a.relevance)
             .then_with(|| b.entry.quality_score().cmp(&a.entry.quality_score()))
+            .then_with(|| b.entry.is_trending().cmp(&a.entry.is_trending()))
             .then_with(|| b.entry.downloads.cmp(&a.entry.downloads))
     });
 
@@ -1246,17 +1304,11 @@ pub async fn publish_template_versioned(
         documented: source_root.join("README.md").exists(),
         maintenance: MaintenanceStatus::Active,
         license,
-        repository,
+        repository_url: repository,
         homepage,
         documentation,
-        security_review: Some(SecurityReview {
-            status: "pending".to_string(),
-            audited_at: None,
-            auditor: None,
-            findings: None,
-            score: None,
-        }),
-        changelog,
+        categories: Vec::new(),
+        featured: false,
     };
 
     add_template(entry).await?;
@@ -1264,6 +1316,7 @@ pub async fn publish_template_versioned(
     Ok(())
 }
 
+/// Validate template metadata and structure without CLI version constraints.
 pub fn validate_template_structure(
     path: &Path,
     name: &str,
@@ -1494,11 +1547,11 @@ async fn install_from_git_url(
         documented: dest.join("README.md").exists(),
         maintenance: MaintenanceStatus::Unknown,
         license: None,
-        repository: Some(url.to_string()),
+        repository_url: Some(url.to_string()),
         homepage: None,
         documentation: None,
-        security_review: None,
-        changelog: vec![],
+        categories: Vec::new(),
+        featured: false,
     };
 
     registry.templates.retain(|t| t.name != name);
@@ -1563,11 +1616,11 @@ async fn install_from_local_path(
         documented: dest.join("README.md").exists(),
         maintenance: MaintenanceStatus::Unknown,
         license: None,
-        repository: None,
+        repository_url: None,
         homepage: None,
         documentation: None,
-        security_review: None,
-        changelog: vec![],
+        categories: Vec::new(),
+        featured: false,
     };
 
     registry.templates.retain(|t| t.name != name);
@@ -1690,11 +1743,11 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
-            security_review: None,
-            changelog: vec![],
+            categories: Vec::new(),
+            featured: false,
         }
     }
 
@@ -2024,11 +2077,11 @@ mod tests {
             documented: true,
             maintenance: MaintenanceStatus::Active,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
-            security_review: None,
-            changelog: vec![],
+            categories: Vec::new(),
+            featured: false,
         });
 
         // Test name search
@@ -2075,11 +2128,11 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
-            security_review: None,
-            changelog: vec![],
+            categories: Vec::new(),
+            featured: false,
         };
 
         let dest = tmp.path().join(&entry.name);
@@ -2128,11 +2181,11 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
-            security_review: None,
-            changelog: vec![],
+            categories: Vec::new(),
+            featured: false,
         }
     }
 
@@ -2175,10 +2228,10 @@ mod tests {
         entry.downloads = 1500;
 
         let badges = entry.trust_indicators();
-        assert!(badges.iter().any(|b| b.contains("VERIFIED")));
-        assert!(badges.iter().any(|b| b.contains("DOCS")));
-        assert!(badges.iter().any(|b| b.contains("DEPRECATED")));
-        assert!(badges.iter().any(|b| b.contains("POPULAR")));
+        assert!(badges.iter().any(|b| b.contains("[VERIFIED]")));
+        assert!(badges.iter().any(|b| b.contains("[DOCS]")));
+        assert!(badges.iter().any(|b| b.contains("[DEPRECATED]")));
+        assert!(badges.iter().any(|b| b.contains("[POPULAR]")));
     }
 
     #[test]

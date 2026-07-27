@@ -135,29 +135,22 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
 
     let plugin_manifest = manifest::require_compatible_manifest(&lib_path, &name)?;
 
-    // Attempt to load the plugin to discover commands and description. Best-effort:
-    // libraries that cannot load at install time should not block registration.
-    let (discovered_commands, plugin_description) =
-        match discover_plugin_metadata(&lib_path.to_string_lossy()) {
-            Ok((commands, description)) => {
-                let description = if description.is_empty() {
-                    plugin_manifest.description.clone()
-                } else {
-                    description
-                };
-                (commands, description)
-            }
-            Err(e) => {
-                p::warn(&format!(
-                    "Could not load plugin '{}' to discover commands: {}",
-                    name, e
-                ));
-                p::info(
-                    "Proceeding with installation; run 'starforge plugin audit' to validate it.",
-                );
-                (Vec::new(), plugin_manifest.description.clone())
-            }
-        };
+    // Load the plugin to discover the commands it registers.
+    let discovered_commands: Vec<RegisteredCommand> = {
+        let mut pm = PluginManager::new();
+        unsafe {
+            pm.load_plugin(&lib_path).with_context(|| {
+                format!("Failed to load plugin '{}' to discover commands", name)
+            })?;
+        }
+        pm.list_commands()
+            .into_iter()
+            .map(|c| RegisteredCommand {
+                name: c.name,
+                description: c.description,
+            })
+            .collect()
+    };
 
     registry::install_plugin(
         &name,
@@ -492,7 +485,6 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                         &pl.source,
                         &pl.starforge_version,
                         &pl.plugin_version,
-                        &pl.description,
                         pl.commands.clone(),
                     )?;
                     p::success(&format!("  '{}' updated via cargo install", pl.name));
@@ -541,7 +533,6 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                             &pl.source,
                             &pl.starforge_version,
                             &pl.plugin_version,
-                            &description,
                             cmds,
                         )?;
                         p::success(&format!(

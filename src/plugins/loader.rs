@@ -37,8 +37,6 @@ pub enum PluginLoadError {
     },
     /// The `starforge-plugin.toml` manifest failed validation.
     ManifestIncompatible { path: String, detail: String },
-    /// The plugin panicked or crashed unexpectedly during active registration routines.
-    RegistrationRuntimePanic { path: String, detail: String },
 }
 
 impl PluginLoadError {
@@ -183,7 +181,7 @@ impl PluginManager {
         }
 
         // ── Manifest compatibility (if present beside the library) ───────────
-        if let Ok(Some(mf)) = manifest::load_manifest_for_library(path_ref) {
+        if let Ok(Some(mf)) = manifest::load_manifest_for_library(Path::new(path_ref)) {
             mf.validate()
                 .map_err(|e| PluginLoadError::ManifestIncompatible {
                     path: path_display.clone(),
