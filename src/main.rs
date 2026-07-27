@@ -241,6 +241,10 @@ enum Commands {
     /// AI-powered deployment automation
     #[command(subcommand)]
     DeploymentAutomate(commands::deployment_automate::DeploymentAutomateCommands),
+
+    /// AI-powered deployment compliance checks, regulatory validation, and reporting
+    #[command(subcommand)]
+    Compliance(commands::compliance::ComplianceCommands),
 }
 
 #[tokio::main]
@@ -313,6 +317,7 @@ async fn main() {
         Commands::TemplateSecurity(_) => "template-security",
         Commands::DeploymentOptimize(_) => "deployment-optimize",
         Commands::MultiNetwork(_) => "multi-network",
+        Commands::Compliance(_) => "compliance",
         Commands::DeploymentAutomate(_) => "deployment-automate",
     }
     .to_string();
@@ -374,6 +379,7 @@ async fn main() {
         Commands::TemplateSecurity(cmd) => commands::template_security::handle(cmd).await,
         Commands::DeploymentOptimize(cmd) => commands::deployment_optimize::handle(cmd).await,
         Commands::MultiNetwork(cmd) => commands::multi_network::handle(cmd).await,
+        Commands::Compliance(cmd) => commands::compliance::handle(cmd),
         Commands::DeploymentAutomate(cmd) => commands::deployment_automate::handle(cmd).await,
     };
     let duration = start.elapsed();
