@@ -338,6 +338,16 @@ and rewrite it to minimise resource consumption while preserving behaviour.\n\n\
             SYSTEM_CONTEXT, contract_code
         )
     }
+
+    /// Prompt for translating text with high accuracy and cultural adaptation.
+    pub fn translation_prompt(text: &str, target_lang: &str) -> String {
+        format!(
+            "{}Translate the following text into {}, ensuring high accuracy (>90%) and appropriate cultural adaptation. \
+If the text contains CLI commands, error messages, or technical documentation, preserve the technical meaning perfectly.\n\n\
+Text to translate:\n{}",
+            SYSTEM_CONTEXT, target_lang, text
+        )
+    }
 }
 
 // ─── Cloud fallback ────────────────────────────────────────────────────────────

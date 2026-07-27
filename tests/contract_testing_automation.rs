@@ -42,6 +42,7 @@ fn coverage_analysis_reports_functions() {
 
 #[test]
 fn parallel_test_runner_executes_cases() {
+    let _home_guard = home_lock();
     let home = TempDir::new().unwrap();
     std::env::set_var("HOME", home.path());
 
@@ -135,4 +136,14 @@ fn generated_rust_tests_have_no_placeholder_todos() {
     assert!(generated.contains("#[test]"));
     assert!(generated.contains("test_increment_security"));
     assert!(!generated.contains("TODO"));
+}
+
+/// Serialises tests that replace the process-wide `HOME`.
+///
+/// `std::env::set_var` affects every thread in the binary while libtest runs
+/// these tests in parallel, so without this two tests race and one reads back
+/// paths under the other's temp home.
+fn home_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }

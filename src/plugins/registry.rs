@@ -224,60 +224,9 @@ pub struct InstalledPlugin {
     /// RFC3339 timestamp of when the plugin was installed.
     #[serde(default)]
     pub installed_at: Option<String>,
-    /// Commands registered by the plugin at install time.
+    /// Commands this plugin registers.
     #[serde(default)]
     pub commands: Vec<RegisteredCommand>,
-    /// Plugin description from `Plugin::description()` at install time.
-    #[serde(default)]
-    pub description: String,
-}
-
-/// Bundled metadata for `starforge plugin list` table output.
-#[derive(Debug, Clone)]
-pub struct PluginListEntry {
-    pub name: String,
-    pub version: String,
-    pub trust: TrustLevel,
-    pub description: String,
-    pub commands: Vec<RegisteredCommand>,
-}
-
-/// Resolve a display description using registry data and on-disk manifest fallbacks.
-pub fn resolve_plugin_description(plugin: &InstalledPlugin) -> String {
-    if !plugin.description.is_empty() {
-        return plugin.description.clone();
-    }
-
-    if let Ok(Some(mf)) = manifest::load_manifest_for_library(Path::new(&plugin.path)) {
-        if !mf.description.is_empty() {
-            return mf.description;
-        }
-    }
-
-    plugin
-        .commands
-        .first()
-        .map(|c| c.description.clone())
-        .filter(|d| !d.is_empty())
-        .unwrap_or_else(|| "(none)".to_string())
-}
-
-/// Build table rows for every installed plugin.
-pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<PluginListEntry> {
-    reg.plugins
-        .iter()
-        .map(|p| PluginListEntry {
-            name: p.name.clone(),
-            version: if p.plugin_version.is_empty() {
-                "—".to_string()
-            } else {
-                p.plugin_version.clone()
-            },
-            trust: p.trust.clone(),
-            description: resolve_plugin_description(p),
-            commands: p.commands.clone(),
-        })
-        .collect()
 }
 
 fn registry_path() -> Result<PathBuf> {
@@ -315,6 +264,13 @@ pub struct UninstallOptions {
     pub purge_files: bool,
     /// Skip interactive confirmation for destructive removal.
     pub assume_yes: bool,
+}
+
+/// A command registered by a plugin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisteredCommand {
+    pub name: String,
+    pub description: String,
 }
 
 /// Report returned after uninstalling a plugin.
@@ -378,7 +334,6 @@ pub fn install_plugin(
         plugin_version: plugin_version.to_string(),
         installed_at: Some(now),
         commands,
-        description: description.to_string(),
     });
     reg.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     save_registry(&reg)?;

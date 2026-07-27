@@ -218,6 +218,14 @@ fn generate(
             anyhow::bail!("Source file not found: {}", source_path.display());
         }
 
+        // Feature-flag gate: only fire the gate when AI is actually being
+        // used. When the user passes `--no-ai` we still walk the source path
+        // (for rustdoc extraction) but skip the AI enrichment, so the gate
+        // would be a false blocker.
+        if use_ai {
+            crate::commands::feature_flags_cmd::require_feature("ai.docs")?;
+        }
+
         let options = ai_docs::AiDocsOptions {
             contract_id: contract.clone(),
             name: display_name.clone(),
@@ -252,11 +260,8 @@ fn generate(
         let generated = ai_docs::generate_from_source(&source_path, &options)?;
 
         p::step(3, 4, "Persisting documentation to the docs store...");
-        let entry = ai_docs::persist_generated(
-            &generated,
-            output.as_deref(),
-            rustdoc_out.as_deref(),
-        )?;
+        let entry =
+            ai_docs::persist_generated(&generated, output.as_deref(), rustdoc_out.as_deref())?;
 
         p::step(4, 4, "Done.");
         println!();
@@ -376,7 +381,8 @@ fn generate(
         },
         docs::DocSection {
             title: "Security".to_string(),
-            content: "All state-changing operations require address-based authorization.".to_string(),
+            content: "All state-changing operations require address-based authorization."
+                .to_string(),
             order: 2,
         },
     ];
@@ -507,7 +513,11 @@ fn show(contract: String, version: Option<String>) -> Result<()> {
             println!("  {} `{}`", "→".cyan(), func.name.bright_white());
             println!("    {}", func.description);
             for param in &func.parameters {
-                let req = if param.required { "required" } else { "optional" };
+                let req = if param.required {
+                    "required"
+                } else {
+                    "optional"
+                };
                 println!(
                     "    • {} ({}): {} [{}]",
                     param.name, param.ty, param.description, req
@@ -700,10 +710,7 @@ fn generate_api_ref(
 
     p::step(2, 3, "Building API reference...");
     let api_ref = doc_generator::ApiReferenceGenerator::from_extracted(
-        &extracted,
-        &contract,
-        &name,
-        &version,
+        &extracted, &contract, &name, &version,
     );
 
     let out_dir = output_dir.map(PathBuf::from).unwrap_or_else(|| {
