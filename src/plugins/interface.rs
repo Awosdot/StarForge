@@ -19,7 +19,7 @@ pub trait Plugin: Any + Send + Sync {
     fn commands(&self) -> Vec<PluginCommand> {
         vec![PluginCommand {
             name: self.name().to_string(),
-            description: self.description().to_string(),
+            description: self.description().to_string(), 
         }]
     }
 
