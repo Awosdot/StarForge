@@ -143,6 +143,9 @@ enum Commands {
     /// Privacy protection, anonymization, consent, and reporting
     #[command(subcommand)]
     Privacy(commands::privacy::PrivacyCommands),
+    /// AI-driven project management for task tracking, sprints, resources, risks, and timelines
+    #[command(subcommand)]
+    Project(commands::project::ProjectCommands),
     /// Manage community contract templates from the marketplace
     #[command(subcommand)]
     Template(commands::template::TemplateCommands),
@@ -315,6 +318,7 @@ async fn main() {
         Commands::Gas(_) => "gas",
         Commands::Plugin(_) => "plugin",
         Commands::Privacy(_) => "privacy",
+        Commands::Project(_) => "project",
         Commands::Template(_) => "template",
         Commands::Registry(_) => "registry",
         Commands::Upgrade(_) => "upgrade",
@@ -392,6 +396,7 @@ async fn main() {
         Commands::Gas(args) => commands::gas::handle(args).await,
         Commands::Plugin(args) => commands::plugin::handle(args).await,
         Commands::Privacy(cmd) => commands::privacy::handle(cmd).await,
+        Commands::Project(cmd) => commands::project::handle(cmd).await,
         Commands::Template(args) => commands::template::handle(args).await,
         Commands::Registry(cmd) => commands::registry::handle(cmd).await,
         Commands::Upgrade(cmd) => commands::upgrade::handle(cmd).await,
