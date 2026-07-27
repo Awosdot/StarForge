@@ -196,7 +196,11 @@ async fn test_network(network_name: Option<String>) -> Result<()> {
 
     // Test Horizon endpoint
     let client = http_client::get_client();
-    match client.get(&format!("{}/health", net_cfg.horizon_url)).send().await {
+    match client
+        .get(&format!("{}/health", net_cfg.horizon_url))
+        .send()
+        .await
+    {
         Ok(_) => {
             p::success("✓ Horizon endpoint is reachable");
         }

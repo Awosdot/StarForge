@@ -19,11 +19,12 @@ fn write_minimal_wasm(path: &std::path::Path) {
     fs::write(path, bytes).unwrap();
 }
 
-fn isolate_starforge_home() -> TempDir {
+fn isolate_starforge_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+    let guard = home_lock();
     let home = TempDir::new().unwrap();
     std::env::set_var("HOME", home.path());
     std::env::set_var("USERPROFILE", home.path());
-    home
+    (home, guard)
 }
 
 #[tokio::test]
@@ -159,4 +160,14 @@ async fn framework_reports_custom_assertion_failures() {
     assert_eq!(report.failures, 1);
     assert!(!report.cases[0].assertions[0].passed);
     assert!(report.cases[0].errors[0].contains("expected 2"));
+}
+
+/// Serialises tests that replace the process-wide `HOME`.
+///
+/// `std::env::set_var` affects every thread in the binary while libtest runs
+/// these tests in parallel, so without this two tests race and one reads back
+/// paths under the other's temp home.
+fn home_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }

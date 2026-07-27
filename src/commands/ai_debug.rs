@@ -92,6 +92,9 @@ pub struct TestArgs {
 // ── Top-level handler ─────────────────────────────────────────────────────────
 
 pub async fn handle(cmd: AiDebugCommands) -> Result<()> {
+    // Feature-flag gate (Stable category, default-on; admins can roll it back
+    // for an entire fleet via `starforge feature-flags disable ai.debug`).
+    crate::commands::feature_flags_cmd::require_feature("ai.debug")?;
     match cmd {
         AiDebugCommands::Analyse(args) => handle_analyse(args).await,
         AiDebugCommands::Explain(args) => handle_explain(args).await,
@@ -119,7 +122,11 @@ async fn handle_analyse(args: AnalyseArgs) -> Result<()> {
     let report = ai_debugger::analyse(
         &args.error,
         stack_trace_owned.as_deref(),
-        if vars_ref.is_empty() { None } else { Some(&vars_ref) },
+        if vars_ref.is_empty() {
+            None
+        } else {
+            Some(&vars_ref)
+        },
         None,
     );
 
@@ -356,7 +363,9 @@ fn parse_variables(raw: &[String]) -> Result<Vec<(String, String)>> {
             let name = parts
                 .next()
                 .filter(|n| !n.is_empty())
-                .ok_or_else(|| anyhow::anyhow!("Invalid variable format '{}': expected NAME=VALUE", s))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Invalid variable format '{}': expected NAME=VALUE", s)
+                })?
                 .to_string();
             let value = parts.next().unwrap_or("").to_string();
             Ok((name, value))

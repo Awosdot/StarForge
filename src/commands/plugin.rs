@@ -2,10 +2,10 @@ use crate::plugins::interface::CORE_VERSION;
 use crate::plugins::manifest;
 use crate::plugins::registry::{self, RegisteredCommand, TrustLevel, UninstallOptions};
 use crate::plugins::{PluginLoadError, PluginManager};
+use crate::utils::config;
 use crate::utils::print as p;
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use starforge::utils::config;
 use std::path::Path;
 use std::path::PathBuf;
 

@@ -154,6 +154,30 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
+    /// Get AI-powered template recommendations based on your project requirements
+    Recommend {
+        /// Free-form description of what you want to build (e.g. "decentralized exchange")
+        #[arg(default_value = "")]
+        query: String,
+        /// Filter by tags (comma-separated, e.g. "defi,amm")
+        #[arg(long)]
+        tags: Option<String>,
+        /// Your skill level: beginner, intermediate, or advanced
+        #[arg(long)]
+        skill: Option<String>,
+        /// Maximum number of recommendations to show (default 5)
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+        /// Show detailed scoring breakdown for each recommendation
+        #[arg(long)]
+        explain: bool,
+        /// Ignore past usage history when ranking recommendations
+        #[arg(long)]
+        no_personalise: bool,
+        /// Ignore community popularity when ranking recommendations
+        #[arg(long)]
+        no_community: bool,
+    },
 }
 
 pub async fn handle(cmd: TemplateCommands) -> Result<()> {
@@ -167,16 +191,19 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             version,
             cli_version_min,
             cli_version_max,
-        } => import(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-        ).await,
+        } => {
+            import(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+            )
+            .await
+        }
         TemplateCommands::Publish {
             path,
             name,
@@ -190,20 +217,23 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             repository,
             homepage,
             documentation,
-        } => publish(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-            license,
-            repository,
-            homepage,
-            documentation,
-        ).await,
+        } => {
+            publish(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+                license,
+                repository,
+                homepage,
+                documentation,
+            )
+            .await
+        }
         TemplateCommands::List => list().await,
         TemplateCommands::Search {
             query,
@@ -249,7 +279,8 @@ async fn import(
         None,
         None,
         None,
-    ).await?;
+    )
+    .await?;
     p::header("Template Import");
     p::info("Template package imported into the local registry.");
     Ok(())
@@ -308,7 +339,8 @@ async fn publish(
         repository,
         homepage,
         documentation,
-    ).await?;
+    )
+    .await?;
     let template = templates::get_template(&name).await?;
 
     p::header("Template Publish");
@@ -698,7 +730,8 @@ fn fetch(source: String, name: Option<String>, version: Option<String>, force: b
     println!();
 
     p::step(1, 2, "Resolving and fetching template...");
-    let entry = templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
+    let entry =
+        templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
 
     p::step(2, 2, "Registering in local registry...");
     println!();
@@ -709,6 +742,8 @@ fn fetch(source: String, name: Option<String>, version: Option<String>, force: b
     if let Some(ref path) = entry.path {
         p::kv("Local path", path);
     }
+    // Record this install for community-learning / personalisation.
+    let _ = crate::utils::template_recommender::record_usage(&entry.name, "install");
     p::info(&format!(
         "Use it with: starforge template info {}",
         entry.name
@@ -833,10 +868,17 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push_str("| Field | Value |\n|---|---|\n");
     md.push_str(&format!("| Author | {} |\n", entry.author));
     md.push_str(&format!("| Version | {} |\n", entry.version));
-    md.push_str(&format!("| License | {} |\n", entry.license.as_deref().unwrap_or("Not declared")));
+    md.push_str(&format!(
+        "| License | {} |\n",
+        entry.license.as_deref().unwrap_or("Not declared")
+    ));
     md.push_str(&format!(
         "| Tags | {} |\n",
-        if entry.tags.is_empty() { "—".to_string() } else { entry.tags.join(", ") }
+        if entry.tags.is_empty() {
+            "—".to_string()
+        } else {
+            entry.tags.join(", ")
+        }
     ));
     md.push_str(&format!("| Source | {} |\n", entry.source));
     if let Some(ref repo) = entry.repository {
@@ -880,7 +922,10 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     // Usage
     md.push_str("## Usage\n\n");
     md.push_str("```bash\n");
-    md.push_str(&format!("starforge new contract my-project --template {}\n", name));
+    md.push_str(&format!(
+        "starforge new contract my-project --template {}\n",
+        name
+    ));
     md.push_str("```\n");
 
     match output {
@@ -902,11 +947,7 @@ async fn template_audit(name: Option<String>) -> Result<()> {
     let registry = templates::load_registry().await?;
 
     let entries: Vec<&templates::TemplateEntry> = match &name {
-        Some(n) => registry
-            .templates
-            .iter()
-            .filter(|t| &t.name == n)
-            .collect(),
+        Some(n) => registry.templates.iter().filter(|t| &t.name == n).collect(),
         None => registry.templates.iter().collect(),
     };
 
