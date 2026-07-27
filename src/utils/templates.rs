@@ -740,7 +740,10 @@ fn relevance_for(entry: &TemplateEntry, query_lower: &str) -> (u32, Vec<String>)
 /// (verification, documentation, usage, maintenance), then by raw downloads.
 /// An empty query lists every template that satisfies the filters, ranked by
 /// quality alone.
-pub async fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<Vec<SearchResult>> {
+pub async fn search_templates_ranked(
+    query: &str,
+    filters: &SearchFilters,
+) -> Result<Vec<SearchResult>> {
     let registry = load_registry().await?;
     let query_lower = query.trim().to_lowercase();
 
@@ -796,7 +799,8 @@ pub async fn search_templates(query: &str, tags: Option<&[String]>) -> Result<Ve
         tags: tags.map(|t| t.to_vec()).unwrap_or_default(),
         ..Default::default()
     };
-    Ok(search_templates_ranked(query, &filters).await?
+    Ok(search_templates_ranked(query, &filters)
+        .await?
         .into_iter()
         .map(|r| r.entry)
         .collect())
@@ -829,12 +833,18 @@ pub fn generate_template_docs(entry: &TemplateEntry) -> String {
 
     md.push_str("## Overview\n\n");
     md.push_str(&format!("- **Version:** {}\n", entry.version));
-    md.push_str(&format!("- **Quality score:** {}/100\n", entry.quality_score()));
+    md.push_str(&format!(
+        "- **Quality score:** {}/100\n",
+        entry.quality_score()
+    ));
     md.push_str(&format!(
         "- **Verified:** {}\n",
         if entry.verified { "yes" } else { "no" }
     ));
-    md.push_str(&format!("- **Maintenance:** {}\n", entry.maintenance.label()));
+    md.push_str(&format!(
+        "- **Maintenance:** {}\n",
+        entry.maintenance.label()
+    ));
     if !entry.author.is_empty() {
         md.push_str(&format!("- **Author:** {}\n", entry.author));
     }
@@ -1121,7 +1131,8 @@ pub async fn publish_template(
         None,
         None,
         None,
-    ).await
+    )
+    .await
 }
 
 /// Like `publish_template` but also records optional CLI version constraints.
@@ -1149,7 +1160,8 @@ pub async fn install_template_package(
         None,
         None,
         None,
-    ).await
+    )
+    .await
 }
 
 pub async fn publish_template_versioned(
@@ -1529,7 +1541,11 @@ async fn install_from_local_path(
     Ok(entry)
 }
 
-async fn install_from_registry(name: &str, version: Option<&str>, force: bool) -> Result<TemplateEntry> {
+async fn install_from_registry(
+    name: &str,
+    version: Option<&str>,
+    force: bool,
+) -> Result<TemplateEntry> {
     let entry = get_template_by_name_and_version(name, version).await?;
     assert_template_compatible(&entry)?;
 

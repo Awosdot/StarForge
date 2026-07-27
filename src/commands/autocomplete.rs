@@ -1,4 +1,6 @@
-use crate::utils::history::{load_history, save_history, history_file_path, prune_history, HistoryEntry};
+use crate::utils::history::{
+    history_file_path, load_history, prune_history, save_history, HistoryEntry,
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -53,7 +55,7 @@ impl AutocompleteEngine {
     /// Record a command in history, incrementing count if it already exists
     pub fn record(&mut self, command: &str) -> Result<()> {
         let now = Utc::now();
-        
+
         // Find and update existing entry
         if let Some(entry) = self.history.iter_mut().find(|e| e.command == command) {
             entry.count += 1;
@@ -99,7 +101,11 @@ impl AutocompleteEngine {
         }
 
         // Sort by score descending, take top 5
-        suggestions.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        suggestions.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         suggestions.truncate(5);
         suggestions
     }
@@ -110,7 +116,13 @@ impl AutocompleteEngine {
         let recency_weight = 0.4;
 
         // Frequency component (raw count, normalized to 0-1)
-        let max_count = self.history.iter().map(|e| e.count).max().unwrap_or(1).max(1);
+        let max_count = self
+            .history
+            .iter()
+            .map(|e| e.count)
+            .max()
+            .unwrap_or(1)
+            .max(1);
         let frequency_score = (entry.count as f64) / (max_count as f64);
 
         // Recency component: 1.0 / (1.0 + days_since_last_use)
@@ -124,13 +136,49 @@ impl AutocompleteEngine {
     /// Complete a partial command against known commands
     pub fn complete_command(&self, partial: &str) -> Vec<String> {
         let commands = vec![
-            "wallet", "new", "deploy", "contract", "network", "template", "info",
-            "completions", "autocomplete", "config", "telemetry", "tx", "node",
-            "shell", "monitor", "tutorial", "benchmark", "test", "gas", "plugin",
-            "registry", "multisig", "upgrade", "governance", "orchestrate", "pipeline",
-            "security", "audit", "schedule", "simulate", "backup", "lint", "diagnostics",
-            "template-vcs", "perf", "advanced-perf", "docs", "analytics", "approval",
-            "debug", "inspect", "deployments", "migrate",
+            "wallet",
+            "new",
+            "deploy",
+            "contract",
+            "network",
+            "template",
+            "info",
+            "completions",
+            "autocomplete",
+            "config",
+            "telemetry",
+            "tx",
+            "node",
+            "shell",
+            "monitor",
+            "tutorial",
+            "benchmark",
+            "test",
+            "gas",
+            "plugin",
+            "registry",
+            "multisig",
+            "upgrade",
+            "governance",
+            "orchestrate",
+            "pipeline",
+            "security",
+            "audit",
+            "schedule",
+            "simulate",
+            "backup",
+            "lint",
+            "diagnostics",
+            "template-vcs",
+            "perf",
+            "advanced-perf",
+            "docs",
+            "analytics",
+            "approval",
+            "debug",
+            "inspect",
+            "deployments",
+            "migrate",
         ];
 
         commands
@@ -224,7 +272,7 @@ impl AutocompleteEngine {
                 let prefix = entry.command.split_whitespace().next().unwrap_or("");
                 command_groups
                     .entry(prefix.to_string())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(entry);
             }
         }
@@ -247,7 +295,7 @@ impl AutocompleteEngine {
     pub fn get_stats(&self) -> CommandStats {
         let total_commands = self.history.len();
         let total_invocations = self.history.iter().map(|e| e.count).sum();
-        
+
         let most_used = self.history.iter().max_by_key(|e| e.count).cloned();
         let least_used = self.history.iter().min_by_key(|e| e.count).cloned();
 
@@ -343,12 +391,7 @@ fn run_interactive_mode(engine: &AutocompleteEngine) -> Result<()> {
             println!("  (no suggestions)");
         } else {
             for (idx, sugg) in suggestions.iter().enumerate() {
-                println!(
-                    "  {}. {}  [{}]",
-                    idx + 1,
-                    sugg.text,
-                    sugg.source
-                );
+                println!("  {}. {}  [{}]", idx + 1, sugg.text, sugg.source);
             }
         }
     }
@@ -372,7 +415,7 @@ mod tests {
     fn test_suggest_returns_history_matches() {
         let temp_dir = TempDir::new().unwrap();
         let mut engine = create_test_engine(&temp_dir);
-        
+
         engine.history.push(HistoryEntry {
             command: "wallet create alice".to_string(),
             timestamp: Utc::now(),
@@ -389,7 +432,7 @@ mod tests {
     fn test_suggest_sorted_by_score() {
         let temp_dir = TempDir::new().unwrap();
         let mut engine = create_test_engine(&temp_dir);
-        
+
         let old_time = Utc::now() - chrono::Duration::days(30);
         engine.history.push(HistoryEntry {
             command: "deploy".to_string(),
@@ -454,7 +497,10 @@ mod tests {
         engine.record("wallet create bob").ok();
         engine.record("wallet create bob").ok();
 
-        let entry = engine.history.iter().find(|e| e.command == "wallet create bob");
+        let entry = engine
+            .history
+            .iter()
+            .find(|e| e.command == "wallet create bob");
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().count, 2);
     }

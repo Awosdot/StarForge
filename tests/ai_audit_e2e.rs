@@ -115,13 +115,13 @@ impl PrivacyLeak {
 #[test]
 fn test_detects_reentrancy_in_sample_contract() {
     let findings = run_static_checks(VULNERABLE_REENTRANCY_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect reentrancy vulnerability in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("reentrancy")),
+        findings.iter().any(|f| f.pattern_name == "reentrancy_risk"),
         "Should identify reentrancy risk"
     );
 }
@@ -129,13 +129,15 @@ fn test_detects_reentrancy_in_sample_contract() {
 #[test]
 fn test_detects_missing_auth_in_sample_contract() {
     let findings = run_static_checks(VULNERABLE_MISSING_AUTH_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect missing require_auth in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("require_auth")),
+        findings
+            .iter()
+            .any(|f| f.description.contains("require_auth")),
         "Should identify missing authorization"
     );
 }
@@ -143,13 +145,15 @@ fn test_detects_missing_auth_in_sample_contract() {
 #[test]
 fn test_detects_arithmetic_overflow_in_sample() {
     let findings = run_static_checks(VULNERABLE_ARITHMETIC_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect unchecked arithmetic in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("arithmetic")),
+        findings
+            .iter()
+            .any(|f| f.pattern_name == "unchecked_arithmetic"),
         "Should identify arithmetic issue"
     );
 }
@@ -157,10 +161,13 @@ fn test_detects_arithmetic_overflow_in_sample() {
 #[test]
 fn test_clean_contract_passes_static_analysis() {
     let findings = run_static_checks(SECURE_CONTRACT);
-    
+
     // Secure contract should have no findings
     assert!(
-        findings.is_empty() || findings.iter().all(|f| !f.description.contains("require_auth")),
+        findings.is_empty()
+            || findings
+                .iter()
+                .all(|f| !f.description.contains("require_auth")),
         "Secure contract with require_auth should not trigger missing auth warning"
     );
 }
@@ -168,13 +175,13 @@ fn test_clean_contract_passes_static_analysis() {
 #[test]
 fn test_detects_privacy_leak_in_sample() {
     let findings = run_static_checks(VULNERABLE_PRIVACY_CONTRACT);
-    
+
     assert!(
         !findings.is_empty(),
         "Should detect privacy leak in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.description.contains("sensitive")),
+        findings.iter().any(|f| f.pattern_name == "privacy_leak"),
         "Should identify sensitive data storage"
     );
 }
@@ -220,7 +227,7 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
 "#;
 
     let findings = run_static_checks(contract_with_comments);
-    
+
     // Should detect missing auth and reentrancy despite comments
     assert!(
         !findings.is_empty(),
@@ -231,7 +238,7 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
 #[test]
 fn test_sample_contract_has_line_numbers() {
     let findings = run_static_checks(VULNERABLE_REENTRANCY_CONTRACT);
-    
+
     for finding in findings {
         assert!(
             !finding.line_numbers.is_empty(),
@@ -263,7 +270,7 @@ pub fn safe_withdrawal(env: Env, amount: i128) -> Result<i128, String> {
 "#;
 
     let findings = run_static_checks(realistic_contract);
-    
+
     // This contract has proper auth, order, and error handling
     assert!(
         findings.is_empty() || !findings.iter().any(|f| f.severity == "critical"),
@@ -321,7 +328,7 @@ impl TokenContract {
 "#;
 
     let findings = run_static_checks(soroban_contract);
-    
+
     // This contract properly uses extend_ttl
     assert!(
         findings.is_empty() || !findings.iter().any(|f| f.description.contains("TTL")),
