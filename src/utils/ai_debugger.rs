@@ -400,6 +400,177 @@ fn pattern_type_mismatch() -> DebugFinding {
     }
 }
 
+// ── Deployment-specific error patterns (Issue #542) ──────────────────────────
+
+fn pattern_deployment_network_error() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY001".into(),
+        severity: Severity::High,
+        category: "Deployment / Network".into(),
+        title: "Deployment failed due to network connectivity".into(),
+        explanation: "The deployment transaction could not be submitted to the Stellar \
+            network or Soroban RPC endpoint. This typically indicates network connectivity \
+            issues, incorrect RPC URL, or the network being down."
+            .into(),
+        root_cause: "Common causes: no internet connection, incorrect network configuration, \
+            Stellar testnet/mainnet is experiencing downtime, or firewall blocking the RPC endpoint."
+            .into(),
+        fix_suggestion: "Verify network connectivity with `starforge network test`. \
+            Check the network configuration with `starforge network show`. \
+            Ensure the RPC endpoint URL is correct and accessible. \
+            For testnet, check https://status.stellar.org for service status."
+            .into(),
+        reproduction_steps: vec![
+            "Attempt to deploy with incorrect network configuration.".into(),
+            "Observe connection timeout or network error.".into(),
+            "Verify network settings and retry deployment.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Check network configuration in ~/.starforge/config.toml".into(),
+            "Test RPC endpoint connectivity with curl or starforge network test".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/networks".into(),
+        ],
+    }
+}
+
+fn pattern_deployment_wasm_size_exceeded() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY002".into(),
+        severity: Severity::Critical,
+        category: "Deployment / WASM".into(),
+        title: "WASM binary exceeds size limit".into(),
+        explanation: "The compiled WASM contract exceeds the Soroban size limit of 128KB. \
+            Contracts larger than this cannot be deployed to the network."
+            .into(),
+        root_cause: "The contract contains too much code, excessive dependencies, or \
+            was not optimized before deployment. Debug builds are significantly larger \
+            than release builds."
+            .into(),
+        fix_suggestion: "Build with `--release` flag: `cargo build --release --target wasm32-unknown-unknown`. \
+            Use starforge's built-in optimizer: `starforge deploy --optimize`. \
+            Remove unused dependencies from Cargo.toml. Consider splitting large contracts \
+            into multiple smaller contracts."
+            .into(),
+        reproduction_steps: vec![
+            "Build a large contract in debug mode.".into(),
+            "Attempt deployment without optimization.".into(),
+            "Observe size limit error.".into(),
+            "Apply optimization and retry.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Check WASM file size: ls -lh target/wasm32-unknown-unknown/release/*.wasm".into(),
+            "Run wasm-opt with --optimize flag for maximum size reduction.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/deploy-to-testnet".into(),
+        ],
+    }
+}
+
+fn pattern_deployment_insufficient_funds() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY003".into(),
+        severity: Severity::High,
+        category: "Deployment / Wallet".into(),
+        title: "Insufficient funds for deployment transaction".into(),
+        explanation: "The wallet account does not have enough XLM to pay for the deployment \
+            transaction fees. Soroban contract deployment requires XLM for transaction fees \
+            and resource costs."
+            .into(),
+        root_cause: "The source account balance is below the required amount for deployment fees. \
+            Deployment transactions typically cost 1000-5000 stroops (0.0001-0.0005 XLM) plus \
+            resource costs."
+            .into(),
+        fix_suggestion: "Fund the wallet account before deployment. For testnet, use friendbot: \
+            `starforge wallet fund --wallet <name>`. For mainnet, transfer XLM from another \
+            account. Check account balance with `starforge wallet show <name>`."
+            .into(),
+        reproduction_steps: vec![
+            "Attempt to deploy with an unfunded or low-balance account.".into(),
+            "Observe insufficient funds error from Horizon.".into(),
+            "Fund the account and retry deployment.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Check account balance before deployment.".into(),
+            "Verify base fee and resource costs in simulation output.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/learn/fundamentals/fees-resource-limits-metering"
+                .into(),
+        ],
+    }
+}
+
+fn pattern_deployment_transaction_failed() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY004".into(),
+        severity: Severity::Critical,
+        category: "Deployment / Transaction".into(),
+        title: "Deployment transaction failed on-chain".into(),
+        explanation: "The deployment transaction was submitted successfully but failed during \
+            execution on the Stellar network. This indicates the transaction was malformed, \
+            lacked proper authorization, or violated network constraints."
+            .into(),
+        root_cause: "Common causes: incorrect source account, missing signatures, sequence \
+            number mismatch, invalid operation parameters, or failed precondition checks."
+            .into(),
+        fix_suggestion: "Check the transaction result code in the error message. \
+            Verify the source account has the correct sequence number. \
+            Ensure the wallet is properly authorized to deploy. \
+            Use `starforge deploy --simulate` to test the transaction before submission. \
+            Check deployment history for recent failures: `starforge deployments history`."
+            .into(),
+        reproduction_steps: vec![
+            "Review the transaction result XDR for error details.".into(),
+            "Verify wallet authorization and account state.".into(),
+            "Simulate the deployment before execution.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Inspect transaction envelope and result XDR.".into(),
+            "Check source account sequence number matches network state.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/data/horizon/api-reference/errors/http-status-codes/standard".into(),
+        ],
+    }
+}
+
+fn pattern_deployment_wasm_hash_mismatch() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY005".into(),
+        severity: Severity::Medium,
+        category: "Deployment / Verification".into(),
+        title: "Deployed WASM hash doesn't match expected hash".into(),
+        explanation: "The WASM hash of the deployed contract on-chain does not match the \
+            hash of the local WASM file. This suggests the wrong file was deployed, the file \
+            was modified after deployment, or the deployment was corrupted."
+            .into(),
+        root_cause: "Mismatch between local build artifacts and deployed bytecode. Possible \
+            causes: deploying a different WASM file than intended, stale build cache, or \
+            file corruption during deployment."
+            .into(),
+        fix_suggestion: "Rebuild the contract from source: `cargo clean && cargo build --release`. \
+            Verify the WASM hash before deployment: `sha256sum <wasm-file>`. \
+            Use `starforge deployments verify --id <deployment-id>` to check on-chain hash. \
+            Redeploy with the correct WASM file if verification fails."
+            .into(),
+        reproduction_steps: vec![
+            "Deploy a contract and note the deployment ID.".into(),
+            "Verify the deployment with starforge deployments verify.".into(),
+            "Compare expected vs actual WASM hash.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Compute local WASM hash: sha256sum target/wasm32-unknown-unknown/release/*.wasm".into(),
+            "Fetch on-chain WASM hash from contract metadata.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/deploy-to-testnet#verification".into(),
+        ],
+    }
+}
+
 // ── Pattern registry ─────────────────────────────────────────────────────────
 
 fn all_patterns() -> Vec<ErrorPattern> {
@@ -509,6 +680,61 @@ fn all_patterns() -> Vec<ErrorPattern> {
                 "wrong type",
             ],
             finding: pattern_type_mismatch,
+        },
+        // Deployment-specific patterns (Issue #542)
+        ErrorPattern {
+            keywords: &[
+                "network",
+                "connection",
+                "timeout",
+                "unreachable",
+                "rpc",
+                "horizon",
+                "failed to connect",
+            ],
+            finding: pattern_deployment_network_error,
+        },
+        ErrorPattern {
+            keywords: &[
+                "size",
+                "limit",
+                "too large",
+                "exceeds",
+                "128",
+                "kb",
+                "wasm size",
+            ],
+            finding: pattern_deployment_wasm_size_exceeded,
+        },
+        ErrorPattern {
+            keywords: &[
+                "insufficient funds",
+                "low balance",
+                "not enough xlm",
+                "underfunded",
+                "account balance",
+            ],
+            finding: pattern_deployment_insufficient_funds,
+        },
+        ErrorPattern {
+            keywords: &[
+                "transaction failed",
+                "tx failed",
+                "bad sequence",
+                "operation failed",
+                "result code",
+            ],
+            finding: pattern_deployment_transaction_failed,
+        },
+        ErrorPattern {
+            keywords: &[
+                "hash mismatch",
+                "wasm hash",
+                "verification failed",
+                "bytecode mismatch",
+                "checksum",
+            ],
+            finding: pattern_deployment_wasm_hash_mismatch,
         },
     ]
 }
