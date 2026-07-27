@@ -20,7 +20,7 @@
 //! audited or reversed later, mirroring the `upgrade` command's proposal
 //! history model.
 
-use crate::utils::{config, print as p};
+use crate::utils::{config, print as p, state_diff};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Args, Subcommand};
@@ -50,6 +50,8 @@ pub enum MigrateCommands {
     History(HistoryArgs),
     /// Print a migration usage guide
     Docs(DocsArgs),
+    /// Diff two state snapshots to show what changed between versions
+    Diff(DiffArgs),
 }
 
 #[derive(Args)]
@@ -130,6 +132,31 @@ pub struct HistoryArgs {
 #[derive(Args)]
 pub struct DocsArgs {
     /// Optional path to write the documentation to (prints to stdout otherwise)
+    #[arg(long)]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct DiffArgs {
+    /// Path to the first (older) state snapshot (JSON)
+    #[arg(long)]
+    pub before: PathBuf,
+    /// Path to the second (newer) state snapshot (JSON)
+    #[arg(long)]
+    pub after: PathBuf,
+    /// Output format: console (default), json
+    #[arg(long, default_value = "console")]
+    pub format: String,
+    /// Version label for the before snapshot
+    #[arg(long, default_value = "v1")]
+    pub from_version: String,
+    /// Version label for the after snapshot
+    #[arg(long, default_value = "v2")]
+    pub to_version: String,
+    /// Generate migration rules from the diff and save to file
+    #[arg(long)]
+    pub generate_rules: Option<PathBuf>,
+    /// Save diff report to file
     #[arg(long)]
     pub output: Option<PathBuf>,
 }
@@ -329,7 +356,11 @@ pub fn snapshot_checksum(snapshot: &StorageSnapshot) -> String {
 
 /// Apply a single transform op to the working entry map. Returns `true` if
 /// the op changed something, and may push a human-readable warning.
-fn apply_op(entries: &mut BTreeMap<String, Value>, op: &TransformOp, warnings: &mut Vec<String>) -> bool {
+fn apply_op(
+    entries: &mut BTreeMap<String, Value>,
+    op: &TransformOp,
+    warnings: &mut Vec<String>,
+) -> bool {
     match op {
         TransformOp::RenameKey { from, to } => {
             if let Some(val) = entries.remove(from) {
@@ -342,7 +373,10 @@ fn apply_op(entries: &mut BTreeMap<String, Value>, op: &TransformOp, warnings: &
                 entries.insert(to.clone(), val);
                 true
             } else {
-                warnings.push(format!("RenameKey: source key '{}' not found, skipped", from));
+                warnings.push(format!(
+                    "RenameKey: source key '{}' not found, skipped",
+                    from
+                ));
                 false
             }
         }
@@ -401,7 +435,11 @@ fn cast_value(val: &Value, to_type: &str) -> Option<Value> {
         })),
         "number" => match val {
             Value::Number(_) => Some(val.clone()),
-            Value::String(s) => s.parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(Value::Number),
+            Value::String(s) => s
+                .parse::<f64>()
+                .ok()
+                .and_then(serde_json::Number::from_f64)
+                .map(Value::Number),
             Value::Bool(b) => Some(Value::Number((*b as u64).into())),
             _ => None,
         },
@@ -504,6 +542,7 @@ pub fn handle(cmd: MigrateCommands) -> Result<()> {
         MigrateCommands::Rollback(args) => handle_rollback(args),
         MigrateCommands::History(args) => handle_history(args),
         MigrateCommands::Docs(args) => handle_docs(args),
+        MigrateCommands::Diff(args) => handle_diff(args),
     }
 }
 
@@ -543,7 +582,10 @@ fn handle_init(args: InitArgs) -> Result<()> {
 
     fs::write(&args.output, serde_json::to_string_pretty(&template)?)?;
 
-    p::success(&format!("Wrote migration rules template to {}", args.output.display()));
+    p::success(&format!(
+        "Wrote migration rules template to {}",
+        args.output.display()
+    ));
     p::info("Edit the `ops` array to describe your real schema changes, then:");
     println!(
         "  {}",
@@ -592,7 +634,11 @@ fn handle_run(args: RunArgs) -> Result<()> {
             args.output.display()
         );
         use std::io::BufRead;
-        let line = std::io::stdin().lock().lines().next().unwrap_or(Ok(String::new()))?;
+        let line = std::io::stdin()
+            .lock()
+            .lines()
+            .next()
+            .unwrap_or(Ok(String::new()))?;
         if !matches!(line.trim().to_lowercase().as_str(), "y" | "yes") {
             p::info("Migration cancelled.");
             return Ok(());
@@ -620,7 +666,10 @@ fn handle_run(args: RunArgs) -> Result<()> {
             p::warn(&format!("Missing required key after migration: {}", k));
         }
         for k in &validation.present_forbidden {
-            p::warn(&format!("Forbidden key still present after migration: {}", k));
+            p::warn(&format!(
+                "Forbidden key still present after migration: {}",
+                k
+            ));
         }
         for issue in &validation.type_issues {
             p::warn(issue);
@@ -721,14 +770,23 @@ fn handle_test(args: TestArgs) -> Result<()> {
     let report = apply_rules(&sample, &rules);
     let after_keys: Vec<String> = report.snapshot.entries.keys().cloned().collect();
 
-    let added: Vec<_> = after_keys.iter().filter(|k| !before_keys.contains(k)).collect();
-    let removed: Vec<_> = before_keys.iter().filter(|k| !after_keys.contains(k)).collect();
+    let added: Vec<_> = after_keys
+        .iter()
+        .filter(|k| !before_keys.contains(k))
+        .collect();
+    let removed: Vec<_> = before_keys
+        .iter()
+        .filter(|k| !after_keys.contains(k))
+        .collect();
 
     p::kv("Sample entries (before)", &before_keys.len().to_string());
     p::kv("Sample entries (after)", &after_keys.len().to_string());
     p::kv("Fields added", &added.len().to_string());
     p::kv("Fields removed", &removed.len().to_string());
-    p::kv("Ops applied successfully", &report.entries_migrated.to_string());
+    p::kv(
+        "Ops applied successfully",
+        &report.entries_migrated.to_string(),
+    );
     println!();
 
     if !added.is_empty() {
@@ -792,9 +850,16 @@ fn handle_rollback(args: RollbackArgs) -> Result<()> {
 
     if !args.yes {
         println!();
-        print!("  Overwrite {} with the pre-migration backup? [y/N] ", args.output.display());
+        print!(
+            "  Overwrite {} with the pre-migration backup? [y/N] ",
+            args.output.display()
+        );
         use std::io::BufRead;
-        let line = std::io::stdin().lock().lines().next().unwrap_or(Ok(String::new()))?;
+        let line = std::io::stdin()
+            .lock()
+            .lines()
+            .next()
+            .unwrap_or(Ok(String::new()))?;
         if !matches!(line.trim().to_lowercase().as_str(), "y" | "yes") {
             p::info("Rollback cancelled.");
             return Ok(());
@@ -807,7 +872,10 @@ fn handle_rollback(args: RollbackArgs) -> Result<()> {
     save_history(&history)?;
 
     println!();
-    p::success(&format!("Restored pre-migration snapshot to {}", args.output.display()));
+    p::success(&format!(
+        "Restored pre-migration snapshot to {}",
+        args.output.display()
+    ));
     p::separator();
     Ok(())
 }
@@ -818,7 +886,11 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
     let history = load_history()?;
     let filtered: Vec<_> = history
         .iter()
-        .filter(|r| args.contract_id.as_deref().is_none_or(|id| r.contract_id == id))
+        .filter(|r| {
+            args.contract_id
+                .as_deref()
+                .is_none_or(|id| r.contract_id == id)
+        })
         .collect();
 
     if filtered.is_empty() {
@@ -841,7 +913,9 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
     for record in &filtered {
         let status_colored = match record.status {
             MigrationStatus::Completed => record.status.to_string().green().to_string(),
-            MigrationStatus::CompletedWithWarnings => record.status.to_string().yellow().to_string(),
+            MigrationStatus::CompletedWithWarnings => {
+                record.status.to_string().yellow().to_string()
+            }
             MigrationStatus::Failed => record.status.to_string().red().to_string(),
             MigrationStatus::RolledBack => record.status.to_string().cyan().to_string(),
         };
@@ -852,7 +926,11 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
             record.to_version.dimmed(),
             status_colored,
             record.entries_migrated.to_string().white(),
-            record.timestamp.get(..16).unwrap_or(&record.timestamp).dimmed(),
+            record
+                .timestamp
+                .get(..16)
+                .unwrap_or(&record.timestamp)
+                .dimmed(),
         );
     }
     p::separator();
@@ -868,6 +946,101 @@ fn handle_docs(args: DocsArgs) -> Result<()> {
         }
         None => println!("{}", docs),
     }
+    Ok(())
+}
+
+fn handle_diff(args: DiffArgs) -> Result<()> {
+    p::header("Contract State Diff");
+
+    let before_snapshot = load_snapshot(&args.before)?;
+    let after_snapshot = load_snapshot(&args.after)?;
+
+    p::kv("Before", &args.before.display().to_string());
+    p::kv("After", &args.after.display().to_string());
+    p::kv("Keys before", &before_snapshot.entries.len().to_string());
+    p::kv("Keys after", &after_snapshot.entries.len().to_string());
+    p::separator();
+
+    let report = state_diff::diff_snapshots(
+        &before_snapshot.entries,
+        &after_snapshot.entries,
+        Some(args.from_version.clone()),
+        Some(args.to_version.clone()),
+    );
+
+    match args.format.as_str() {
+        "json" => {
+            let json_out = serde_json::to_string_pretty(&report)?;
+            if let Some(ref out_path) = args.output {
+                fs::write(out_path, &json_out)?;
+                p::success(&format!("Diff report saved to {}", out_path.display()));
+            } else {
+                println!("{}", json_out);
+            }
+        }
+        _ => {
+            let console_out = state_diff::render_diff_console(&report);
+            if let Some(ref out_path) = args.output {
+                fs::write(out_path, &console_out)?;
+                p::success(&format!("Diff report saved to {}", out_path.display()));
+            } else {
+                println!("{}", console_out);
+            }
+        }
+    }
+
+    println!();
+    p::header("Diff Summary");
+    p::kv("Added", &format!("+{}", report.summary.count_added));
+    p::kv("Removed", &format!("-{}", report.summary.count_removed));
+    p::kv("Modified", &format!("~{}", report.summary.count_modified));
+    p::kv(
+        "Type changes",
+        &report.summary.count_type_changed.to_string(),
+    );
+    p::kv("Unchanged", &report.summary.count_unchanged.to_string());
+    p::kv("Total changes", &report.summary.total_changes.to_string());
+
+    if let Some(ref rules_path) = args.generate_rules {
+        let diff_rules = state_diff::generate_migration_rules_from_diff(&report);
+        let ops: Vec<TransformOp> = diff_rules
+            .iter()
+            .map(|r| match r.op.as_str() {
+                "remove_field" => TransformOp::RemoveField { key: r.key.clone() },
+                "add_field" => TransformOp::AddField {
+                    key: r.key.clone(),
+                    default: r.default_value.clone().unwrap_or(Value::Null),
+                },
+                "cast_type" => TransformOp::CastType {
+                    key: r.key.clone(),
+                    to_type: r
+                        .target_type
+                        .clone()
+                        .unwrap_or_else(|| "string".to_string()),
+                },
+                _ => TransformOp::RemoveField { key: r.key.clone() },
+            })
+            .collect();
+        let migration_rules = MigrationRules {
+            from_version: args.from_version.clone(),
+            to_version: args.to_version.clone(),
+            ops,
+            required_keys: after_snapshot.entries.keys().cloned().collect(),
+            forbidden_keys: report.removed.iter().map(|e| e.key.clone()).collect(),
+        };
+        fs::write(rules_path, serde_json::to_string_pretty(&migration_rules)?)?;
+        println!();
+        p::success(&format!(
+            "Migration rules generated from diff at {}",
+            rules_path.display()
+        ));
+        p::info(&format!(
+            "Test with: starforge migrate test --sample {} --rules {}",
+            args.before.display(),
+            rules_path.display()
+        ));
+    }
+
     Ok(())
 }
 
@@ -972,7 +1145,10 @@ mod tests {
             contract_id: Some("CTEST".to_string()),
             version: Some("v1".to_string()),
             captured_at: None,
-            entries: entries.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            entries: entries
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
         }
     }
 
@@ -991,7 +1167,10 @@ mod tests {
         };
         let report = apply_rules(&snap, &rules);
         assert!(!report.snapshot.entries.contains_key("old"));
-        assert_eq!(report.snapshot.entries.get("new"), Some(&Value::String("hi".into())));
+        assert_eq!(
+            report.snapshot.entries.get("new"),
+            Some(&Value::String("hi".into()))
+        );
         assert_eq!(report.entries_migrated, 1);
     }
 
@@ -1016,7 +1195,10 @@ mod tests {
         };
         let report = apply_rules(&snap, &rules);
         // Existing field untouched.
-        assert_eq!(report.snapshot.entries.get("existing"), Some(&Value::Bool(true)));
+        assert_eq!(
+            report.snapshot.entries.get("existing"),
+            Some(&Value::Bool(true))
+        );
         // New field inserted.
         assert_eq!(
             report.snapshot.entries.get("fresh"),
@@ -1054,7 +1236,10 @@ mod tests {
             forbidden_keys: vec![],
         };
         let report = apply_rules(&snap, &rules);
-        assert_eq!(report.snapshot.entries.get("balance").unwrap().is_number(), true);
+        assert_eq!(
+            report.snapshot.entries.get("balance").unwrap().is_number(),
+            true
+        );
         assert!(report.warnings.is_empty());
     }
 
@@ -1109,7 +1294,10 @@ mod tests {
         let report = validate_snapshot(&snap, &rules);
         assert!(!report.is_ok());
         assert_eq!(report.missing_required, vec!["schema_version".to_string()]);
-        assert_eq!(report.present_forbidden, vec!["deprecated_field".to_string()]);
+        assert_eq!(
+            report.present_forbidden,
+            vec!["deprecated_field".to_string()]
+        );
     }
 
     #[test]

@@ -14,8 +14,7 @@ fn build_http_client(timeout: Duration) -> Result<Client> {
 }
 
 static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    build_http_client(Duration::from_secs(30))
-        .expect("Failed to create shared Horizon HTTP client")
+    build_http_client(Duration::from_secs(30)).expect("Failed to create shared Horizon HTTP client")
 });
 
 pub fn network_config(network: &str) -> Result<config::NetworkConfig> {
@@ -53,11 +52,18 @@ pub async fn fund_account(public_key: &str, network: &str) -> Result<()> {
         friendbot_url(network)?.unwrap_or_else(|| "https://friendbot.stellar.org".to_string());
     let separator = if friendbot.contains('?') { '&' } else { '?' };
     let url = format!("{}{}addr={}", friendbot, separator, public_key);
+
     let res = HTTP_CLIENT
         .get(&url)
         .send()
         .await
-        .with_context(|| format!("Friendbot request failed for {}", network))?;
+        .with_context(|| {
+            format!(
+                "Could not reach Friendbot on '{}'. Check your internet connection.",
+                network
+            )
+        })?;
+
     if res.status() == 200 {
         Ok(())
     } else if res.status() == 400 {
@@ -80,12 +86,18 @@ pub async fn fund_account(public_key: &str, network: &str) -> Result<()> {
 
 pub async fn fetch_account(public_key: &str, network: &str) -> Result<AccountResponse> {
     let horizon = horizon_url(network)?;
-    let url = format!("{}/accounts/{}", horizon, public_key);
+    let url = format!("{}/accounts/{}", horizon.trim_end_matches('/'), public_key);
     let res = HTTP_CLIENT
         .get(&url)
         .send()
         .await
-        .with_context(|| format!("Failed to reach Horizon on {}", network))?;
+        .with_context(|| {
+            format!(
+                "Could not reach Horizon on '{}'. Check your internet connection or run: starforge network test",
+                network
+            )
+        })?;
+
     if res.status() == 200 {
         let account: AccountResponse = res
             .json()

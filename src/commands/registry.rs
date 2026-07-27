@@ -130,17 +130,20 @@ pub async fn handle(cmd: RegistryCommands) -> Result<()> {
             license,
             repository,
             homepage,
-        } => publish(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            license,
-            repository,
-            homepage,
-        ).await,
+        } => {
+            publish(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                license,
+                repository,
+                homepage,
+            )
+            .await
+        }
         RegistryCommands::Install { name, version } => install(name, version).await,
         RegistryCommands::Review {
             name,
@@ -505,7 +508,8 @@ async fn install(name: String, version: Option<String>) -> Result<()> {
         tpl.version,
         None,
         None,
-    ).await?;
+    )
+    .await?;
 
     p::success(&format!("Template '{}' installed successfully", name));
 
@@ -529,7 +533,9 @@ async fn review(name: String, rating: u8, comment: Option<String>) -> Result<()>
 
     let client = registry::RegistryClient::new(config.url, config.token);
     let tpl = client.get_template(&name, None).await?;
-    let resp = client.post_review(&tpl.id, rating, comment.as_deref()).await?;
+    let resp = client
+        .post_review(&tpl.id, rating, comment.as_deref())
+        .await?;
 
     if !resp.success {
         anyhow::bail!("Failed to post review: {}", resp.message);
