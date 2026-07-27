@@ -28,6 +28,57 @@ pub struct TemplateBranch {
     pub last_message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollaborationSession {
+    pub id: String,
+    pub template_name: String,
+    pub participants: Vec<String>,
+    pub created_at: String,
+    pub activity_log: Vec<CollaborationActivity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollaborationActivity {
+    pub author: String,
+    pub message: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewSuggestion {
+    pub title: String,
+    pub summary: String,
+    pub severity: String,
+    pub file_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictResolution {
+    pub file_path: String,
+    pub conflicts: Vec<String>,
+    pub recommendation: String,
+    pub resolved: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeEntry {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub author: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamAnalytics {
+    pub template_name: String,
+    pub participant_count: usize,
+    pub contribution_count: usize,
+    pub review_suggestion_count: usize,
+    pub knowledge_entry_count: usize,
+    pub last_activity: String,
+}
+
 fn vcs_dir(template_path: &Path) -> PathBuf {
     template_path.join(".starforge-vcs")
 }
@@ -40,8 +91,52 @@ fn changelog_file(template_path: &Path) -> PathBuf {
     vcs_dir(template_path).join("CHANGELOG.md")
 }
 
+fn collaboration_file(template_path: &Path) -> PathBuf {
+    vcs_dir(template_path).join("collaboration.json")
+}
+
+fn knowledge_file(template_path: &Path) -> PathBuf {
+    vcs_dir(template_path).join("knowledge.json")
+}
+
 fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
+}
+
+/// Per-invocation `-c` overrides supplying a committer identity.
+///
+/// Returns an empty list when git already has one configured, so a developer's
+/// own identity is never overridden. Without this, `git commit` aborts with
+/// "Author identity unknown" anywhere the global config is unset — CI runners
+/// and containers, most notably.
+fn committer_identity_args(template_path: &Path, author: &str) -> Vec<String> {
+    let configured = Command::new("git")
+        .current_dir(template_path)
+        .args(["config", "--get", "user.email"])
+        .output()
+        .map(|out| out.status.success() && !out.stdout.is_empty())
+        .unwrap_or(false);
+
+    if configured {
+        return Vec::new();
+    }
+
+    let handle = author
+        .trim()
+        .replace(char::is_whitespace, "-")
+        .to_lowercase();
+    let handle = if handle.is_empty() {
+        "starforge".to_string()
+    } else {
+        handle
+    };
+
+    vec![
+        "-c".to_string(),
+        format!("user.name={}", author.trim()),
+        "-c".to_string(),
+        format!("user.email={handle}@templates.starforge.local"),
+    ]
 }
 
 pub fn init_vcs(template_path: &Path, template_name: &str) -> Result<()> {
@@ -137,6 +232,7 @@ pub fn commit_version(
         let commit_msg = format!("{}: {}", tag, message.lines().next().unwrap_or(message));
         let output = Command::new("git")
             .current_dir(template_path)
+            .args(committer_identity_args(template_path, author))
             .args(["commit", "-m", &commit_msg])
             .output()
             .context("Failed to commit")?;
@@ -332,6 +428,180 @@ pub fn get_version_history(template_path: &Path) -> Result<TemplateChangelog> {
     load_versions(template_path)
 }
 
+pub fn init_collaboration(
+    template_path: &Path,
+    template_name: &str,
+    participants: &[String],
+) -> Result<CollaborationSession> {
+    let session = CollaborationSession {
+        id: format!("collab_{}", uuid::Uuid::new_v4()),
+        template_name: template_name.to_string(),
+        participants: participants.to_vec(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        activity_log: vec![CollaborationActivity {
+            author: "system".to_string(),
+            message: "Collaboration session initialized".to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }],
+    };
+
+    fs::create_dir_all(vcs_dir(template_path))?;
+    fs::write(
+        collaboration_file(template_path),
+        serde_json::to_string_pretty(&session)?,
+    )?;
+    Ok(session)
+}
+
+pub fn log_collaboration_activity(
+    template_path: &Path,
+    author: &str,
+    message: &str,
+) -> Result<()> {
+    let mut session = load_collaboration(template_path)?;
+    session.activity_log.push(CollaborationActivity {
+        author: author.to_string(),
+        message: message.to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    });
+    fs::write(
+        collaboration_file(template_path),
+        serde_json::to_string_pretty(&session)?,
+    )?;
+    Ok(())
+}
+
+pub fn generate_ai_review_suggestions(
+    template_path: &Path,
+    focus: Option<&str>,
+) -> Result<Vec<ReviewSuggestion>> {
+    let mut suggestions = Vec::new();
+    let mut files = Vec::new();
+    collect_template_files(template_path, &mut files)?;
+
+    for path in files {
+        if let Ok(content) = fs::read_to_string(&path) {
+            let relative = path.strip_prefix(template_path).unwrap_or(&path).display().to_string();
+            let lowered = content.to_lowercase();
+
+            if lowered.contains("todo") || lowered.contains("fixme") || lowered.contains("tbd") {
+                suggestions.push(ReviewSuggestion {
+                    title: format!("Address TODO/FIXME items in {}", relative),
+                    summary: "The template still contains unresolved placeholders that should be clarified before sharing it with collaborators.".to_string(),
+                    severity: "medium".to_string(),
+                    file_path: Some(relative),
+                });
+            }
+
+            if relative.ends_with("README.md") && !lowered.contains("usage") && !lowered.contains("customization") {
+                suggestions.push(ReviewSuggestion {
+                    title: format!("Add documentation guidance for {}", relative),
+                    summary: "The documentation should explain how to install, customize, and test the template.".to_string(),
+                    severity: "low".to_string(),
+                    file_path: Some(relative),
+                });
+            }
+        }
+    }
+
+    if suggestions.is_empty() {
+        let prompt = focus.unwrap_or("template review");
+        suggestions.push(ReviewSuggestion {
+            title: format!("Review the {} workflow", prompt),
+            summary: "No obvious blockers were found; consider improving onboarding notes and coverage for collaborative handoffs.".to_string(),
+            severity: "info".to_string(),
+            file_path: None,
+        });
+    }
+
+    Ok(suggestions)
+}
+
+pub fn resolve_template_conflicts(template_path: &Path) -> Result<Vec<ConflictResolution>> {
+    let mut resolutions = Vec::new();
+    let mut files = Vec::new();
+    collect_template_files(template_path, &mut files)?;
+
+    for path in files {
+        if let Ok(content) = fs::read_to_string(&path) {
+            let relative = path.strip_prefix(template_path).unwrap_or(&path).display().to_string();
+            let conflict_lines: Vec<String> = content
+                .lines()
+                .filter(|line| line.contains("<<<<<<<") || line.contains("=======") || line.contains(">>>>>>") )
+                .map(|line| line.trim().to_string())
+                .collect();
+
+            if !conflict_lines.is_empty() {
+                resolutions.push(ConflictResolution {
+                    file_path: relative,
+                    conflicts: conflict_lines,
+                    recommendation: "Review each conflicted block, retain the intended version, and remove the conflict markers before committing.".to_string(),
+                    resolved: false,
+                });
+            }
+        }
+    }
+
+    Ok(resolutions)
+}
+
+pub fn share_knowledge(
+    template_path: &Path,
+    title: &str,
+    content: &str,
+    author: &str,
+) -> Result<KnowledgeEntry> {
+    let mut entries = get_knowledge_entries(template_path)?;
+    let entry = KnowledgeEntry {
+        id: format!("knowledge_{}", uuid::Uuid::new_v4()),
+        title: title.to_string(),
+        content: content.to_string(),
+        author: author.to_string(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    entries.push(entry.clone());
+    fs::write(
+        knowledge_file(template_path),
+        serde_json::to_string_pretty(&entries)?,
+    )?;
+    Ok(entry)
+}
+
+pub fn get_knowledge_entries(template_path: &Path) -> Result<Vec<KnowledgeEntry>> {
+    if !knowledge_file(template_path).exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(knowledge_file(template_path))?;
+    let entries: Vec<KnowledgeEntry> = serde_json::from_str(&content).unwrap_or_default();
+    Ok(entries)
+}
+
+pub fn collect_team_analytics(template_path: &Path) -> Result<TeamAnalytics> {
+    let session = load_collaboration(template_path).ok();
+    let versions = load_versions(template_path)?.versions.len();
+    let knowledge_entries = get_knowledge_entries(template_path)?.len();
+    let review_suggestions = generate_ai_review_suggestions(template_path, None)?.len();
+    let last_activity = session
+        .as_ref()
+        .and_then(|session| session.activity_log.last())
+        .map(|entry| entry.timestamp.clone())
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+    Ok(TeamAnalytics {
+        template_name: template_path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        participant_count: session.map(|session| session.participants.len()).unwrap_or(0),
+        contribution_count: versions,
+        review_suggestion_count: review_suggestions,
+        knowledge_entry_count: knowledge_entries,
+        last_activity,
+    })
+}
+
 pub fn create_release_with_notes(
     template_path: &Path,
     version: &str,
@@ -378,6 +648,40 @@ fn load_versions(template_path: &Path) -> Result<TemplateChangelog> {
     let versions: TemplateChangelog =
         serde_json::from_str(&content).context("Failed to parse versions file")?;
     Ok(versions)
+}
+
+fn load_collaboration(template_path: &Path) -> Result<CollaborationSession> {
+    let path = collaboration_file(template_path);
+    if !path.exists() {
+        return init_collaboration(template_path, "unknown", &[]);
+    }
+
+    let content = fs::read_to_string(&path)?;
+    let session: CollaborationSession = serde_json::from_str(&content)?;
+    Ok(session)
+}
+
+fn collect_template_files(template_path: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(template_path)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+            if name == ".git" || name == ".starforge-vcs" || name == "target" {
+                continue;
+            }
+            collect_template_files(&path, files)?;
+        } else if path.is_file() {
+            let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
+            let supported = matches!(extension, "rs" | "md" | "toml" | "json" | "txt" | "yml" | "yaml" | "sh" | "sql" | "cfg");
+            if supported {
+                files.push(path);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn update_changelog(template_path: &Path, versions: &TemplateChangelog) -> Result<()> {
@@ -499,5 +803,34 @@ mod tests {
         assert_eq!(log.len(), 2);
         assert_eq!(log[0].version, "2.0.0");
         assert_eq!(log[1].version, "1.0.0");
+    }
+
+    #[test]
+    fn init_collaboration_creates_session_state() {
+        let tmp = tempdir().unwrap();
+        make_valid_template(tmp.path());
+        init_vcs(tmp.path(), "test-template").unwrap();
+
+        let session = init_collaboration(tmp.path(), "test-template", &["alice".to_string()])
+            .unwrap();
+
+        assert_eq!(session.template_name, "test-template");
+        assert_eq!(session.participants.len(), 1);
+        assert!(session.id.starts_with("collab_"));
+    }
+
+    #[test]
+    fn generate_ai_review_suggestions_detects_template_issues() {
+        let tmp = tempdir().unwrap();
+        make_valid_template(tmp.path());
+        fs::write(tmp.path().join("README.md"), "# Template\n\nTODO: add docs\n").unwrap();
+        fs::write(tmp.path().join("src/lib.rs"), "#![no_std]\n\n// TODO: improve defaults\n")
+            .unwrap();
+
+        let suggestions = generate_ai_review_suggestions(tmp.path(), Some("improve docs"))
+            .unwrap();
+
+        assert!(!suggestions.is_empty());
+        assert!(suggestions.iter().any(|suggestion| suggestion.title.contains("TODO") || suggestion.title.contains("documentation") || suggestion.title.contains("review")));
     }
 }

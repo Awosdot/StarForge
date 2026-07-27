@@ -158,7 +158,7 @@ fn handle_list(args: ListArgs) -> Result<()> {
     for e in &entries {
         println!(
             "  {:<10}  {:<12}  {:<20}  {:<10}  {}",
-            &e.id[..8.min(e.id.len())].cyan(),
+            e.id[..8.min(e.id.len())].cyan(),
             status_label(&e.status),
             e.scheduled_at.get(..19).unwrap_or(&e.scheduled_at),
             e.network,
@@ -313,7 +313,7 @@ fn handle_dashboard() -> Result<()> {
         println!(
             "  {} {} | {} | {}",
             status_label(&e.status),
-            &e.id[..8.min(e.id.len())].dimmed(),
+            e.id[..8.min(e.id.len())].dimmed(),
             e.scheduled_at.get(..19).unwrap_or(&e.scheduled_at),
             e.contract_id,
         );

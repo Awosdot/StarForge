@@ -1,3 +1,4 @@
+use crate::commands::analytics as analytics_cmds;
 use crate::utils::{
     config, confirmation,
     deploy_history::{
@@ -6,12 +7,11 @@ use crate::utils::{
     },
     deployment_monitor, horizon, notifications, optimizer, print as p, soroban, wallet_signer,
 };
-use crate::commands::analytics as analytics_cmds;
 
+use crate::utils::hardware_wallet::HardwareWalletKind;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
-use crate::utils::hardware_wallet::HardwareWalletKind;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
@@ -66,6 +66,16 @@ pub struct DeployArgs {
 }
 
 /// Extract a Soroban contract id (56-char `C…` strkey) from CLI stdout/stderr.
+/// Records a deployment analytics event.
+///
+/// Analytics must never fail a deploy, so a reporting error is logged and
+/// swallowed rather than propagated.
+async fn record_analytics(cmd: analytics_cmds::AnalyticsCommands) {
+    if let Err(e) = analytics_cmds::handle(cmd).await {
+        tracing::debug!("failed to record deployment analytics: {e}");
+    }
+}
+
 fn parse_contract_id_from_stdout(output: &str) -> Option<String> {
     output.split_whitespace().find_map(|token| {
         let cleaned = token.trim_matches(|c: char| !c.is_ascii_alphanumeric());
@@ -359,8 +369,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             wasm_size_kb,
             wallet,
             &args.network,
-        )
-        .await;
+        );
     }
 
     if args.simulate {
@@ -528,10 +537,9 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             // Record deployment analytics event (execute attempt failed).
             // Try to parse a contract id, even though the command failed.
             let contract_id_for_analytics = parse_contract_id_from_stdout(&stderr);
-            let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
+            record_analytics(analytics_cmds::AnalyticsCommands::Track(
                 analytics_cmds::TrackArgs {
                     contract_id: contract_id_for_analytics.unwrap_or_default(),
-
 
                     network: args.network.clone(),
                     wasm_hash: Some(wasm_hash.clone()),
@@ -543,8 +551,8 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     success: false,
                     error: Some(stderr.clone()),
                 },
-            )) ;
-
+            ))
+            .await;
 
             // Automatic rollback safety net: revert to the last good deployment.
             handle_failed_deploy_rollback(
@@ -569,7 +577,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         let _ = set_duration(&record_id, duration_ms);
 
         // Record deployment analytics event (execute attempt succeeded).
-        let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
+        record_analytics(analytics_cmds::AnalyticsCommands::Track(
             analytics_cmds::TrackArgs {
                 contract_id: parsed_contract_id.clone().unwrap_or_default(),
                 network: args.network.clone(),
@@ -582,8 +590,8 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 success: true,
                 error: None,
             },
-        ));
-
+        ))
+        .await;
 
         let _ = emit_deployment_monitoring_alert(&args.network, parsed_contract_id.as_deref());
         p::success("Deployment executed successfully!");
