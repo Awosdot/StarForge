@@ -70,6 +70,47 @@ pub enum TemplateVcsCommands {
         /// Path to the template directory
         path: PathBuf,
     },
+    /// Initialize a collaborative editing session for a template
+    Collaborate {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Optional template display name
+        #[arg(long)]
+        name: Option<String>,
+        /// Participant identifiers to seed the session
+        #[arg(long)]
+        participant: Vec<String>,
+    },
+    /// Generate AI-assisted review suggestions for a template
+    Review {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Optional focus area for the review
+        #[arg(long)]
+        focus: Option<String>,
+    },
+    /// Detect merge-conflict markers in a template tree
+    ResolveConflicts {
+        /// Path to the template directory
+        path: PathBuf,
+    },
+    /// Share a knowledge note with the template team
+    ShareKnowledge {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Knowledge title
+        title: String,
+        /// Knowledge content
+        content: String,
+        /// Author name
+        #[arg(long)]
+        author: Option<String>,
+    },
+    /// Show collaboration analytics for a template
+    Analytics {
+        /// Path to the template directory
+        path: PathBuf,
+    },
 }
 
 pub async fn handle(cmd: TemplateVcsCommands) -> Result<()> {
@@ -96,6 +137,20 @@ pub async fn handle(cmd: TemplateVcsCommands) -> Result<()> {
         } => release(path, version, message, author),
         TemplateVcsCommands::Changelog { path } => changelog(path),
         TemplateVcsCommands::Status { path } => status(path),
+        TemplateVcsCommands::Collaborate {
+            path,
+            name,
+            participant,
+        } => collaborate(path, name, participant),
+        TemplateVcsCommands::Review { path, focus } => review(path, focus),
+        TemplateVcsCommands::ResolveConflicts { path } => resolve_conflicts(path),
+        TemplateVcsCommands::ShareKnowledge {
+            path,
+            title,
+            content,
+            author,
+        } => share_knowledge(path, title, content, author),
+        TemplateVcsCommands::Analytics { path } => analytics(path),
     }
 }
 
@@ -254,5 +309,83 @@ fn status(path: PathBuf) -> Result<()> {
 
     println!();
     p::info("Use `starforge template-vcs commit` to record changes.");
+    Ok(())
+}
+
+fn collaborate(path: PathBuf, name: Option<String>, participants: Vec<String>) -> Result<()> {
+    p::header("Template Collaboration — Session");
+    let template_name = name.unwrap_or_else(|| path.file_name().unwrap_or_default().to_string_lossy().to_string());
+    let session = template_vcs::init_collaboration(&path, &template_name, &participants)?;
+    p::success("Collaboration session created");
+    p::kv("Session ID", &session.id);
+    p::kv("Template", &template_name);
+    p::kv("Participants", &session.participants.join(", "));
+    Ok(())
+}
+
+fn review(path: PathBuf, focus: Option<String>) -> Result<()> {
+    p::header("Template Collaboration — AI Review");
+    let suggestions = template_vcs::generate_ai_review_suggestions(&path, focus.as_deref())?;
+
+    if suggestions.is_empty() {
+        p::info("No review suggestions generated.");
+        return Ok(());
+    }
+
+    for suggestion in suggestions {
+        println!();
+        p::kv_accent("Suggestion", &suggestion.title);
+        p::kv("Severity", &suggestion.severity);
+        p::kv("Summary", &suggestion.summary);
+        if let Some(file) = suggestion.file_path {
+            p::kv("File", &file);
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_conflicts(path: PathBuf) -> Result<()> {
+    p::header("Template Collaboration — Conflict Resolution");
+    let resolutions = template_vcs::resolve_template_conflicts(&path)?;
+
+    if resolutions.is_empty() {
+        p::info("No conflict markers found.");
+        return Ok(());
+    }
+
+    for resolution in resolutions {
+        println!();
+        p::kv_accent("File", &resolution.file_path);
+        p::kv("Resolved", if resolution.resolved { "Yes" } else { "No" });
+        p::kv("Recommendation", &resolution.recommendation);
+        if !resolution.conflicts.is_empty() {
+            p::kv("Conflict markers", &resolution.conflicts.join(" | "));
+        }
+    }
+
+    Ok(())
+}
+
+fn share_knowledge(path: PathBuf, title: String, content: String, author: Option<String>) -> Result<()> {
+    p::header("Template Collaboration — Knowledge Sharing");
+    let author_name = author.unwrap_or_else(|| "anonymous".to_string());
+    let entry = template_vcs::share_knowledge(&path, &title, &content, &author_name)?;
+    p::success("Knowledge shared with the team");
+    p::kv("Entry ID", &entry.id);
+    p::kv("Title", &entry.title);
+    p::kv("Author", &entry.author);
+    Ok(())
+}
+
+fn analytics(path: PathBuf) -> Result<()> {
+    p::header("Template Collaboration — Analytics");
+    let analytics = template_vcs::collect_team_analytics(&path)?;
+    p::kv("Template", &analytics.template_name);
+    p::kv("Participants", &analytics.participant_count.to_string());
+    p::kv("Contributions", &analytics.contribution_count.to_string());
+    p::kv("Review suggestions", &analytics.review_suggestion_count.to_string());
+    p::kv("Knowledge entries", &analytics.knowledge_entry_count.to_string());
+    p::kv("Last activity", &analytics.last_activity);
     Ok(())
 }
