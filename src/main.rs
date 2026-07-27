@@ -202,6 +202,22 @@ enum Commands {
     #[command(subcommand)]
     AiTest(commands::ai_test::AiTestCommands),
 
+    /// AI property-based testing (discover properties, generate tests, validate invariants)
+    #[command(subcommand)]
+    AiPropertyTest(commands::ai_property_test::AiPropertyTestCommands),
+
+    /// AI feedback and learning system (record feedback, track quality, learn preferences)
+    #[command(subcommand)]
+    AiFeedback(commands::ai_feedback::AiFeedbackCommands),
+
+    /// AI code search and discovery (search code, find patterns, similar code)
+    #[command(subcommand)]
+    AiSearch(commands::ai_search::AiSearchCommands),
+
+    /// AI best practice recommendations (analyze contracts, scan projects, improvement plans)
+    #[command(subcommand)]
+    AiRecommend(commands::ai_recommend::AiRecommendCommands),
+
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
     Schedule(commands::schedule::ScheduleCommands),
@@ -312,6 +328,10 @@ async fn main() {
         Commands::Audit(_) => "audit",
         Commands::AiAudit(_) => "ai-audit",
         Commands::AiTest(_) => "ai-test",
+        Commands::AiPropertyTest(_) => "ai-property-test",
+        Commands::AiFeedback(_) => "ai-feedback",
+        Commands::AiSearch(_) => "ai-search",
+        Commands::AiRecommend(_) => "ai-recommend",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -384,6 +404,10 @@ async fn main() {
         Commands::Audit(args) => commands::audit::handle(args).await,
         Commands::AiAudit(args) => commands::ai_audit::handle(args).await,
         Commands::AiTest(cmd) => commands::ai_test::handle(cmd).await,
+        Commands::AiPropertyTest(cmd) => commands::ai_property_test::handle(cmd).await,
+        Commands::AiFeedback(cmd) => commands::ai_feedback::handle(cmd).await,
+        Commands::AiSearch(cmd) => commands::ai_search::handle(cmd).await,
+        Commands::AiRecommend(cmd) => commands::ai_recommend::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
@@ -594,6 +618,22 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             } else if msg.contains("coverage") {
                 hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
             }
+        }
+        "ai-property-test" => {
+            hints.push("Provide a contract source file: starforge ai-property-test discover src/lib.rs".into());
+            hints.push("Run without --use-ai for local property discovery".into());
+        }
+        "ai-feedback" => {
+            hints.push("Record feedback: starforge ai-feedback record <feature> --prompt-summary \"...\" --response-summary \"...\" --rating positive".into());
+            hints.push("View stats: starforge ai-feedback stats".into());
+        }
+        "ai-search" => {
+            hints.push("Search code: starforge ai-search search \"token transfer\"".into());
+            hints.push("Discover patterns: starforge ai-search patterns".into());
+        }
+        "ai-recommend" => {
+            hints.push("Analyze a contract: starforge ai-recommend analyze src/lib.rs".into());
+            hints.push("Scan a project: starforge ai-recommend scan .".into());
         }
         "benchmark" | "test" => {
             if msg.contains("wasm") || msg.contains("not found") {
