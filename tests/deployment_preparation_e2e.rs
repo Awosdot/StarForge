@@ -14,12 +14,14 @@ mod deployment_preparation_tests {
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct DeploymentConfig {
         wallets: Vec<WalletEntry>,
         network: String,
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct WasmFile {
         path: String,
         size_bytes: usize,

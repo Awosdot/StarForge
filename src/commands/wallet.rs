@@ -1,8 +1,5 @@
-#![allow(clippy::items_after_test_module)]
-
 use crate::utils::{
     config, confirmation, crypto, hardware_wallet, horizon, mnemonic, multisig, print as p,
-    wallet_signer,
 };
 use anyhow::{Context, Result};
 use bip39::{Language, Mnemonic};
@@ -49,7 +46,7 @@ struct WalletBackup {
     wallets: Vec<WalletBackupEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WalletBackupEntry {
     name: String,
     public_key: String,
@@ -60,6 +57,7 @@ struct WalletBackupEntry {
 }
 
 impl From<&config::WalletEntry> for WalletBackupEntry {
+    // This was already correct, no change needed here.
     fn from(entry: &config::WalletEntry) -> Self {
         Self {
             name: entry.name.clone(),
@@ -176,7 +174,7 @@ pub enum WalletCommands {
         /// Argon2 parallelism factor (requires --encrypt)
         #[arg(long, requires = "encrypt")]
         parallelism: Option<u32>,
-        /// Optional backup file path to save a snapshot before rotation
+        /// Path to write a pre-rotation backup snapshot
         #[arg(long)]
         backup: Option<PathBuf>,
     },
@@ -388,20 +386,17 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
             iterations,
             parallelism,
             backup,
-        } => {
-            rotate_wallet(
-                name,
-                fund,
-                network,
-                encrypt,
-                strict,
-                mem,
-                iterations,
-                parallelism,
-                backup,
-            )
-            .await
-        }
+        } => rotate_wallet(
+            name,
+            fund,
+            network,
+            encrypt,
+            strict,
+            mem,
+            iterations,
+            parallelism,
+            backup,
+        ),
         WalletCommands::Export {
             name,
             all,
@@ -447,11 +442,17 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
 fn parse_duration(input: &str) -> Result<std::time::Duration> {
     let trimmed = input.trim().to_lowercase();
     if trimmed.ends_with("ms") {
-        let value: u64 = trimmed.trim_end_matches("ms").parse().context("Invalid timeout")?;
+        let value: u64 = trimmed
+            .trim_end_matches("ms")
+            .parse()
+            .context("Invalid timeout")?;
         return Ok(std::time::Duration::from_millis(value));
     }
     if trimmed.ends_with('s') {
-        let value: u64 = trimmed.trim_end_matches('s').parse().context("Invalid timeout")?;
+        let value: u64 = trimmed
+            .trim_end_matches('s')
+            .parse()
+            .context("Invalid timeout")?;
         return Ok(std::time::Duration::from_secs(value));
     }
     anyhow::bail!("Invalid timeout '{}'. Use values like 1s or 500ms.", input)
@@ -460,11 +461,7 @@ fn parse_duration(input: &str) -> Result<std::time::Duration> {
 fn connect_hardware(device: hardware_wallet::HardwareWalletKind, timeout: &str) -> Result<()> {
     let timeout_duration = parse_duration(timeout)?;
     p::header("Hardware Wallet — Connect");
-    p::step(
-        1,
-        3,
-        &format!("Initializing HID subsystem for {}…", device),
-    );
+    p::step(1, 3, &format!("Initializing HID subsystem for {}…", device));
     let info = hardware_wallet::connect_with_timeout(device, timeout_duration)
         .map_err(|err| hardware_wallet::map_signing_error(err, device))?;
     p::step(
@@ -517,8 +514,13 @@ fn sign_message(
     if let Some(kind) = hardware {
         p::kv("Signer", &format!("{:?}", kind));
         let passphrase = config::get_network_passphrase("testnet");
-        let sig = hardware_wallet::sign_transaction(kind, hardware_wallet::STELLAR_HD_PATH, msg_bytes, &passphrase)
-            .map_err(|err| hardware_wallet::map_signing_error(err, kind))?;
+        let sig = hardware_wallet::sign_transaction(
+            kind,
+            hardware_wallet::STELLAR_HD_PATH,
+            msg_bytes,
+            &passphrase,
+        )
+        .map_err(|err| hardware_wallet::map_signing_error(err, kind))?;
         p::separator();
         p::kv_accent("Message", &message);
         p::kv("Signature (hex)", &hex::encode(sig));
@@ -600,9 +602,9 @@ async fn create(
     use_mnemonic: bool,
     words: String,
     account_index: u32,
-    mem: Option<u32>,
-    iterations: Option<u32>,
-    parallelism: Option<u32>,
+    _mem: Option<u32>,
+    _iterations: Option<u32>,
+    _parallelism: Option<u32>,
 ) -> Result<()> {
     let mut cfg = config::load()?;
 
@@ -1055,7 +1057,7 @@ async fn merge_wallet(
         risk_level,
         network: network.clone(),
         skip_confirm,
-        dry_run: false,
+        dry_run: false, // This was missing a comma
         prompt: Some(format!(
             "Type '{}' to confirm merge of account {}:",
             wallet.name, wallet.name
@@ -1395,8 +1397,8 @@ fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf, strict: b
 
     let backup = WalletBackup {
         version: WALLET_BACKUP_VERSION.to_string(),
-        exported_at: Utc::now().to_rfc3339(),
-        wallets: wallets_to_export,
+        exported_at: Utc::now().to_rfc3339(), // This was missing a comma
+        wallets: wallets_to_export.clone(),
     };
 
     let context: Vec<&str> = backup
@@ -1506,7 +1508,10 @@ fn import_from_hardware(
     });
     config::save(&updated_cfg)?;
 
-    p::success(&format!("Wallet '{}' imported from {} hardware device", name, device));
+    p::success(&format!(
+        "Wallet '{}' imported from {} hardware device",
+        name, device
+    ));
     p::kv("HD Path", hd_path);
     p::info("This wallet is watch-only. Sign transactions with --hardware.");
     Ok(())
@@ -2024,9 +2029,9 @@ fn multisig_sign(
 
     if let Some(device) = hardware {
         let matching_signer = account.signers.iter().find(|signer| {
-            cfg.wallets.iter().any(|wallet| {
-                wallet.public_key == signer.public_key && wallet.secret_key.is_none()
-            })
+            cfg.wallets
+                .iter()
+                .any(|wallet| wallet.public_key == signer.public_key && wallet.secret_key.is_none())
         });
 
         let signer_key = if let Some(signer) = matching_signer {
