@@ -85,3 +85,12 @@ pub mod ai_gas_estimation;
 
 // AI Deployment Planner
 pub mod ai_deployment_planner;
+
+// AI Service Abstraction Layer (#479)
+pub mod ai;
+// AI Response Validation (#486)
+pub mod ai_validation;
+// AI Context Management (#487)
+pub mod ai_context;
+// AI Rate Limiting (#489)
+pub mod ai_rate_limiter;
