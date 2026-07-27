@@ -20,6 +20,7 @@ pub mod diagnostics;
 pub mod gas;
 pub mod generate;
 pub mod governance;
+pub mod help;
 pub mod info;
 pub mod inspect;
 pub mod invoke;
