@@ -43,6 +43,7 @@ pub async fn handle(args: ShellArgs) -> Result<()> {
 
     let sandbox = LocalSorobanSandbox::new(&args.contract, &args.network).await?;
     let runner = ShellRunner { sandbox };
+    let contract_methods = discover_methods(&args);
     let repl_options = repl::ReplOptions {
         history_enabled: !args.no_history,
         max_history_lines: args.history_max_lines,
@@ -124,8 +125,6 @@ fn discover_methods(args: &ShellArgs) -> Vec<String> {
     methods.sort();
     methods
 }
-
-
 
 fn completion_candidates() -> Vec<String> {
     let mut candidates = HashSet::new();

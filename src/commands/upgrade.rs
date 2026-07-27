@@ -438,7 +438,7 @@ fn handle_propose(args: ProposeArgs) -> Result<()> {
     let mut details = std::collections::HashMap::new();
     details.insert("contract_id".to_string(), args.contract_id.clone());
     details.insert("new_wasm_hash".to_string(), new_hash.clone());
-    details.insert("description".to_string(), args.description);
+    details.insert("description".to_string(), args.description.clone());
     details.insert("threshold".to_string(), args.threshold.to_string());
     details.insert(
         "timelock_duration_sec".to_string(),
@@ -547,7 +547,7 @@ fn handle_emergency_propose(args: EmergencyProposeArgs) -> Result<()> {
     let mut details = std::collections::HashMap::new();
     details.insert("contract_id".to_string(), args.contract_id.clone());
     details.insert("new_wasm_hash".to_string(), new_hash.clone());
-    details.insert("description".to_string(), args.description);
+    details.insert("description".to_string(), args.description.clone());
     details.insert("threshold".to_string(), args.threshold.to_string());
     audit::log_action(
         "propose_emergency_upgrade",
@@ -702,6 +702,9 @@ fn handle_approve(args: ApproveArgs) -> Result<()> {
 
     let new_status = proposal.status.to_string();
     let approvals = format!("{}/{}", proposal.approvals.len(), proposal.threshold);
+    let proposal_id = proposal.id.clone();
+    let timelock_start = proposal.timelock_start.clone();
+    let timelock_duration_sec = proposal.timelock_duration_sec;
     save_proposals(&proposals)?;
 
     // Log audit action
@@ -712,7 +715,7 @@ fn handle_approve(args: ApproveArgs) -> Result<()> {
         "approve_upgrade",
         &wallet.public_key,
         "upgrade_proposal",
-        &args.proposal_id,
+        &proposal_id,
         details,
         true,
         None,
@@ -725,10 +728,10 @@ fn handle_approve(args: ApproveArgs) -> Result<()> {
     p::kv("Status", &new_status);
     println!();
     if new_status == "timelocked" {
-        let unlock_time = DateTime::parse_from_rfc3339(proposal.timelock_start.as_ref().unwrap())
+        let unlock_time = DateTime::parse_from_rfc3339(timelock_start.as_ref().unwrap())
             .unwrap()
             .with_timezone(&Utc)
-            + chrono::Duration::seconds(proposal.timelock_duration_sec.unwrap() as i64);
+            + chrono::Duration::seconds(timelock_duration_sec.unwrap() as i64);
         p::success(&format!(
             "Threshold reached — proposal is timelocked until {}",
             unlock_time
@@ -794,13 +797,14 @@ fn handle_unlock(args: UnlockArgs) -> Result<()> {
     }
 
     proposal.status = ProposalStatus::Unlocked;
+    let timelock_start_str = proposal.timelock_start.clone();
     save_proposals(&proposals)?;
 
     // Log audit action
     let mut details = std::collections::HashMap::new();
     details.insert(
         "timelock_start".to_string(),
-        proposal.timelock_start.as_ref().unwrap().clone(),
+        timelock_start_str.unwrap_or_default(),
     );
     details.insert(
         "timelock_duration_sec".to_string(),
@@ -908,6 +912,9 @@ async fn handle_execute(args: ExecuteArgs) -> Result<()> {
     // Clone fields needed after the mutable borrow ends
     let contract_id = proposal.contract_id.clone();
     let new_wasm_hash = proposal.new_wasm_hash.clone();
+    let proposal_id = proposal.id.clone();
+    let is_emergency = proposal.is_emergency;
+    let network = proposal.network.clone();
 
     // Record in history
     let mut history = load_history()?;
@@ -915,9 +922,9 @@ async fn handle_execute(args: ExecuteArgs) -> Result<()> {
         contract_id: contract_id.clone(),
         from_hash: "unknown".to_string(),
         to_hash: new_wasm_hash.clone(),
-        proposal_id: proposal.id.clone(),
+        proposal_id: proposal_id.clone(),
         executed_by: wallet.public_key.clone(),
-        network: proposal.network.clone(),
+        network: network.clone(),
         timestamp: Utc::now().to_rfc3339(),
     });
     save_history(&history)?;
@@ -930,15 +937,12 @@ async fn handle_execute(args: ExecuteArgs) -> Result<()> {
     let mut details = std::collections::HashMap::new();
     details.insert("contract_id".to_string(), contract_id.clone());
     details.insert("new_wasm_hash".to_string(), new_wasm_hash.clone());
-    details.insert(
-        "is_emergency".to_string(),
-        proposal.is_emergency.to_string(),
-    );
+    details.insert("is_emergency".to_string(), is_emergency.to_string());
     audit::log_action(
         "execute_upgrade",
         &wallet.public_key,
         "upgrade_proposal",
-        &proposal.id,
+        &proposal_id,
         details,
         true,
         None,

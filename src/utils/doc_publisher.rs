@@ -10,6 +10,7 @@
 //! All operations are synchronous; async variants can be added if needed.
 
 use anyhow::{Context, Result};
+use reqwest;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -110,7 +111,12 @@ pub fn publish(entry: &DocEntry, options: &PublishOptions) -> Result<PublishResu
         PublishTarget::CustomHttp {
             endpoint,
             auth_token,
-        } => publish_http(&options.build_dir, endpoint, auth_token.as_deref(), files_written),
+        } => publish_http(
+            &options.build_dir,
+            endpoint,
+            auth_token.as_deref(),
+            files_written,
+        ),
     }
 }
 
@@ -125,10 +131,7 @@ fn publish_local(build_dir: &Path, dest: &Path, files_written: usize) -> Result<
     Ok(PublishResult {
         published_to: dest.to_string_lossy().into_owned(),
         files_written,
-        message: format!(
-            "Documentation published to local path: {}",
-            dest.display()
-        ),
+        message: format!("Documentation published to local path: {}", dest.display()),
     })
 }
 
@@ -151,10 +154,7 @@ fn publish_gh_pages(
         .context("Failed to run git")?;
 
     if !status.status.success() {
-        anyhow::bail!(
-            "{} is not a git repository",
-            repo_path.display()
-        );
+        anyhow::bail!("{} is not a git repository", repo_path.display());
     }
 
     let repo_str = repo_path.to_string_lossy();
@@ -225,38 +225,48 @@ fn publish_http(
 ) -> Result<PublishResult> {
     // Create a tarball of the build dir in memory.
     let tarball_path = build_dir.with_extension("tar.gz");
-    create_tarball(build_dir, &tarball_path)
-        .context("Failed to create documentation tarball")?;
+    create_tarball(build_dir, &tarball_path).context("Failed to create documentation tarball")?;
 
-    let bytes = fs::read(&tarball_path).context("Failed to read tarball")?;
+    let bytes = std::fs::read(&tarball_path).context("Failed to read tarball")?;
 
-    let mut request = ureq::post(endpoint).set("Content-Type", "application/gzip");
-    if let Some(token) = auth_token {
-        request = request.set("Authorization", &format!("Bearer {}", token));
-    }
-
-    let response = request
-        .send_bytes(&bytes)
-        .with_context(|| format!("HTTP POST to {} failed", endpoint))?;
+    let endpoint_owned = endpoint.to_string();
+    let token_owned = auth_token.map(String::from);
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+    let (status_code, status_text) = rt.block_on(async move {
+        let client = reqwest::Client::new();
+        let mut req = client
+            .post(&endpoint_owned)
+            .header("Content-Type", "application/gzip")
+            .body(bytes);
+        if let Some(token) = token_owned {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        match req.send().await {
+            Ok(r) => (
+                r.status().as_u16(),
+                r.status().canonical_reason().unwrap_or("").to_string(),
+            ),
+            Err(_) => (500u16, "request failed".to_string()),
+        }
+    });
 
     // Clean up tarball.
-    let _ = fs::remove_file(&tarball_path);
+    let _ = std::fs::remove_file(&tarball_path);
 
-    if response.status() >= 200 && response.status() < 300 {
+    if (200..300).contains(&status_code) {
         Ok(PublishResult {
             published_to: endpoint.to_string(),
             files_written,
             message: format!(
                 "Documentation uploaded to {} (HTTP {})",
-                endpoint,
-                response.status()
+                endpoint, status_code
             ),
         })
     } else {
         anyhow::bail!(
             "HTTP publish failed with status {}: {}",
-            response.status(),
-            response.status_text()
+            status_code,
+            status_text
         )
     }
 }
@@ -284,7 +294,11 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
 /// Count files in `dir` (non-recursive for a quick tally).
 fn count_files(dir: &Path) -> usize {
     fs::read_dir(dir)
-        .map(|rd| rd.filter_map(|e| e.ok()).filter(|e| e.path().is_file()).count())
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter(|e| e.path().is_file())
+                .count()
+        })
         .unwrap_or(0)
 }
 
@@ -360,8 +374,8 @@ pub fn load_publish_log() -> Result<Vec<PublishRecord>> {
 }
 
 fn publish_log_path() -> Result<PathBuf> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let home =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
     let dir = home.join(".starforge").join("docs");
     fs::create_dir_all(&dir)?;
     Ok(dir.join("publish_log.json"))
