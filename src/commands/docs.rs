@@ -218,6 +218,14 @@ fn generate(
             anyhow::bail!("Source file not found: {}", source_path.display());
         }
 
+        // Feature-flag gate: only fire the gate when AI is actually being
+        // used. When the user passes `--no-ai` we still walk the source path
+        // (for rustdoc extraction) but skip the AI enrichment, so the gate
+        // would be a false blocker.
+        if use_ai {
+            crate::commands::feature_flags_cmd::require_feature("ai.docs")?;
+        }
+
         let options = ai_docs::AiDocsOptions {
             contract_id: contract.clone(),
             name: display_name.clone(),

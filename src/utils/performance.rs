@@ -736,6 +736,7 @@ mod tests {
 
     #[test]
     fn test_analyze_bottlenecks() {
+        let _home_guard = crate::utils::lock_home_env();
         let contract_id = format!("TEST_{}", chrono::Utc::now().timestamp_millis());
         let base_time = chrono::Utc::now();
 
@@ -767,6 +768,7 @@ mod tests {
 
     #[test]
     fn test_detect_regression() {
+        let _home_guard = crate::utils::lock_home_env();
         let contract_id = format!("REGRESSION_{}", chrono::Utc::now().timestamp_millis());
         let base_time = chrono::Utc::now();
 
@@ -802,6 +804,7 @@ mod tests {
 
     #[test]
     fn test_compare_profiles() {
+        let _home_guard = crate::utils::lock_home_env();
         let contract_id = format!("COMPARE_{}", chrono::Utc::now().timestamp_millis());
         let base_time = chrono::Utc::now();
 

@@ -38,9 +38,9 @@ fn make_audit_result(findings: Vec<VulnerabilityFinding>) -> AuditResult {
         score,
         findings,
         tools_used: vec!["builtin".to_string()],
-        tool_statuses: vec![],
-        ci_passed: true,
+        tool_statuses: Vec::new(),
         summary,
+        ci_passed: true,
     }
 }
 

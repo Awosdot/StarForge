@@ -2,10 +2,10 @@ use crate::commands::analytics as analytics_cmds;
 use crate::utils::{
     config, confirmation,
     deploy_history::{
-        self, last_successful, record_deployment, set_contract_id, update_status, DeployRecord,
-        DeployStatus,
+        self, last_successful, record_deployment, set_contract_id, set_duration, update_status,
+        DeployRecord, DeployStatus,
     },
-    horizon, optimizer, print as p, soroban, wallet_signer,
+    deployment_monitor, horizon, notifications, optimizer, print as p, soroban, wallet_signer,
 };
 
 use crate::utils::hardware_wallet::HardwareWalletKind;
@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Instant;
 
 const SOROBAN_WASM_LIMIT_KB: f64 = 128.0;
 
@@ -62,9 +63,22 @@ pub struct DeployArgs {
     /// Disable automatic rollback after a failed executed deploy
     #[arg(long, default_value = "false")]
     pub no_auto_rollback: bool,
+    /// Run AI-driven compliance checks before deployment (regulatory, security, best practices)
+    #[arg(long, default_value = "false")]
+    pub compliance: bool,
 }
 
 /// Extract a Soroban contract id (56-char `C…` strkey) from CLI stdout/stderr.
+/// Records a deployment analytics event.
+///
+/// Analytics must never fail a deploy, so a reporting error is logged and
+/// swallowed rather than propagated.
+async fn record_analytics(cmd: analytics_cmds::AnalyticsCommands) {
+    if let Err(e) = analytics_cmds::handle(cmd).await {
+        tracing::debug!("failed to record deployment analytics: {e}");
+    }
+}
+
 fn parse_contract_id_from_stdout(output: &str) -> Option<String> {
     output.split_whitespace().find_map(|token| {
         let cleaned = token.trim_matches(|c: char| !c.is_ascii_alphanumeric());
@@ -349,6 +363,94 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
 
     let wasm_hash = compute_local_wasm_hash(&wasm_bytes);
 
+    // ── AI-driven compliance checks (regulatory, security, best practices) ─
+    if args.compliance {
+        p::header("AI Deployment Compliance Checks");
+        let request_id = format!("deploy-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0000"));
+        let contract_id = format!("wasm:{}", &wasm_hash[..16]);
+
+        match crate::utils::compliance::run_compliance_checks(
+            &request_id,
+            &contract_id,
+            &args.network,
+            wallet.name.as_str(),
+        ) {
+            Ok(report) => {
+                p::kv("Compliance Report ID", &report.request_id[..12]);
+                p::kv("Regulatory checks", &report.regulatory_checks.len().to_string());
+                p::kv("Best practices", &report.best_practices.len().to_string());
+
+                for check in &report.checks {
+                    let status = if check.passed {
+                        "✓".green()
+                    } else {
+                        "✗".red()
+                    };
+                    let sev_label = match check.severity {
+                        crate::utils::compliance::ComplianceSeverity::Blocking => "[BLOCKING]".red(),
+                        crate::utils::compliance::ComplianceSeverity::Warning => "[WARNING]".yellow(),
+                        crate::utils::compliance::ComplianceSeverity::Info => "[INFO]".dimmed(),
+                    };
+                    if !check.passed {
+                        println!("  {} {} {} — {}", status, sev_label, check.policy_name, check.message.dimmed());
+                    }
+                }
+
+                if let Some(ref risk) = report.risk_assessment {
+                    println!();
+                    p::kv(
+                        "Risk Level",
+                        &match risk.overall_level {
+                            crate::utils::compliance::RiskLevel::Low => risk.overall_level.to_string().green(),
+                            crate::utils::compliance::RiskLevel::Medium => risk.overall_level.to_string().yellow(),
+                            crate::utils::compliance::RiskLevel::High => risk.overall_level.to_string().red(),
+                            crate::utils::compliance::RiskLevel::Critical => risk.overall_level.to_string().red().bold(),
+                        }.to_string(),
+                    );
+                    p::kv("Risk Score", &format!("{}/100", risk.overall_score));
+
+                    if !risk.approved_for_deployment {
+                        if args.yes {
+                            p::warn("Deployment NOT approved by risk assessment, but proceeding due to --yes.");
+                        } else {
+                            p::error(&format!(
+                                "Deployment blocked by risk assessment (level: {}, score: {}/100). Use --yes to force.",
+                                risk.overall_level, risk.overall_score
+                            ));
+                        }
+                    }
+                }
+
+                // Enforce blocking policies: bail unless --yes is set
+                if report.blocking_count > 0 && !args.yes {
+                    p::separator();
+                    println!();
+                    anyhow::bail!(
+                        "Compliance check failed: {} blocking issue(s) found.\n  Address the issues or run with --yes to force deployment.\n  Run `starforge compliance report show {}` for full details.",
+                        report.blocking_count,
+                        report.request_id
+                    );
+                }
+
+                if report.warning_count > 0 {
+                    println!();
+                    p::warn(&format!(
+                        "{} warning(s) found — review recommended before deploying.",
+                        report.warning_count
+                    ));
+                }
+            }
+            Err(e) => {
+                if args.yes {
+                    p::warn(&format!("Compliance check failed (bypassed with --yes): {}", e));
+                } else {
+                    anyhow::bail!("Compliance check failed: {}\n  Run with --yes to skip compliance checks.", e);
+                }
+            }
+        }
+        p::separator();
+    }
+
     // --dry-run: validate everything and print deployment plan, then exit.
     if args.dry_run {
         return run_dry_run(
@@ -358,8 +460,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             wasm_size_kb,
             wallet,
             &args.network,
-        )
-        .await;
+        );
     }
 
     if args.simulate {
@@ -508,6 +609,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         let record_id = record_deployment(record)?;
 
         let deploy_args = build_stellar_deploy_args(&wasm_path, &wallet.public_key, &args.network);
+        let started_at = Instant::now();
         let output = Command::new("stellar")
             .args(&deploy_args)
             .output()
@@ -515,16 +617,18 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 let _ = update_status(&record_id, DeployStatus::Failed, Some(e.to_string()));
                 anyhow::anyhow!("Failed to execute stellar CLI: {}", e)
             })?;
+        let duration_ms = started_at.elapsed().as_millis() as u64;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             update_status(&record_id, DeployStatus::Failed, Some(stderr.clone()))?;
+            let _ = set_duration(&record_id, duration_ms);
             p::error(&format!("Stellar CLI deployment failed: {}", stderr));
 
             // Record deployment analytics event (execute attempt failed).
             // Try to parse a contract id, even though the command failed.
             let contract_id_for_analytics = parse_contract_id_from_stdout(&stderr);
-            let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
+            record_analytics(analytics_cmds::AnalyticsCommands::Track(
                 analytics_cmds::TrackArgs {
                     contract_id: contract_id_for_analytics.unwrap_or_default(),
 
@@ -548,6 +652,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 &args.network,
             )?;
 
+            let _ = emit_deployment_monitoring_alert(&args.network, None);
             anyhow::bail!("Stellar CLI deployment failed: {}", stderr);
         }
 
@@ -559,9 +664,10 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             parsed_contract_id = Some(contract_id);
         }
         update_status(&record_id, DeployStatus::Success, None)?;
+        let _ = set_duration(&record_id, duration_ms);
 
         // Record deployment analytics event (execute attempt succeeded).
-        let _ = analytics_cmds::handle(analytics_cmds::AnalyticsCommands::Track(
+        record_analytics(analytics_cmds::AnalyticsCommands::Track(
             analytics_cmds::TrackArgs {
                 contract_id: parsed_contract_id.clone().unwrap_or_default(),
                 network: args.network.clone(),
@@ -588,6 +694,33 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
 
 /// On a failed `--execute`, automatically record a rollback to the previous
 /// successful deployment (unless disabled) and print the on-chain revert command.
+fn emit_deployment_monitoring_alert(network: &str, contract_id: Option<&str>) -> Result<()> {
+    let report = deployment_monitor::analyze_deployments(network, contract_id)?;
+    let high_priority = report
+        .alerts
+        .iter()
+        .filter(|alert| alert.severity != "low")
+        .collect::<Vec<_>>();
+
+    if !high_priority.is_empty() {
+        for alert in high_priority {
+            p::warn(&format!("{} — {}", alert.title, alert.detail));
+            notifications::alert(&format!("{}: {}", alert.title, alert.recommendation));
+        }
+    } else if let Some(alert) = report.alerts.first() {
+        p::info(&format!("{} — {}", alert.title, alert.detail));
+    }
+
+    if let Some(prediction) = report.predictions.first() {
+        p::info(&format!(
+            "Prediction: {} [{}] {}",
+            prediction.title, prediction.confidence, prediction.recommended_action
+        ));
+    }
+
+    Ok(())
+}
+
 fn handle_failed_deploy_rollback(
     disabled: bool,
     previous: Option<DeployRecord>,

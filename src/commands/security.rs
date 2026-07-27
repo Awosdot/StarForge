@@ -626,7 +626,7 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             for item in &items {
                 println!(
                     "  {} [{}] {} — {} ({})",
-                    &item.id[..8.min(item.id.len())].cyan(),
+                    item.id[..8.min(item.id.len())].cyan(),
                     item.severity.to_uppercase(),
                     item.title,
                     item.status,
@@ -676,12 +676,12 @@ fn handle_dashboard() -> Result<()> {
         .iter()
         .filter(|i| {
             i.severity.eq_ignore_ascii_case("critical")
-                && !matches!(i.status, crate::utils::security::IncidentStatus::Closed)
+                && !matches!(i.status, crate::utils::security::IncidentStatus::Resolved)
         })
         .count();
     let open_incidents = incidents
         .iter()
-        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Closed))
+        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Resolved))
         .count();
 
     let remediation_items = crate::utils::security::remediation::load_all()?;
@@ -730,11 +730,7 @@ fn handle_dashboard() -> Result<()> {
     );
     p::kv(
         "Remediation backlog clear",
-        if open_remediation == 0 {
-            "PASS"
-        } else {
-            "FAIL"
-        },
+        if open_remediation == 0 { "PASS" } else { "FAIL" },
     );
     println!();
 

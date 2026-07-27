@@ -10,6 +10,7 @@
 )]
 
 pub use starforge::commands;
+pub mod curation;
 pub use starforge::plugins;
 pub use starforge::utils;
 
@@ -46,19 +47,29 @@ enum Commands {
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
 
+    /// Local LLM assistant for Soroban contracts (audit, explain, test, optimise, profile)
+    #[command(subcommand)]
+    Ai(commands::ai::AiCommands),
+
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
     /// Generate Soroban project boilerplate
-    /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
-    /// Generate Soroban smart contract code from natural language
-    #[command(subcommand)]
-    Generate(commands::generate::GenerateCommands),
+
     /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
+    /// Generate smart contracts from natural language prompts
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+    /// Smart contract completion assistant
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+    /// External plugins
+    #[command(external_subcommand)]
+    External(Vec<String>),
     /// Debug Soroban contracts with breakpoints, stepping, and inspection
     #[command(subcommand)]
     Debug(commands::debug::DebugCommands),
@@ -79,7 +90,7 @@ enum Commands {
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
 
-    /// Manage telemetry collection
+    /// Manage telemetry settings directly
     #[command(subcommand)]
     Telemetry(commands::telemetry::TelemetryCommands),
 
@@ -139,12 +150,20 @@ enum Commands {
     #[command(subcommand)]
     Gas(commands::gas::GasCommands),
 
+    /// AI-assisted deployment cost management: budgets, forecasting,
+    /// cross-network comparison, and reporting
+    #[command(subcommand)]
+    Cost(commands::cost::CostCommands),
+
     /// Manage third-party plugins
     #[command(subcommand)]
     Plugin(commands::plugin::PluginCommands),
     /// Privacy protection, anonymization, consent, and reporting
     #[command(subcommand)]
     Privacy(commands::privacy::PrivacyCommands),
+    /// AI-driven project management for task tracking, sprints, resources, risks, and timelines
+    #[command(subcommand)]
+    Project(commands::project::ProjectCommands),
     /// Manage community contract templates from the marketplace
     #[command(subcommand)]
     Template(commands::template::TemplateCommands),
@@ -182,6 +201,10 @@ enum Commands {
 
     /// AI-powered security audit for Soroban contracts using Claude
     AiAudit(commands::ai_audit::AiAuditArgs),
+
+    /// AI-driven testing assistance (generate, optimize, analyze, maintain tests)
+    #[command(subcommand)]
+    AiTest(commands::ai_test::AiTestCommands),
 
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
@@ -225,21 +248,18 @@ enum Commands {
     #[command(subcommand)]
     Approval(commands::approval::ApprovalCommands),
 
+    /// Manage feature flags for AI features (rollouts, A/B tests, rollback)
+    FeatureFlags(commands::feature_flags_cmd::FeatureFlagsArgs),
+
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
 
-    /// AI Contract Completion Assistant
-    #[command(subcommand)]
-    Complete(commands::complete::CompleteCommands),
-
     /// Run formal verification on a contract
     #[command(subcommand)]
     Verify(commands::verify::VerifyCommands),
-
-    /// Run an external plugin
-    #[command(external_subcommand)]
-    External(Vec<String>),
+    /// AI Contextual Help: command, workflow, error, and best-practice guidance
+    Help(commands::help::HelpArgs),
 }
 
 #[tokio::main]
@@ -259,10 +279,13 @@ async fn main() {
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
+        Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
+        Commands::Complete(_) => "complete",
+        Commands::FeatureFlags(_) => "feature-flags",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
         Commands::Deploy(_) => "deploy",
@@ -283,10 +306,12 @@ async fn main() {
         Commands::Benchmark(_) => "benchmark",
         Commands::Test(_) => "test",
         Commands::Gas(_) => "gas",
+        Commands::Cost(_) => "cost",
         Commands::Plugin(_) => "plugin",
         Commands::Privacy(_) => "privacy",
+        Commands::Project(_) => "project",
         Commands::Template(_) => "template",
-        Commands::Registry(_) => "registry",
+        Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -294,6 +319,7 @@ async fn main() {
         Commands::Security(_) => "security",
         Commands::Audit(_) => "audit",
         Commands::AiAudit(_) => "ai-audit",
+        Commands::AiTest(_) => "ai-test",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -306,15 +332,16 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
-        Commands::Complete(_) => "complete",
         Commands::Verify(_) => "verify",
         Commands::External(_) => "external",
+        Commands::Help(_) => "help",
     }
     .to_string();
 
     let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
+        Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
@@ -365,6 +392,7 @@ async fn main() {
         Commands::Security(cmd) => commands::security::handle(cmd).await,
         Commands::Audit(args) => commands::audit::handle(args).await,
         Commands::AiAudit(args) => commands::ai_audit::handle(args).await,
+        Commands::AiTest(cmd) => commands::ai_test::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
@@ -380,6 +408,7 @@ async fn main() {
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::Verify(cmd) => commands::verify::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
+        Commands::Help(args) => commands::help::handle(args).await,
     };
     let duration = start.elapsed();
 
@@ -392,9 +421,39 @@ async fn main() {
     );
 
     if let Err(e) = result {
-        let hints = recovery_hints(&command_name, &e);
+        let mut hints = recovery_hints(&command_name, &e);
+        // Augment the static command-specific hints with the AI Contextual
+        // Help engine. Patterns that did not match the static rule table
+        // still produce a useful, command-agnostic one-liner.
+        utils::context_help::troubleshoot_merging(&e.to_string(), &mut hints);
         utils::print::cli_error(&e, &hints.iter().map(String::as_str).collect::<Vec<_>>());
         std::process::exit(1);
+    }
+
+    // On a successful run, optionally surface a single proactive tip.
+// Gated so the happy path stays cheap:
+//   * STARFORGE_HELP_TIPS=0 explicitly opts out;
+//   * telemetry must be enabled (it already touches the disk/network);
+//   * `proactive_tip` further ignores commands on its blocklist.
+    // Truthy semantics: only the listed false-strings opt out. Any other
+    // value ("1", "yes", " true", "", unset) keeps tips enabled; tighten
+    // with care so we never regress "1" → disable.
+    let tips_allowed = std::env::var("STARFORGE_HELP_TIPS")
+        .map(|v| !matches!(v.to_lowercase().as_str(), "0" | "false" | "off" | "no"))
+        .unwrap_or(true);
+    if tips_allowed {
+        let cfg = utils::config::load().ok();
+        let tips_enabled = cfg.and_then(|c| c.telemetry_enabled).unwrap_or(true);
+        if tips_enabled {
+            let history_path = utils::config::config_dir();
+            if let Ok(history_entries) = utils::history::load_history(&history_path) {
+                if let Some(tip) =
+                    utils::context_help::proactive_tip(&command_name, &history_entries)
+                {
+                    utils::print::info(&tip);
+                }
+            }
+        }
     }
 }
 
@@ -415,6 +474,10 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             } else if msg.contains("model") || msg.contains("not found") {
                 hints.push("List available models: starforge ai models".into());
                 hints.push("Download a model: starforge ai pull codellama:7b".into());
+            } else if msg.contains("wasm") || msg.contains("profile") {
+                hints.push("Build your contract first: stellar contract build".into());
+                hints.push("Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into());
+                hints.push("Save a baseline first: starforge ai profile <wasm> --output baseline.json".into());
             }
         }
         "wallet" => {
@@ -529,6 +592,18 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             );
             hints.push("Explain a specific category: starforge ai-debug explain auth".into());
             hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
+        }
+        "ai-test" => {
+            if msg.contains("not found") || msg.contains("no such file") {
+                hints.push("Ensure the source file exists: ls src/lib.rs".into());
+                hints.push("Build your contract first: stellar contract build".into());
+            } else if msg.contains("ollama") || msg.contains("not running") {
+                hints.push("Install Ollama: https://ollama.ai/download".into());
+                hints.push("Start Ollama: ollama serve".into());
+                hints.push("Or run without --use-ai for local generation".into());
+            } else if msg.contains("coverage") {
+                hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
+            }
         }
         "benchmark" | "test" => {
             if msg.contains("wasm") || msg.contains("not found") {

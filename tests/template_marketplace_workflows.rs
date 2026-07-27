@@ -1,17 +1,17 @@
 /// Integration tests for complete template marketplace workflows
 /// Tests end-to-end scenarios: publish → search → install
-
 #[cfg(test)]
 mod template_marketplace_workflow_tests {
-    use std::collections::HashMap;
 
     // Mock structures
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct TemplateRegistry {
         templates: Vec<TemplateEntry>,
     }
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     struct TemplateEntry {
         name: String,
         version: String,

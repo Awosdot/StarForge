@@ -167,7 +167,6 @@ fn contract_enum(udt: &ScSpecUdtEnumV0) -> ContractEnum {
             .iter()
             .map(|case| ContractVariant {
                 name: case.name.to_string(),
-                // Integer UDTs only expose a discriminant value, not an associated type.
                 type_name: None,
             })
             .collect(),
@@ -441,7 +440,7 @@ fn generate_typescript(metadata: &ContractMetadata) -> String {
                 out.push_str(&format!("\t{} |\n", variant_type));
             }
         }
-        out.push_str("\n");
+        out.push('\n');
     }
 
     out
@@ -517,7 +516,7 @@ fn generate_python(metadata: &ContractMetadata) -> String {
         ));
     }
 
-    out.push_str("\n");
+    out.push('\n');
 
     for struct_def in &metadata.structs {
         let struct_name = pascal_case(&struct_def.name);
@@ -527,7 +526,7 @@ fn generate_python(metadata: &ContractMetadata) -> String {
             let py_ty = python_type(&field.type_name);
             out.push_str(&format!("    {}: {}\n", field_name, py_ty));
         }
-        out.push_str("\n");
+        out.push('\n');
     }
 
     out

@@ -329,7 +329,7 @@ fn handle_list(args: ListArgs) -> Result<()> {
     for pipeline in &pipelines {
         println!(
             "  {:<10}  {:<24}  {:<10}  {:?}",
-            &pipeline.id[..8.min(pipeline.id.len())].cyan(),
+            pipeline.id[..8.min(pipeline.id.len())].cyan(),
             pipeline.name,
             pipeline.network,
             pipeline.status

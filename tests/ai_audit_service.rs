@@ -22,8 +22,7 @@ fn test_audit_service_new_validates_api_key() {
     assert!(result.is_err(), "Service should reject empty API key");
     assert!(
         result
-            .err()
-            .unwrap()
+            .unwrap_err()
             .to_string()
             .contains("ANTHROPIC_API_KEY"),
         "Error message should mention API key"
@@ -203,11 +202,15 @@ fn test_security_vulnerability_without_optional_fields() {
 
 #[test]
 fn test_audit_service_model_selection() {
-    let service = AiAuditService::new("sk-ant-test".to_string()).unwrap();
-    // Service should use claude-opus-4-1 (best model for security)
-    // We verify this by the fact it was created successfully
-    // (Actual model selection is verified by API integration)
-    // Test passes if unwrap() succeeds
+    // Service should use claude-opus-4-1 (best model for security).
+    // We verify this by the fact it was created successfully.
+    // (Actual model selection is verified by API integration.)
+    let service = AiAuditService::new("sk-ant-test".to_string());
+    assert!(
+        service.is_ok(),
+        "service should build from a well-formed key"
+    );
+    let _service = service.unwrap();
 }
 
 #[test]
