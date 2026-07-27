@@ -245,11 +245,7 @@ fn try_parse_function(
     })
 }
 
-fn try_parse_struct(
-    lines: &[&str],
-    idx: usize,
-    doc_lines: &[String],
-) -> Option<ExtractedStruct> {
+fn try_parse_struct(lines: &[&str], idx: usize, doc_lines: &[String]) -> Option<ExtractedStruct> {
     let line = lines[idx].trim();
     if !line.contains("struct ") {
         return None;
@@ -265,11 +261,7 @@ fn try_parse_struct(
     })
 }
 
-fn try_parse_enum(
-    lines: &[&str],
-    idx: usize,
-    doc_lines: &[String],
-) -> Option<ExtractedEnum> {
+fn try_parse_enum(lines: &[&str], idx: usize, doc_lines: &[String]) -> Option<ExtractedEnum> {
     let line = lines[idx].trim();
     if !line.contains("enum ") {
         return None;
@@ -290,9 +282,14 @@ fn try_parse_enum(
 // ──────────────────────────────────────────────────────────────────────────────
 
 fn parse_params(sig: &str) -> Vec<ExtractedParam> {
-    // Extract the content between the outermost `(` … `)`.
-    let open = sig.find('(')?;
-    let close = sig.rfind(')')?;
+    let open = match sig.find('(') {
+        Some(o) => o,
+        None => return vec![],
+    };
+    let close = match sig.rfind(')') {
+        Some(c) => c,
+        None => return vec![],
+    };
     if open >= close {
         return vec![];
     }
@@ -515,8 +512,8 @@ fn collect_rs_files(dir: &Path, results: &mut Vec<ExtractedDoc>) -> Result<()> {
     if !dir.is_dir() {
         return Ok(());
     }
-    for entry in fs::read_dir(dir)
-        .with_context(|| format!("Cannot read directory: {}", dir.display()))?
+    for entry in
+        fs::read_dir(dir).with_context(|| format!("Cannot read directory: {}", dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();

@@ -126,9 +126,15 @@ pub async fn handle(cmd: PerfCommands) -> Result<()> {
             memory_bytes,
             success,
             network,
-        } => record(contract, operation, gas, time_ms, memory_bytes, success, network),
-
-
+        } => record(
+            contract,
+            operation,
+            gas,
+            time_ms,
+            memory_bytes,
+            success,
+            network,
+        ),
 
         PerfCommands::Dashboard { contract, network } => dashboard(contract, network),
         PerfCommands::History { contract, limit } => history(contract, limit),
@@ -645,9 +651,6 @@ fn record(
 ) -> Result<()> {
     p::header("Performance Metrics — Record");
 
-
-
-
     let record = perf::GasUsageRecord {
         contract_id: contract.clone(),
         operation,
@@ -657,9 +660,7 @@ fn record(
         execution_time_ms: time_ms.unwrap_or(0),
         memory_used: memory_bytes,
         network,
-
     };
-
 
     perf::record_gas_usage(&record)?;
 

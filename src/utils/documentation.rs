@@ -131,13 +131,18 @@ impl DocumentationGenerator {
     pub fn new(output_dir: PathBuf) -> Self {
         Self { output_dir }
     }
-    
-    pub fn generate_from_wasm(&self, wasm_path: &Path, contract_id: &str, metadata: DocumentationMetadata) -> Result<ContractDocumentation> {
+
+    pub fn generate_from_wasm(
+        &self,
+        wasm_path: &Path,
+        contract_id: &str,
+        metadata: DocumentationMetadata,
+    ) -> Result<ContractDocumentation> {
         let wasm_bytes = fs::read(wasm_path)?;
-        
+
         // Parse WASM for function signatures (simplified)
         let functions = self.extract_functions_from_wasm(&wasm_bytes)?;
-        
+
         let documentation = ContractDocumentation {
             contract_id: contract_id.to_string(),
             name: contract_id[..16].to_string(),
@@ -152,14 +157,14 @@ impl DocumentationGenerator {
             metadata,
             generated_at: chrono::Utc::now().to_rfc3339(),
         };
-        
+
         Ok(documentation)
     }
-    
+
     fn extract_functions_from_wasm(&self, wasm_bytes: &[u8]) -> Result<Vec<FunctionDoc>> {
         // Simplified function extraction - in production would use proper WASM parsing
         let mut functions = Vec::new();
-        
+
         // Add common Soroban contract functions
         functions.push(FunctionDoc {
             name: "__init".to_string(),
@@ -169,47 +174,49 @@ impl DocumentationGenerator {
             access: AccessType::Public,
             example: Some("let contract_id = deploy_contract(env);".to_string()),
         });
-        
+
         functions.push(FunctionDoc {
             name: "invoke".to_string(),
             description: "Generic function invoker".to_string(),
-            inputs: vec![
-                ParameterDoc {
-                    name: "function".to_string(),
-                    param_type: "Symbol".to_string(),
-                    description: "Function name to invoke".to_string(),
-                    optional: false,
-                },
-            ],
+            inputs: vec![ParameterDoc {
+                name: "function".to_string(),
+                param_type: "Symbol".to_string(),
+                description: "Function name to invoke".to_string(),
+                optional: false,
+            }],
             outputs: vec![],
             access: AccessType::Public,
             example: Some("contract.invoke(env, symbol!(\"my_function\"));".to_string()),
         });
-        
+
         Ok(functions)
     }
-    
-    pub fn add_usage_example(&self, documentation: &mut ContractDocumentation, example: UsageExample) {
+
+    pub fn add_usage_example(
+        &self,
+        documentation: &mut ContractDocumentation,
+        example: UsageExample,
+    ) {
         documentation.examples.push(example);
     }
-    
+
     pub fn save_documentation(&self, documentation: &ContractDocumentation) -> Result<()> {
         let docs_dir = self.output_dir.join("contracts");
         fs::create_dir_all(&docs_dir)?;
-        
+
         let doc_path = docs_dir.join(format!("{}.json", documentation.contract_id));
         let json = serde_json::to_string_pretty(documentation)?;
         fs::write(doc_path, json)?;
-        
+
         // Update index
         self.update_index(documentation)?;
-        
+
         Ok(())
     }
-    
+
     fn update_index(&self, documentation: &ContractDocumentation) -> Result<()> {
         let index_path = self.output_dir.join("index.json");
-        
+
         let mut index = if index_path.exists() {
             let content = fs::read_to_string(&index_path)?;
             serde_json::from_str(&content)?
@@ -219,11 +226,19 @@ impl DocumentationGenerator {
                 last_updated: chrono::Utc::now().to_rfc3339(),
             }
         };
-        
+
         // Check if contract already exists in index
-        if let Some(existing) = index.contracts.iter().find(|c| c.contract_id == documentation.contract_id) {
+        if let Some(existing) = index
+            .contracts
+            .iter()
+            .find(|c| c.contract_id == documentation.contract_id)
+        {
             // Update existing entry
-            let idx = index.contracts.iter().position(|c| c.contract_id == documentation.contract_id).unwrap();
+            let idx = index
+                .contracts
+                .iter()
+                .position(|c| c.contract_id == documentation.contract_id)
+                .unwrap();
             index.contracts[idx] = ContractIndexEntry {
                 contract_id: documentation.contract_id.clone(),
                 name: documentation.name.clone(),
@@ -243,12 +258,12 @@ impl DocumentationGenerator {
                 network: documentation.metadata.network.clone(),
             });
         }
-        
+
         index.last_updated = chrono::Utc::now().to_rfc3339();
-        
+
         let json = serde_json::to_string_pretty(&index)?;
         fs::write(index_path, json)?;
-        
+
         Ok(())
     }
 }
@@ -261,19 +276,20 @@ impl DocumentationPortal {
     pub fn new(docs_dir: PathBuf) -> Self {
         Self { docs_dir }
     }
-    
+
     pub fn search(&self, query: &str) -> Result<Vec<ContractIndexEntry>> {
         let index_path = self.docs_dir.join("index.json");
-        
+
         if !index_path.exists() {
             return Ok(vec![]);
         }
-        
+
         let content = fs::read_to_string(&index_path)?;
         let index: DocumentationIndex = serde_json::from_str(&content)?;
-        
+
         let query_lower = query.to_lowercase();
-        let results: Vec<ContractIndexEntry> = index.contracts
+        let results: Vec<ContractIndexEntry> = index
+            .contracts
             .into_iter()
             .filter(|entry| {
                 entry.name.to_lowercase().contains(&query_lower)
@@ -281,47 +297,51 @@ impl DocumentationPortal {
                     || entry.contract_id.to_lowercase().contains(&query_lower)
             })
             .collect();
-        
+
         Ok(results)
     }
-    
+
     pub fn get_documentation(&self, contract_id: &str) -> Result<ContractDocumentation> {
-        let doc_path = self.docs_dir.join("contracts").join(format!("{}.json", contract_id));
-        
+        let doc_path = self
+            .docs_dir
+            .join("contracts")
+            .join(format!("{}.json", contract_id));
+
         if !doc_path.exists() {
             anyhow::bail!("Documentation not found for contract: {}", contract_id);
         }
-        
+
         let content = fs::read_to_string(&doc_path)?;
         let documentation: ContractDocumentation = serde_json::from_str(&content)?;
-        
+
         Ok(documentation)
     }
-    
+
     pub fn list_contracts(&self) -> Result<Vec<ContractIndexEntry>> {
         let index_path = self.docs_dir.join("index.json");
-        
+
         if !index_path.exists() {
             return Ok(vec![]);
         }
-        
+
         let content = fs::read_to_string(&index_path)?;
         let index: DocumentationIndex = serde_json::from_str(&content)?;
-        
+
         Ok(index.contracts)
     }
-    
+
     pub fn generate_html_portal(&self, output_path: &Path) -> Result<()> {
         let contracts = self.list_contracts()?;
-        
+
         let html = self.generate_html_index(&contracts)?;
         fs::write(output_path, html)?;
-        
+
         Ok(())
     }
-    
+
     fn generate_html_index(&self, contracts: &[ContractIndexEntry]) -> Result<String> {
-        let mut html = String::from(r#"<!DOCTYPE html>
+        let mut html = String::from(
+            r#"<!DOCTYPE html>
 <html>
 <head>
     <title>StarForge Contract Documentation Portal</title>
@@ -353,8 +373,9 @@ impl DocumentationPortal {
         </div>
         
         <div class="contract-grid" id="contractGrid">
-"#);
-        
+"#,
+        );
+
         for contract in contracts {
             html.push_str(&format!(
                 r#"            <div class="contract-card" data-name="{}" data-description="{}" data-contract-id="{}">
@@ -373,7 +394,7 @@ impl DocumentationPortal {
                 contract.network
             ));
         }
-        
+
         html.push_str(r#"        </div>
     </div>
     
@@ -397,20 +418,20 @@ impl DocumentationPortal {
     </script>
 </body>
 </html>"#);
-        
+
         Ok(html)
     }
-    
+
     pub fn generate_contract_html(&self, contract_id: &str, output_path: &Path) -> Result<()> {
         let documentation = self.get_documentation(contract_id)?;
         let html = self.generate_contract_detail_html(&documentation)?;
         fs::write(output_path, html)?;
         Ok(())
     }
-    
+
     fn generate_contract_detail_html(&self, doc: &ContractDocumentation) -> Result<String> {
         let mut functions_html = String::new();
-        
+
         for func in &doc.functions {
             functions_html.push_str(&format!(
                 r#"        <div class="function">
@@ -431,16 +452,17 @@ impl DocumentationPortal {
                 func.name,
                 func.access,
                 func.description,
-                func.inputs.iter()
+                func.inputs
+                    .iter()
                     .map(|p| format!("<li>{}: {} - {}</li>", p.name, p.param_type, p.description))
                     .collect::<Vec<_>>()
                     .join("\n                    "),
                 func.example.as_deref().unwrap_or("No example available")
             ));
         }
-        
+
         let mut examples_html = String::new();
-        
+
         for example in &doc.examples {
             examples_html.push_str(&format!(
                 r#"        <div class="example-block">
@@ -449,13 +471,10 @@ impl DocumentationPortal {
             <pre><code class="language-{}">{}</code></pre>
         </div>
 "#,
-                example.title,
-                example.description,
-                example.language,
-                example.code
+                example.title, example.description, example.language, example.code
             ));
         }
-        
+
         Ok(format!(
             r#"<!DOCTYPE html>
 <html>
@@ -512,6 +531,7 @@ impl DocumentationPortal {
 </html>"#,
             doc.name,
             doc.name,
+            doc.description,
             doc.contract_id,
             doc.version,
             doc.author,
@@ -531,8 +551,13 @@ impl DocumentationVersionManager {
     pub fn new(versions_dir: PathBuf) -> Self {
         Self { versions_dir }
     }
-    
-    pub fn create_version(&self, contract_id: &str, documentation: ContractDocumentation, changelog: &str) -> Result<DocumentationVersion> {
+
+    pub fn create_version(
+        &self,
+        contract_id: &str,
+        documentation: ContractDocumentation,
+        changelog: &str,
+    ) -> Result<DocumentationVersion> {
         let version = DocumentationVersion {
             version: documentation.version.clone(),
             contract_id: contract_id.to_string(),
@@ -540,53 +565,56 @@ impl DocumentationVersionManager {
             created_at: chrono::Utc::now().to_rfc3339(),
             changelog: changelog.to_string(),
         };
-        
+
         let contract_versions_dir = self.versions_dir.join(contract_id);
         fs::create_dir_all(&contract_versions_dir)?;
-        
+
         let version_path = contract_versions_dir.join(format!("{}.json", version.version));
         let json = serde_json::to_string_pretty(&version)?;
         fs::write(version_path, json)?;
-        
+
         Ok(version)
     }
-    
+
     pub fn list_versions(&self, contract_id: &str) -> Result<Vec<DocumentationVersion>> {
         let contract_versions_dir = self.versions_dir.join(contract_id);
-        
+
         if !contract_versions_dir.exists() {
             return Ok(vec![]);
         }
-        
+
         let mut versions = Vec::new();
-        
+
         for entry in fs::read_dir(&contract_versions_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension().map_or(false, |ext| ext == "json") {
                 let content = fs::read_to_string(&path)?;
                 let version: DocumentationVersion = serde_json::from_str(&content)?;
                 versions.push(version);
             }
         }
-        
+
         // Sort by version (simplified - would use proper semver in production)
         versions.sort_by(|a, b| b.version.cmp(&a.version));
-        
+
         Ok(versions)
     }
-    
+
     pub fn get_version(&self, contract_id: &str, version: &str) -> Result<DocumentationVersion> {
-        let version_path = self.versions_dir.join(contract_id).join(format!("{}.json", version));
-        
+        let version_path = self
+            .versions_dir
+            .join(contract_id)
+            .join(format!("{}.json", version));
+
         if !version_path.exists() {
             anyhow::bail!("Version {} not found for contract {}", version, contract_id);
         }
-        
+
         let content = fs::read_to_string(&version_path)?;
         let version_doc: DocumentationVersion = serde_json::from_str(&content)?;
-        
+
         Ok(version_doc)
     }
 }

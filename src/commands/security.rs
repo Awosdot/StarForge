@@ -37,6 +37,8 @@ pub enum SecurityCommands {
     Pentest(PentestArgs),
     /// Track remediation of findings from audit/pentest/checklist runs
     Remediation(RemediationArgs),
+    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
+    Dashboard,
 }
 
 #[derive(Args)]
@@ -182,6 +184,7 @@ pub async fn handle(cmd: SecurityCommands) -> Result<()> {
         SecurityCommands::Audit(args) => handle_audit(args),
         SecurityCommands::Pentest(args) => handle_pentest(args),
         SecurityCommands::Remediation(args) => handle_remediation(args),
+        SecurityCommands::Dashboard => handle_dashboard(),
     }
 }
 
@@ -623,7 +626,7 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             for item in &items {
                 println!(
                     "  {} [{}] {} — {} ({})",
-                    &item.id[..8.min(item.id.len())].cyan(),
+                    item.id[..8.min(item.id.len())].cyan(),
                     item.severity.to_uppercase(),
                     item.title,
                     item.status,
@@ -662,6 +665,7 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
             Ok(())
         }
     }
+}
 
     fn handle_dashboard() -> Result<()> {
         p::header("Security Dashboard");

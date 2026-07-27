@@ -30,8 +30,8 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Import a template from a directory or .zip archive into the local registry
-    Import {
+    /// Install a template package into the local registry
+    Install {
         /// Path to template directory or .zip package
         path: PathBuf,
         /// Template name (defaults to directory/archive stem)
@@ -110,8 +110,8 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Install a template from a Git URL, local path, or marketplace registry name
-    Install {
+    /// Fetch and install a template from a Git URL, local path, or marketplace registry name
+    Fetch {
         /// Source: git URL (https://...), local filesystem path, or registry template name
         source: String,
         /// Override the installed template name (defaults to the template name or URL basename)
@@ -175,16 +175,19 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             version,
             cli_version_min,
             cli_version_max,
-        } => import(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-        ).await,
+        } => {
+            import(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+            )
+            .await
+        }
         TemplateCommands::Publish {
             path,
             name,
@@ -198,20 +201,23 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             repository,
             homepage,
             documentation,
-        } => publish(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-            license,
-            repository,
-            homepage,
-            documentation,
-        ).await,
+        } => {
+            publish(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+                license,
+                repository,
+                homepage,
+                documentation,
+            )
+            .await
+        }
         TemplateCommands::List => list().await,
         TemplateCommands::Search {
             query,
@@ -223,8 +229,8 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Show { name } => show(name).await,
         TemplateCommands::Remove { name, purge } => remove(name, purge).await,
         TemplateCommands::Init => init(),
-        TemplateCommands::Info { name } => info(name).await,
-        TemplateCommands::Install {
+        TemplateCommands::Info { name } => info(name),
+        TemplateCommands::Fetch {
             source,
             name,
             version,
@@ -238,6 +244,50 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
     }
 }
 
+async fn template_assist(
+    template: String,
+    project: PathBuf,
+    run_tests: bool,
+    json: bool,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let direct = PathBuf::from(&template);
+    let template_path = if direct.is_dir() {
+        direct
+    } else {
+        let entry = templates::get_template(&template).await.with_context(|| {
+            format!("Template '{}' was not found. Pass a directory or run `starforge template list`.", template)
+        })?;
+        entry.path.map(PathBuf::from).filter(|path| path.is_dir()).or_else(|| {
+            if let templates::TemplateSource::Local { path } = entry.source {
+                let path = PathBuf::from(path);
+                path.is_dir().then_some(path)
+            } else {
+                None
+            }
+        }).ok_or_else(|| anyhow::anyhow!(
+            "Template '{}' is not available locally. Install it first with `starforge template install {}`.",
+            template,
+            template
+        ))?
+    };
+    let mut report = template_integration::analyze(&template_path, &project)?;
+    if run_tests {
+        report.test_result = Some(template_integration::run_integration_tests(&project));
+    }
+    let rendered = if json {
+        serde_json::to_string_pretty(&report)?
+    } else {
+        report.to_markdown()
+    };
+    if let Some(path) = output {
+        std::fs::write(&path, rendered).with_context(|| format!("Failed to write {}", path.display()))?;
+        p::success(&format!("Integration report written to {}", path.display()));
+    } else {
+        println!("{rendered}");
+    }
+    Ok(())
+}
 async fn import(
     path: PathBuf,
     name: Option<String>,
@@ -261,7 +311,8 @@ async fn import(
         None,
         None,
         None,
-    ).await?;
+    )
+    .await?;
     p::header("Template Import");
     p::info("Template package imported into the local registry.");
     Ok(())
@@ -320,7 +371,8 @@ async fn publish(
         repository,
         homepage,
         documentation,
-    ).await?;
+    )
+    .await?;
     let template = templates::get_template(&name).await?;
 
     p::header("Template Publish");
@@ -334,7 +386,7 @@ async fn publish(
     if let Some(lic) = template.license.as_ref() {
         p::kv("License", lic);
     }
-    if let Some(repo) = template.repository.as_ref() {
+    if let Some(repo) = template.repository_url.as_ref() {
         p::kv("Repository", repo);
     }
     if let Some(path) = template.path.as_ref() {
@@ -405,7 +457,10 @@ async fn search(
 
     let filters = templates::SearchFilters {
         tags: tag_list,
+        categories: Vec::new(),
         verified_only: verified,
+        featured_only: false,
+        hide_spam: false,
         min_quality,
     };
 
@@ -510,7 +565,7 @@ async fn show(name: String) -> Result<()> {
     if let Some(ref license) = template.license {
         p::kv("License", license);
     }
-    if let Some(ref repo) = template.repository {
+    if let Some(ref repo) = template.repository_url {
         p::kv("Repository", repo);
     }
     if let Some(ref hp) = template.homepage {
@@ -730,12 +785,7 @@ async fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-async fn install(
-    source: String,
-    name: Option<String>,
-    version: Option<String>,
-    force: bool,
-) -> Result<()> {
+fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
     p::header("Template Install");
     p::kv("Source", &source);
     if let Some(ref n) = name {
@@ -747,7 +797,8 @@ async fn install(
     println!();
 
     p::step(1, 2, "Resolving and fetching template...");
-    let entry = templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
+    let entry =
+        templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
 
     p::step(2, 2, "Registering in local registry...");
     println!();
@@ -758,6 +809,8 @@ async fn install(
     if let Some(ref path) = entry.path {
         p::kv("Local path", path);
     }
+    // Record this install for community-learning / personalisation.
+    let _ = crate::utils::template_recommender::record_usage(&entry.name, "install");
     p::info(&format!(
         "Use it with: starforge template info {}",
         entry.name
@@ -882,10 +935,17 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push_str("| Field | Value |\n|---|---|\n");
     md.push_str(&format!("| Author | {} |\n", entry.author));
     md.push_str(&format!("| Version | {} |\n", entry.version));
-    md.push_str(&format!("| License | {} |\n", entry.license.as_deref().unwrap_or("Not declared")));
+    md.push_str(&format!(
+        "| License | {} |\n",
+        entry.license.as_deref().unwrap_or("Not declared")
+    ));
     md.push_str(&format!(
         "| Tags | {} |\n",
-        if entry.tags.is_empty() { "—".to_string() } else { entry.tags.join(", ") }
+        if entry.tags.is_empty() {
+            "—".to_string()
+        } else {
+            entry.tags.join(", ")
+        }
     ));
     md.push_str(&format!("| Source | {} |\n", entry.source));
     if let Some(ref repo) = entry.repository {
@@ -929,7 +989,10 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     // Usage
     md.push_str("## Usage\n\n");
     md.push_str("```bash\n");
-    md.push_str(&format!("starforge new contract my-project --template {}\n", name));
+    md.push_str(&format!(
+        "starforge new contract my-project --template {}\n",
+        name
+    ));
     md.push_str("```\n");
 
     match output {
@@ -951,11 +1014,7 @@ async fn template_audit(name: Option<String>) -> Result<()> {
     let registry = templates::load_registry().await?;
 
     let entries: Vec<&templates::TemplateEntry> = match &name {
-        Some(n) => registry
-            .templates
-            .iter()
-            .filter(|t| &t.name == n)
-            .collect(),
+        Some(n) => registry.templates.iter().filter(|t| &t.name == n).collect(),
         None => registry.templates.iter().collect(),
     };
 
