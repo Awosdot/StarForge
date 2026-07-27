@@ -57,12 +57,7 @@ enum Commands {
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
-    /// Generate contract scaffolding, bindings, and docs
-    #[command(subcommand)]
-    Generate(commands::generate::GenerateCommands),
-    /// AI-assisted code completion (suggestions, boilerplate, stubs, imports)
-    #[command(subcommand)]
-    Complete(commands::complete::CompleteCommands),
+    /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
     /// Generate smart contracts from natural language prompts
@@ -256,25 +251,21 @@ enum Commands {
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
 
-    /// Generate a Soroban smart contract from a natural language prompt (OpenAI)
+    /// Generate contract code from built-in generators
     #[command(subcommand)]
     Generate(commands::generate::GenerateCommands),
 
-    /// AI Contract Completion Assistant (offline code completion, boilerplate, stubs)
+    /// AI contract completion assistant (suggest, boilerplate, stub, imports, infer)
     #[command(subcommand)]
     Complete(commands::complete::CompleteCommands),
 
-    /// AI-powered multi-network deployment support
+    /// AI mutation testing - measure test effectiveness by mutating contracts
     #[command(subcommand)]
-    MultiNetwork(commands::multi_network::MultiNetworkCommands),
+    Mutate(commands::mutate::MutateCommands),
 
-    /// AI-powered deployment automation
-    #[command(subcommand)]
-    DeploymentAutomate(commands::deployment_automate::DeploymentAutomateCommands),
-
-    /// AI-powered deployment compliance checks, regulatory validation, and reporting
-    #[command(subcommand)]
-    Compliance(commands::compliance::ComplianceCommands),
+    /// Execute an installed plugin command (e.g. `starforge defi ...`)
+    #[command(external_subcommand)]
+    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -348,12 +339,8 @@ async fn main() {
         Commands::Migrate(_) => "migrate",
         Commands::Generate(_) => "generate",
         Commands::Complete(_) => "complete",
+        Commands::Mutate(_) => "mutate",
         Commands::External(_) => "external",
-        Commands::TemplateSecurity(_) => "template-security",
-        Commands::DeploymentOptimize(_) => "deployment-optimize",
-        Commands::MultiNetwork(_) => "multi-network",
-        Commands::Compliance(_) => "compliance",
-        Commands::DeploymentAutomate(_) => "deployment-automate",
     }
     .to_string();
 
@@ -424,12 +411,8 @@ async fn main() {
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
+        Commands::Mutate(cmd) => commands::mutate::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::TemplateSecurity(cmd) => commands::template_security::handle(cmd).await,
-        Commands::DeploymentOptimize(cmd) => commands::deployment_optimize::handle(cmd).await,
-        Commands::MultiNetwork(cmd) => commands::multi_network::handle(cmd).await,
-        Commands::Compliance(cmd) => commands::compliance::handle(cmd),
-        Commands::DeploymentAutomate(cmd) => commands::deployment_automate::handle(cmd).await,
     };
     let duration = start.elapsed();
 

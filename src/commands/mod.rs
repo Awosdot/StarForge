@@ -1,6 +1,6 @@
 pub mod ai;
 pub mod ai_audit;
-pub mod ai;
+pub mod ai_debug;
 pub mod analytics;
 pub mod approval;
 pub mod audit;
@@ -29,6 +29,7 @@ pub mod migrate_ai;
 pub mod monitor;
 pub mod multi_network;
 pub mod multisig_builder;
+pub mod mutate;
 pub mod network;
 pub mod new;
 pub mod node;
