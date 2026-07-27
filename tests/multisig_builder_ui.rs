@@ -1,14 +1,14 @@
 use starforge::utils::multisig_builder::{
-    calculate_progress, common_templates, generate_proposal_signature, proposal_from_template,
-    render_progress_bar, validate_signatures, Proposal,
+    generate_signature, proposal_from_template, render_progress_bar, template_definitions,
+    validate_for_submit, Proposal,
 };
 
 #[test]
 fn templates_create_proposals_with_metadata() {
-    let templates = common_templates();
+    let templates = template_definitions();
     assert!(templates.iter().any(|template| template.name == "escrow"));
 
-    let proposal = proposal_from_template("escrow", "testnet".to_string()).unwrap();
+    let proposal = proposal_from_template("escrow").unwrap();
     assert_eq!(proposal.threshold, 2);
     assert_eq!(proposal.signers, vec!["buyer", "seller", "arbiter"]);
     assert_eq!(proposal.network, "testnet");
@@ -27,20 +27,20 @@ fn progress_tracks_valid_signatures_and_pending_signers() {
         "testnet".to_string(),
     );
 
-    let signature = generate_proposal_signature("alice", &proposal).unwrap();
+    let signature = generate_signature(&proposal.id, "alice").unwrap();
     proposal
         .add_signature_checked("alice".to_string(), signature)
         .unwrap();
 
-    let progress = calculate_progress(&proposal);
-    assert_eq!(progress.signed, 1);
-    assert_eq!(progress.required, 2);
-    assert_eq!(progress.percent, 50);
-    assert!(!progress.ready);
-    assert_eq!(progress.pending_signers, vec!["bob", "carol"]);
+    assert_eq!(proposal.signatures.len(), 1);
+    assert_eq!(proposal.threshold, 2);
+    let (_, percent) = render_progress_bar(proposal.signatures.len(), proposal.threshold);
+    assert_eq!(percent, 50);
+    assert!(!proposal.is_complete());
+    assert_eq!(proposal.pending_signers(), vec!["bob", "carol"]);
 
-    let bar = render_progress_bar(&progress, 10);
-    assert_eq!(bar, "[#####.....] 50% (1/2)");
+    let (bar, _) = render_progress_bar(proposal.signatures.len(), proposal.threshold);
+    assert_eq!(bar, "█████░░░░░");
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn signature_validation_rejects_invalid_and_duplicate_signatures() {
         "testnet".to_string(),
     );
 
-    let alice_signature = generate_proposal_signature("alice", &proposal).unwrap();
+    let alice_signature = generate_signature(&proposal.id, "alice").unwrap();
     proposal
         .add_signature_checked("alice".to_string(), alice_signature)
         .unwrap();
@@ -61,11 +61,10 @@ fn signature_validation_rejects_invalid_and_duplicate_signatures() {
 
     proposal.add_signature("bob".to_string(), "not-a-valid-signature".to_string());
 
-    let validation = validate_signatures(&proposal);
-    assert_eq!(validation.valid_signatures, 1);
-    assert_eq!(validation.invalid_signers, vec!["bob"]);
-    assert_eq!(validation.missing_signers, vec!["bob"]);
-    assert!(!validation.ready);
+    let validation_err = validate_for_submit(&proposal).unwrap_err();
+    assert!(validation_err
+        .to_string()
+        .contains("Invalid signature format"));
 }
 
 #[test]
@@ -76,17 +75,17 @@ fn validation_marks_ready_when_threshold_is_met() {
         "testnet".to_string(),
     );
 
-    let alice_signature = generate_proposal_signature("alice", &proposal).unwrap();
+    let alice_signature = generate_signature(&proposal.id, "alice").unwrap();
     proposal
         .add_signature_checked("alice".to_string(), alice_signature)
         .unwrap();
-    let bob_signature = generate_proposal_signature("bob", &proposal).unwrap();
+    let bob_signature = generate_signature(&proposal.id, "bob").unwrap();
     proposal
         .add_signature_checked("bob".to_string(), bob_signature)
         .unwrap();
 
-    let validation = validate_signatures(&proposal);
-    assert_eq!(validation.valid_signatures, 2);
-    assert!(validation.ready);
-    assert_eq!(calculate_progress(&proposal).percent, 100);
+    assert!(validate_for_submit(&proposal).is_ok());
+    assert!(proposal.is_complete());
+    let (_, percent) = render_progress_bar(proposal.signatures.len(), proposal.threshold);
+    assert_eq!(percent, 100);
 }

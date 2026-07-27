@@ -45,11 +45,9 @@ pub struct SeededRng {
     seed: u64,
 }
 
-impl fmt::Debug for SeededRng {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SeededRng")
-            .field("seed", &self.seed)
-            .finish()
+impl std::fmt::Debug for SeededRng {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SeededRng").field("seed", &self.seed).finish_non_exhaustive()
     }
 }
 

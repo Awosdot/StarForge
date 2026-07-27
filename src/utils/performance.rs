@@ -290,8 +290,6 @@ pub fn generate_report(contract_id: &str, network: &str) -> Result<PerformanceRe
             avg_memory_used_bytes: None,
             max_memory_used_bytes: None,
             success_rate,
-            avg_memory_used_bytes: None,
-            max_memory_used_bytes: None,
         },
         metrics: contract_metrics.metrics,
         alerts_triggered: triggered,
@@ -331,7 +329,6 @@ impl MetricCollector {
             execution_time_ms: total_ms,
             memory_used: None,
             network: self.network,
-            memory_used: None,
         })?;
 
         Ok(())
@@ -739,6 +736,7 @@ mod tests {
 
     #[test]
     fn test_analyze_bottlenecks() {
+        let _home_guard = crate::utils::lock_home_env();
         let contract_id = format!("TEST_{}", chrono::Utc::now().timestamp_millis());
         let base_time = chrono::Utc::now();
 
@@ -770,6 +768,7 @@ mod tests {
 
     #[test]
     fn test_detect_regression() {
+        let _home_guard = crate::utils::lock_home_env();
         let contract_id = format!("REGRESSION_{}", chrono::Utc::now().timestamp_millis());
         let base_time = chrono::Utc::now();
 
@@ -805,6 +804,7 @@ mod tests {
 
     #[test]
     fn test_compare_profiles() {
+        let _home_guard = crate::utils::lock_home_env();
         let contract_id = format!("COMPARE_{}", chrono::Utc::now().timestamp_millis());
         let base_time = chrono::Utc::now();
 

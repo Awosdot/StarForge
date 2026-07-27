@@ -249,7 +249,7 @@ fn handle_list(args: ListArgs) -> Result<()> {
         };
         println!(
             "  {} {:<14} {:<20} {:<10} {}",
-            &r.id[..8.min(r.id.len())].cyan(),
+            r.id[..8.min(r.id.len())].cyan(),
             r.label,
             r.created_at.get(..19).unwrap_or(&r.created_at),
             status_str,
@@ -529,7 +529,7 @@ fn handle_dashboard(args: DashboardArgs) -> Result<()> {
         };
         println!(
             "  {} {:<15} {:<20} {:<12} {}",
-            &record.id[..8.min(record.id.len())].cyan(),
+            record.id[..8.min(record.id.len())].cyan(),
             kind,
             record.label,
             status,

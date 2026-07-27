@@ -65,7 +65,7 @@ jobs:
         run: cargo test --test property_tests --locked -- --test-threads=1
 
       - name: Run all tests (includes property tests)
-        run: cargo test --locked
+        run: cargo test --locked -- --test-threads=1
 
   # ── 2. Fuzz harness build check ──────────────────────────────────────────────
   fuzz-build:
@@ -75,13 +75,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust nightly (required by cargo-fuzz / libfuzzer)
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-05-01
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          cargo +stable install cargo-fuzz --version 0.12.0 --locked
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -120,13 +124,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-05-01
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          cargo +stable install cargo-fuzz --version 0.12.0 --locked
 
       - name: Cache fuzz target build
         uses: actions/cache@v4
@@ -187,16 +195,16 @@ jobs:
           PROPTEST_CASES: "1000"
         run: |
           cargo llvm-cov \
-            --locked \
-            --lcov --output-path target/lcov.info
+            --locked --lcov --output-path target/lcov.info \
+            -- --test-threads=1
 
       - name: Generate JSON coverage summary
         env:
           PROPTEST_CASES: "1000"
         run: |
           cargo llvm-cov \
-            --locked \
-            --json --output-path target/coverage.json
+            --locked --json --output-path target/coverage.json \
+            -- --test-threads=1
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

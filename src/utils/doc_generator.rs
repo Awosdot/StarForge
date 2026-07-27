@@ -223,7 +223,7 @@ impl DocCommentExtractor {
     }
 }
 
-fn strip_prefix<'a>(line: &'a str, prefix: &str) -> String {
+fn strip_prefix(line: &str, prefix: &str) -> String {
     line.strip_prefix(prefix)
         .map(|s| s.trim_start().to_string())
         .unwrap_or_default()
@@ -235,8 +235,7 @@ fn parse_fn_name(line: &str) -> Option<String> {
         .trim_start_matches("pub ")
         .trim_start_matches("async ")
         .trim_start_matches("unsafe ");
-    if stripped.starts_with("fn ") {
-        let rest = &stripped["fn ".len()..];
+    if let Some(rest) = stripped.strip_prefix("fn ") {
         let name: String = rest
             .chars()
             .take_while(|c| c.is_alphanumeric() || *c == '_')
@@ -252,8 +251,7 @@ fn parse_struct_name(line: &str) -> Option<String> {
     let stripped = line
         .trim_start_matches("pub(crate) ")
         .trim_start_matches("pub ");
-    if stripped.starts_with("struct ") {
-        let rest = &stripped["struct ".len()..];
+    if let Some(rest) = stripped.strip_prefix("struct ") {
         let name: String = rest
             .chars()
             .take_while(|c| c.is_alphanumeric() || *c == '_')
@@ -269,8 +267,7 @@ fn parse_enum_name(line: &str) -> Option<String> {
     let stripped = line
         .trim_start_matches("pub(crate) ")
         .trim_start_matches("pub ");
-    if stripped.starts_with("enum ") {
-        let rest = &stripped["enum ".len()..];
+    if let Some(rest) = stripped.strip_prefix("enum ") {
         let name: String = rest
             .chars()
             .take_while(|c| c.is_alphanumeric() || *c == '_')
@@ -512,8 +509,8 @@ impl ExampleExtractor {
         for line in comment.lines() {
             let trimmed = line.trim();
             if !in_fence {
-                if trimmed.starts_with("```") {
-                    lang = trimmed[3..].trim().to_string();
+                if let Some(rest) = trimmed.strip_prefix("```") {
+                    lang = rest.trim().to_string();
                     if lang.is_empty() {
                         lang = "rust".to_string();
                     }
@@ -578,6 +575,12 @@ pub struct TemplateEngine {
     templates: HashMap<String, DocTemplate>,
 }
 
+impl Default for TemplateEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TemplateEngine {
     pub fn new() -> Self {
         let mut engine = Self {
@@ -638,6 +641,12 @@ impl TemplateEngine {
 
 pub struct HtmlDocGenerator {
     engine: TemplateEngine,
+}
+
+impl Default for HtmlDocGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HtmlDocGenerator {

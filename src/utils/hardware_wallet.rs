@@ -488,6 +488,11 @@ impl TrezorTransport {
         transaction: &[u8],
         network_passphrase: &str,
     ) -> Result<Vec<u8>> {
+        // Trezor's Stellar protocol has no "raw envelope" field. Signing requires
+        // decomposing the transaction into a `StellarSignTx` header followed by one
+        // protobuf message per operation (`StellarPaymentOp`, `StellarCreateAccountOp`,
+        // …), which starforge does not build yet. Refuse clearly rather than sending a
+        // request the device is guaranteed to reject.
         let mut trezor = Self::connect()?;
         trezor
             .init_device(None)
@@ -496,22 +501,15 @@ impl TrezorTransport {
         let mut request = trezor_client::protos::StellarSignTx::new();
         request.address_n = parse_hd_path(hd_path)?;
         if !network_passphrase.is_empty() {
-            request.set_network(network_passphrase);
+            request.network_passphrase = Some(network_passphrase.to_string());
         }
-        request.set_transaction(transaction);
 
-        let response = trezor.call(
-            request,
-            Box::new(|_, message: trezor_client::protos::StellarSignedTx| {
-                Ok(message.signature().to_vec())
-            }),
-        )?;
-        let signature = trezor_client::client::handle_interaction(response)
-            .context("Trezor did not return a transaction signature")?;
-        if signature.len() < 64 {
-            anyhow::bail!("Trezor signature response was too short");
-        }
-        Ok(signature)
+        let _ = (transaction,);
+        anyhow::bail!(
+            "Trezor transaction signing is not supported yet.\n\
+             The device requires per-operation messages rather than a raw XDR envelope.\n\
+             Use a Ledger device, or sign with a software wallet: starforge wallet sign <name>."
+        )
     }
 
     fn connect() -> Result<trezor_client::Trezor> {

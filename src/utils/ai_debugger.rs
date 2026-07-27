@@ -807,13 +807,13 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
         }
 
         // Detect empty / null-like address
-        if name_lower.contains("address") || name_lower.contains("account") {
-            if value_lower.contains("none") || value == "\"\"" || value.is_empty() {
-                insights.push(format!(
-                    "✗  '{}' is empty or None — the contract will likely fail auth checks.",
-                    name
-                ));
-            }
+        if (name_lower.contains("address") || name_lower.contains("account"))
+            && (value_lower.contains("none") || value == "\"\"" || value.is_empty())
+        {
+            insights.push(format!(
+                "✗  '{}' is empty or None — the contract will likely fail auth checks.",
+                name
+            ));
         }
 
         // Detect very large collections

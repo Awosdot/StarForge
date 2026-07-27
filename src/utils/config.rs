@@ -260,6 +260,52 @@ pub struct Config {
     pub plugin_trust: PluginTrustConfig,
     pub telemetry_enabled: Option<bool>,
     pub wallet_encryption: Option<crypto::KdfOptions>,
+    /// Optional per-install UUIDv4. Lazily created on first load.
+    /// Stable identifier used for deterministic feature-flag bucketing.
+    #[serde(default)]
+    pub install_id: Option<String>,
+    /// Feature flag system configuration.
+    #[serde(default)]
+    pub feature_flags: FeatureFlagsConfig,
+}
+
+/// Top-level knobs for the local feature-flag system.
+///
+/// Settings here affect **how** the system behaves (metrics retention, whether
+/// in-process telemetry is recorded at all). They do **not** override flag
+/// states — those live in the SQLite database.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct FeatureFlagsConfig {
+    /// Whether the CLI should record `exposure` (and `conversion` /
+    /// `rejection`) metric events locally. Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub metrics_enabled: bool,
+    /// How many days of local metric rows are kept before pruning.
+    /// Defaults to 30.
+    #[serde(default = "default_metrics_retention_days")]
+    pub metrics_retention_days: u32,
+    /// Default user attribute values that should be present when evaluating
+    /// flags without a richer context (e.g. during `info` rendering).
+    #[serde(default)]
+    pub default_attributes: std::collections::HashMap<String, String>,
+}
+
+impl Default for FeatureFlagsConfig {
+    fn default() -> Self {
+        Self {
+            metrics_enabled: true,
+            metrics_retention_days: 30,
+            default_attributes: std::collections::HashMap::new(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_metrics_retention_days() -> u32 {
+    30
 }
 
 fn default_version() -> String {
@@ -458,6 +504,8 @@ impl Default for Config {
             plugin_trust: PluginTrustConfig::default(),
             telemetry_enabled: Some(true),
             wallet_encryption: None,
+            install_id: None,
+            feature_flags: FeatureFlagsConfig::default(),
         }
     }
 }
@@ -582,6 +630,17 @@ pub fn load() -> Result<Config> {
     config = migrate_config(config)?;
 
     ensure_default_networks(&mut config);
+
+    match config.install_id.as_deref() {
+        None => {
+            config.install_id = Some(crate::utils::feature_flags::load_or_create_install_id(&db)?);
+        }
+        Some(install_id) => {
+            // Make sure install_id is also persisted to config_kv. If we loaded
+            // from a TOML file (the legacy path) the column will be missing.
+            let _ = db.insert_config_kv("install_id", install_id);
+        }
+    }
 
     if config.version != CURRENT_CONFIG_VERSION {
         save(&config)?;

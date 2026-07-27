@@ -43,7 +43,7 @@ async fn test_audit_contract_validates_empty_code() {
     let result = service.audit_contract(request).await;
     assert!(result.is_err(), "Should reject empty contract code");
     assert!(
-        result.unwrap_err().to_string().contains("empty"),
+        result.err().unwrap().to_string().contains("empty"),
         "Error should indicate empty code"
     );
 }
@@ -56,7 +56,7 @@ async fn test_audit_contract_validates_empty_name() {
     let result = service.audit_contract(request).await;
     assert!(result.is_err(), "Should reject empty contract name");
     assert!(
-        result.unwrap_err().to_string().contains("name"),
+        result.err().unwrap().to_string().contains("name"),
         "Error should indicate empty name"
     );
 }
@@ -70,7 +70,7 @@ async fn test_audit_contract_validates_code_size_limit() {
     let result = service.audit_contract(request).await;
     assert!(result.is_err(), "Should reject oversized contract");
     assert!(
-        result.unwrap_err().to_string().contains("50KB"),
+        result.err().unwrap().to_string().contains("50KB"),
         "Error should mention 50KB limit"
     );
 }
@@ -202,11 +202,15 @@ fn test_security_vulnerability_without_optional_fields() {
 
 #[test]
 fn test_audit_service_model_selection() {
-    let service = AiAuditService::new("sk-ant-test".to_string()).unwrap();
-    // Service should use claude-opus-4-1 (best model for security)
-    // We verify this by the fact it was created successfully
-    // (Actual model selection is verified by API integration)
-    assert!(service.is_ok() == false || service.is_ok() == true); // Compiler check
+    // Service should use claude-opus-4-1 (best model for security).
+    // We verify this by the fact it was created successfully.
+    // (Actual model selection is verified by API integration.)
+    let service = AiAuditService::new("sk-ant-test".to_string());
+    assert!(
+        service.is_ok(),
+        "service should build from a well-formed key"
+    );
+    let _service = service.unwrap();
 }
 
 #[test]
