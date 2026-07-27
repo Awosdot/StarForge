@@ -47,9 +47,9 @@ enum Commands {
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
 
-    /// AI Assistant for local Ollama-powered development, explanation, and translation
+    /// AI-powered deployment documentation generator (guides, runbooks, troubleshooting, API, architecture)
     #[command(subcommand)]
-    Ai(commands::ai::AiCommands),
+    AiDeployDocs(commands::ai_deploy_docs::AiDeployDocsCommands),
 
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
@@ -286,7 +286,7 @@ async fn main() {
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
-        Commands::Ai(_) => "ai",
+        Commands::AiDeployDocs(_) => "ai-deploy-docs",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
@@ -347,6 +347,7 @@ async fn main() {
     let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
+        Commands::AiDeployDocs(cmd) => commands::ai_deploy_docs::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Generate(cmd) => commands::generate::handle(&cmd).await,

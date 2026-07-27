@@ -1,6 +1,6 @@
 pub mod ai;
 pub mod ai_audit;
-pub mod ai_debug;
+pub mod ai_deploy_docs;
 pub mod analytics;
 pub mod approval;
 pub mod audit;
