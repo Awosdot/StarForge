@@ -355,6 +355,7 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
                     suggested: line.replace("std::vec::Vec", "soroban_sdk::Vec").to_string(),
                     reason: "Prefer soroban_sdk::Vec over std::vec::Vec in contract code for Soroban compatibility.".to_string(),
                 });
+            }
         }
 
         // Flag large string literals in contract code

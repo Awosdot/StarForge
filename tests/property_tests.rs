@@ -27,6 +27,13 @@ fn stellar_chars(len: usize) -> impl Strategy<Value = String> {
         .prop_map(|v| String::from_utf8(v).unwrap())
 }
 
+/// Generates a random string of 0 to 200 characters drawn from the Stellar
+/// base32 alphabet.
+fn stellar_chars_any_len() -> impl Strategy<Value = String> {
+    proptest::collection::vec(proptest::sample::select(STELLAR_CHARSET.as_bytes()), 0..200)
+        .prop_map(|v| String::from_utf8(v).unwrap())
+}
+
 /// Generates a syntactically valid-looking Stellar public key (G + 55 base32 chars).
 fn valid_public_key() -> impl Strategy<Value = String> {
     stellar_chars(55).prop_map(|s| format!("G{}", s))
@@ -82,6 +89,8 @@ proptest! {
     fn prop_public_key_wrong_length_fails(
         (len, body) in (0usize..200usize).prop_flat_map(|len| stellar_chars(len).prop_map(move |body| (len, body))),
     ) {
+        prop_assume!(len != 55); // 55-char body + 'G' = 56 total = valid length
+        prop_assume!(body.len() != 55);
         let key = format!("G{}", body);
         prop_assume!(key.len() != 56);
         prop_assert!(
@@ -135,6 +144,8 @@ proptest! {
     fn prop_secret_key_wrong_length_fails(
         (len, body) in (0usize..200usize).prop_flat_map(|len| stellar_chars(len).prop_map(move |body| (len, body))),
     ) {
+        prop_assume!(len != 55);
+        prop_assume!(body.len() != 55);
         let key = format!("S{}", body);
         prop_assume!(key.len() != 56);
         prop_assert!(

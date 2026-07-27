@@ -9,10 +9,10 @@
     clippy::needless_borrow
 )]
 
-mod commands;
+pub use starforge::commands;
 pub mod curation;
-pub mod plugins;
-mod utils;
+pub use starforge::plugins;
+pub use starforge::utils;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -57,6 +57,7 @@ enum Commands {
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
+
     /// Contract operations (invoke, inspect, etc.)
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
@@ -82,6 +83,9 @@ enum Commands {
     Deployments(commands::deployments::DeploymentsCommands),
     /// Show starforge config and environment info
     Info,
+    /// Manage AI prompt templates and versioning
+    #[command(subcommand)]
+    Prompts(commands::prompts::PromptsCommands),
     /// Manage starforge configuration (telemetry, network)
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
@@ -251,6 +255,9 @@ enum Commands {
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
 
+    /// Run formal verification on a contract
+    #[command(subcommand)]
+    Verify(commands::verify::VerifyCommands),
     /// AI Contextual Help: command, workflow, error, and best-practice guidance
     Help(commands::help::HelpArgs),
 }
@@ -284,6 +291,7 @@ async fn main() {
         Commands::Deploy(_) => "deploy",
         Commands::Deployments(_) => "deployments",
         Commands::Info => "info",
+        Commands::Prompts(_) => "prompts",
         Commands::Config(_) => "config",
         Commands::Telemetry(_) => "telemetry",
         Commands::Tx(_) => "tx",
@@ -324,8 +332,8 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
+        Commands::Verify(_) => "verify",
         Commands::External(_) => "external",
-        Commands::Migrate(_) => "migrate",
         Commands::Help(_) => "help",
     }
     .to_string();
@@ -343,6 +351,7 @@ async fn main() {
         Commands::Deploy(args) => commands::deploy::handle(args).await,
         Commands::Deployments(cmd) => commands::deployments::handle(cmd).await,
         Commands::Info => commands::info::handle().await,
+        Commands::Prompts(cmd) => commands::prompts::handle(&cmd).await,
         Commands::Config(cmd) => commands::config::handle(cmd).await,
         Commands::Telemetry(cmd) => commands::telemetry::handle(cmd).await,
         Commands::Tx(args) => commands::tx::handle(args).await,
@@ -396,8 +405,9 @@ async fn main() {
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+        Commands::Complete(cmd) => commands::complete::handle(cmd).await,
+        Commands::Verify(cmd) => commands::verify::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Help(args) => commands::help::handle(args).await,
     };
     let duration = start.elapsed();

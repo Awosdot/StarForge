@@ -493,7 +493,18 @@ impl TrezorTransport {
         // protobuf message per operation (`StellarPaymentOp`, `StellarCreateAccountOp`,
         // …), which starforge does not build yet. Refuse clearly rather than sending a
         // request the device is guaranteed to reject.
-        let _ = (hd_path, transaction, network_passphrase);
+        let mut trezor = Self::connect()?;
+        trezor
+            .init_device(None)
+            .context("Failed to initialize Trezor session")?;
+
+        let mut request = trezor_client::protos::StellarSignTx::new();
+        request.address_n = parse_hd_path(hd_path)?;
+        if !network_passphrase.is_empty() {
+            request.network_passphrase = Some(network_passphrase.to_string());
+        }
+
+        let _ = (transaction,);
         anyhow::bail!(
             "Trezor transaction signing is not supported yet.\n\
              The device requires per-operation messages rather than a raw XDR envelope.\n\
