@@ -260,7 +260,11 @@ pub fn list_pipelines() -> Result<Vec<DeploymentPipeline>> {
     Ok(pipelines)
 }
 
-pub fn approve_stage(pipeline: &mut DeploymentPipeline, stage_id: &str, approver: &str) -> Result<()> {
+pub fn approve_stage(
+    pipeline: &mut DeploymentPipeline,
+    stage_id: &str,
+    approver: &str,
+) -> Result<()> {
     let stage = pipeline
         .stages
         .iter_mut()
@@ -293,7 +297,11 @@ pub fn approve_stage(pipeline: &mut DeploymentPipeline, stage_id: &str, approver
     Ok(())
 }
 
-pub fn reject_stage(pipeline: &mut DeploymentPipeline, stage_id: &str, approver: &str) -> Result<()> {
+pub fn reject_stage(
+    pipeline: &mut DeploymentPipeline,
+    stage_id: &str,
+    approver: &str,
+) -> Result<()> {
     let stage = pipeline
         .stages
         .iter_mut()
@@ -374,7 +382,6 @@ pub fn execute_pipeline(
                 pipeline.stages[i].status = StageStatus::Failed;
                 pipeline.stages[i].error = Some(e.to_string());
                 failed += 1;
-                let on_failure = stage.config.on_failure;
                 pipeline.status = PipelineStatus::Failed;
                 pipeline.updated_at = Utc::now().to_rfc3339();
                 save_pipeline(pipeline)?;
@@ -515,7 +522,9 @@ fn execute_deploy_stage(stage: &mut PipelineStage, dry_run: bool) -> Result<Stri
     };
     Ok(format!(
         "Deployed '{}' to {} ({})",
-        contract_id, address, if dry_run { "dry-run" } else { "live" }
+        contract_id,
+        address,
+        if dry_run { "dry-run" } else { "live" }
     ))
 }
 
@@ -576,18 +585,9 @@ pub fn rollback_pipeline(pipeline: &mut DeploymentPipeline) -> Result<Vec<String
 
 pub fn list_templates() -> Vec<(&'static str, &'static str)> {
     vec![
-        (
-            "basic",
-            "Build → Test → Deploy (single contract)",
-        ),
-        (
-            "approved-deploy",
-            "Build → Test → Approval → Deploy",
-        ),
-        (
-            "ci-gate",
-            "Test → Approval → Deploy → Rollback on failure",
-        ),
+        ("basic", "Build → Test → Deploy (single contract)"),
+        ("approved-deploy", "Build → Test → Approval → Deploy"),
+        ("ci-gate", "Test → Approval → Deploy → Rollback on failure"),
         (
             "multi-contract",
             "Deploy token → Test → Approval → Deploy vault",
@@ -646,11 +646,7 @@ pub fn from_template(template: &str, name: &str, network: &str) -> Result<Deploy
                 StageType::Approval,
                 StageConfig {
                     required_approvals: Some(2),
-                    approvers: vec![
-                        "lead".into(),
-                        "security".into(),
-                        "ops".into(),
-                    ],
+                    approvers: vec!["lead".into(), "security".into(), "ops".into()],
                     ..Default::default()
                 },
             )?;
@@ -749,7 +745,10 @@ pub fn from_template(template: &str, name: &str, network: &str) -> Result<Deploy
 pub fn render_terminal_ui(pipeline: &DeploymentPipeline) -> String {
     let mut lines = vec![
         format!("Pipeline: {} ({})", pipeline.name, pipeline.id),
-        format!("Network: {} | Status: {:?}", pipeline.network, pipeline.status),
+        format!(
+            "Network: {} | Status: {:?}",
+            pipeline.network, pipeline.status
+        ),
         String::new(),
         "Stages:".into(),
     ];
@@ -918,10 +917,11 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn temp_home() -> TempDir {
+    fn temp_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::utils::lock_home_env();
         let home = TempDir::new().unwrap();
         std::env::set_var("HOME", home.path());
-        home
+        (home, guard)
     }
 
     fn write_minimal_wasm(path: &Path) {

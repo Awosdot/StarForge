@@ -7,12 +7,8 @@
 //! When `STARFORGE_AI_API_KEY` is set, prose sections can optionally be refined
 //! via an OpenAI-compatible chat completions endpoint.
 
-use crate::utils::doc_generator::{
-    DocCommentExtractor, ExtractedDocs, ExtractedFn, Visibility,
-};
-use crate::utils::docs::{
-    DocEntry, DocSection, EventDoc, FunctionDoc, ParamDoc, StorageDoc,
-};
+use crate::utils::doc_generator::{DocCommentExtractor, ExtractedDocs, ExtractedFn, Visibility};
+use crate::utils::docs::{DocEntry, DocSection, EventDoc, FunctionDoc, ParamDoc, StorageDoc};
 use crate::utils::http_client;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -125,6 +121,7 @@ pub fn generate_from_extracted(
         source_text,
         &options.name,
         &options.network,
+        &options.version,
         &description,
         &storage,
         &options.languages,
@@ -139,7 +136,9 @@ pub fn generate_from_extracted(
                 }
             }
             if let Some(security) = refined.security {
-                if let Some(section) = sections.iter_mut().find(|s| s.title == "Security Considerations")
+                if let Some(section) = sections
+                    .iter_mut()
+                    .find(|s| s.title == "Security Considerations")
                 {
                     section.content = security;
                 }
@@ -283,6 +282,7 @@ fn build_sections(
     source_text: &str,
     name: &str,
     network: &str,
+    version: &str,
     description: &str,
     storage: &[StorageDoc],
     languages: &[DocLanguage],
@@ -320,15 +320,21 @@ fn build_sections(
     });
 
     sections.push(DocSection {
+        title: "Configuration Reference".to_string(),
+        content: document_configuration(extracted, network, version),
+        order: 4,
+    });
+
+    sections.push(DocSection {
         title: "Security Considerations".to_string(),
         content: analyze_security(source_text, extracted),
-        order: 4,
+        order: 5,
     });
 
     sections.push(DocSection {
         title: "Usage Guides".to_string(),
         content: build_usage_guides(extracted, languages),
-        order: 5,
+        order: 6,
     });
 
     sections.push(DocSection {
@@ -339,10 +345,106 @@ fn build_sections(
              3. Call public entrypoints via `starforge contract invoke` or generated bindings.\n\
              4. Keep rustdoc comments (`///`, `//!`) in sync — re-run `starforge docs generate --source` after API changes."
         ),
-        order: 6,
+        order: 7,
+    });
+
+    sections.push(DocSection {
+        title: "Troubleshooting".to_string(),
+        content: build_troubleshooting(source_text, extracted, storage),
+        order: 8,
     });
 
     sections
+}
+
+/// Documents contract-level constants, the target network/version, and any
+/// environment configuration a deployer needs to know about.
+fn document_configuration(extracted: &ExtractedDocs, network: &str, version: &str) -> String {
+    let mut out = format!(
+        "| Setting | Value |\n|---|---|\n| Network | `{}` |\n| Version | `{}` |\n",
+        network, version
+    );
+
+    if extracted.constants.is_empty() {
+        out.push_str(
+            "\nNo module-level constants were found in source. Configuration is driven \
+             entirely by constructor/`initialize` arguments at deploy time.\n",
+        );
+    } else {
+        out.push_str("\n### Constants\n\n| Name | Type | Value | Description |\n|---|---|---|---|\n");
+        for c in &extracted.constants {
+            out.push_str(&format!(
+                "| `{}` | `{}` | `{}` | {} |\n",
+                c.name,
+                c.ty,
+                c.value,
+                first_paragraph(&c.doc_comment)
+            ));
+        }
+    }
+
+    out
+}
+
+/// Heuristic troubleshooting guide covering the most common failure modes
+/// for the detected contract shape (auth, storage, arithmetic).
+fn build_troubleshooting(source: &str, extracted: &ExtractedDocs, storage: &[StorageDoc]) -> String {
+    let mut tips: Vec<String> = Vec::new();
+
+    if source.contains("require_auth") {
+        tips.push(
+            "**`Error(Auth, InvalidAction)`** — the transaction was not signed by the address \
+             passed to a `require_auth()` call. Make sure the invoking key matches the address \
+             argument exactly."
+                .to_string(),
+        );
+    }
+
+    if !storage.is_empty() {
+        tips.push(
+            "**Reads return `None`/default values** — storage is only populated after the \
+             relevant `initialize`/setter function has been invoked at least once. Confirm \
+             the contract was initialized on the network you're querying."
+                .to_string(),
+        );
+    }
+
+    if source.contains(".unwrap()") || source.contains(".expect(") {
+        tips.push(
+            "**Host panics with a generic `UnreachableCodeReached`/`Error(Contract, #0)`** — \
+             one of the contract's `unwrap()`/`expect()` calls hit an unexpected `None`/`Err`. \
+             Check the preconditions of the function you called (e.g. an account must exist, \
+             a balance must be sufficient)."
+                .to_string(),
+        );
+    }
+
+    if extracted.functions.iter().any(|f| {
+        f.params
+            .iter()
+            .any(|p| p.ty.contains("i128") || p.ty.contains("u32") || p.ty.contains("u64"))
+    }) {
+        tips.push(
+            "**`Error(Contract, #...)` on large amounts** — numeric parameters use fixed-width \
+             integer types; verify inputs stay within range before calling to avoid overflow \
+             panics."
+                .to_string(),
+        );
+    }
+
+    tips.push(
+        "**`HostError: not found`** — the contract ID or network passed to \
+         `starforge contract invoke` doesn't match where the contract was deployed. Re-check \
+         with `starforge deployments list`."
+            .to_string(),
+    );
+    tips.push(
+        "**Build fails on `wasm32v1-none`** — ensure the target is installed with \
+         `rustup target add wasm32v1-none` and that `#![no_std]` is present for on-chain builds."
+            .to_string(),
+    );
+
+    tips.join("\n\n")
 }
 
 fn explain_architecture(extracted: &ExtractedDocs, source: &str, name: &str) -> String {
@@ -355,10 +457,7 @@ fn explain_architecture(extracted: &ExtractedDocs, source: &str, name: &str) -> 
         public_fns.len()
     ));
     if !extracted.structs.is_empty() {
-        parts.push(format!(
-            "**{}** struct type(s)",
-            extracted.structs.len()
-        ));
+        parts.push(format!("**{}** struct type(s)", extracted.structs.len()));
     }
     if !extracted.enums.is_empty() {
         parts.push(format!("**{}** enum type(s)", extracted.enums.len()));
@@ -374,7 +473,10 @@ fn explain_architecture(extracted: &ExtractedDocs, source: &str, name: &str) -> 
 
     let storage_kinds = [
         ("instance()", "instance storage (TTL-bound contract state)"),
-        ("persistent()", "persistent storage (long-lived ledger entries)"),
+        (
+            "persistent()",
+            "persistent storage (long-lived ledger entries)",
+        ),
         ("temporary()", "temporary storage (short-lived cache)"),
     ];
     let used: Vec<&str> = storage_kinds
@@ -396,7 +498,8 @@ fn explain_architecture(extracted: &ExtractedDocs, source: &str, name: &str) -> 
             let summary = if func.doc_comment.trim().is_empty() {
                 infer_function_description(func)
             } else {
-                first_sentence(&func.doc_comment).unwrap_or_else(|| infer_function_description(func))
+                first_sentence(&func.doc_comment)
+                    .unwrap_or_else(|| infer_function_description(func))
             };
             body.push_str(&format!("- `{}` — {}\n", func.name, summary));
         }
@@ -417,7 +520,10 @@ fn document_types(extracted: &ExtractedDocs) -> String {
     for s in &extracted.structs {
         md.push_str(&format!("### `{}`\n\n", s.name));
         if s.doc_comment.trim().is_empty() {
-            md.push_str(&format!("Struct used by the contract API (`{}`).\n\n", s.name));
+            md.push_str(&format!(
+                "Struct used by the contract API (`{}`).\n\n",
+                s.name
+            ));
         } else {
             md.push_str(&format!("{}\n\n", s.doc_comment.trim()));
         }
@@ -441,7 +547,10 @@ fn document_types(extracted: &ExtractedDocs) -> String {
     for e in &extracted.enums {
         md.push_str(&format!("### `{}`\n\n", e.name));
         if e.doc_comment.trim().is_empty() {
-            md.push_str(&format!("Enumeration used by the contract API (`{}`).\n\n", e.name));
+            md.push_str(&format!(
+                "Enumeration used by the contract API (`{}`).\n\n",
+                e.name
+            ));
         } else {
             md.push_str(&format!("{}\n\n", e.doc_comment.trim()));
         }
@@ -505,10 +614,18 @@ fn infer_storage_layout(source: &str, extracted: &ExtractedDocs) -> Vec<StorageD
 
     // Heuristic: common storage API usage mentions.
     let heuristics = [
-        ("balances", "Map<Address, i128>", "Token or account balances"),
+        (
+            "balances",
+            "Map<Address, i128>",
+            "Token or account balances",
+        ),
         ("admin", "Address", "Contract administrator address"),
         ("owner", "Address", "Asset or resource owner"),
-        ("allowance", "Map<(Address, Address), i128>", "Spend allowances"),
+        (
+            "allowance",
+            "Map<(Address, Address), i128>",
+            "Spend allowances",
+        ),
         ("total_supply", "i128", "Total token supply"),
     ];
     for (key, ty, desc) in heuristics {
@@ -583,7 +700,15 @@ fn analyze_security(source: &str, extracted: &ExtractedDocs) -> String {
         );
     }
 
-    let mutating = ["transfer", "mint", "burn", "withdraw", "upgrade", "set_admin", "reset"];
+    let mutating = [
+        "transfer",
+        "mint",
+        "burn",
+        "withdraw",
+        "upgrade",
+        "set_admin",
+        "reset",
+    ];
     for func in public_functions(extracted) {
         if mutating.iter().any(|m| func.name.contains(m)) {
             notes.push(format!(
@@ -693,10 +818,7 @@ fn generate_usage_examples(
                     .map(|p| sample_value_py(&p.name, &p.ty))
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!(
-                    "# Python\nresult = contract.{}({})",
-                    fn_name, args
-                )
+                format!("# Python\nresult = contract.{}({})", fn_name, args)
             }
             DocLanguage::Go => {
                 let args = params
@@ -777,10 +899,16 @@ fn infer_function_description(func: &ExtractedFn) -> String {
         "increment" => "Increment a stored counter".to_string(),
         "get_count" | "count" => "Return the current counter value".to_string(),
         other if other.starts_with("get_") || other.starts_with("read_") => {
-            format!("Read `{}` from contract storage", other.trim_start_matches("get_").trim_start_matches("read_"))
+            format!(
+                "Read `{}` from contract storage",
+                other.trim_start_matches("get_").trim_start_matches("read_")
+            )
         }
         other if other.starts_with("set_") => {
-            format!("Update `{}` in contract storage", other.trim_start_matches("set_"))
+            format!(
+                "Update `{}` in contract storage",
+                other.trim_start_matches("set_")
+            )
         }
         other => format!("Invoke the `{}` contract entrypoint", other),
     };
@@ -820,7 +948,10 @@ fn render_comprehensive_markdown(
     md.push_str(&format!("**Contract:** `{}`  \n", entry.contract_id));
     md.push_str(&format!("**Network:** {}  \n", entry.network));
     md.push_str(&format!("**Version:** {}  \n", entry.version));
-    md.push_str(&format!("**Generated:** {}  \n\n", &entry.generated_at[..10]));
+    md.push_str(&format!(
+        "**Generated:** {}  \n\n",
+        &entry.generated_at[..10]
+    ));
     md.push_str(&format!("{}\n\n", entry.description));
 
     let mut sections = entry.sections.clone();
@@ -862,7 +993,10 @@ fn render_comprehensive_markdown(
     if !entry.api.events.is_empty() {
         md.push_str("### Events\n\n");
         for event in &entry.api.events {
-            md.push_str(&format!("#### `{}`\n\n{}\n\n", event.name, event.description));
+            md.push_str(&format!(
+                "#### `{}`\n\n{}\n\n",
+                event.name, event.description
+            ));
             if !event.topics.is_empty() {
                 md.push_str("| Topic | Type | Description |\n| --- | --- | --- |\n");
                 for topic in &event.topics {
@@ -916,7 +1050,11 @@ fn render_rustdoc_stubs(extracted: &ExtractedDocs) -> String {
             continue;
         }
         out.push_str(&format!("/// {}\n", infer_function_description(func)));
-        for param in func.params.iter().filter(|p| p.name != "env" && p.name != "self") {
+        for param in func
+            .params
+            .iter()
+            .filter(|p| p.name != "env" && p.name != "self")
+        {
             out.push_str(&format!(
                 "///\n/// # Arguments\n/// * `{}` - {}\n",
                 param.name,
@@ -931,14 +1069,20 @@ fn render_rustdoc_stubs(extracted: &ExtractedDocs) -> String {
 
     for s in &extracted.structs {
         if s.doc_comment.trim().is_empty() {
-            out.push_str(&format!("/// Struct `{}` used by the contract API.\n", s.name));
+            out.push_str(&format!(
+                "/// Struct `{}` used by the contract API.\n",
+                s.name
+            ));
             out.push_str(&format!("// struct {}\n\n", s.name));
         }
     }
 
     for e in &extracted.enums {
         if e.doc_comment.trim().is_empty() {
-            out.push_str(&format!("/// Enum `{}` used by the contract API.\n", e.name));
+            out.push_str(&format!(
+                "/// Enum `{}` used by the contract API.\n",
+                e.name
+            ));
             out.push_str(&format!("// enum {}\n\n", e.name));
         }
     }
@@ -973,8 +1117,7 @@ fn try_llm_enrichment(
 
     let base_url = std::env::var("STARFORGE_AI_BASE_URL")
         .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
-    let model =
-        std::env::var("STARFORGE_AI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    let model = std::env::var("STARFORGE_AI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
 
     let summary = serde_json::json!({
         "description": description,
@@ -997,9 +1140,9 @@ fn try_llm_enrichment(
             {
                 "role": "system",
                 "content": "You enrich Soroban smart-contract documentation. \
-Return JSON with keys: architecture (string), security (string), \
-functions (array of {name, description, examples}). \
-Do not invent ABI members that are not provided. Keep examples accurate."
+    Return JSON with keys: architecture (string), security (string), \
+    functions (array of {name, description, examples}). \
+    Do not invent ABI members that are not provided. Keep examples accurate."
             },
             {
                 "role": "user",
@@ -1011,10 +1154,7 @@ Do not invent ABI members that are not provided. Keep examples accurate."
         ]
     });
 
-    let url = format!(
-        "{}/chat/completions",
-        base_url.trim_end_matches('/')
-    );
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
     // Blocking call via reqwest runtime is awkward in sync context; use ureq-less
     // approach with reqwest blocking feature if available. Fall back to skipping
@@ -1069,11 +1209,7 @@ fn first_sentence(text: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    let sentence = trimmed
-        .split(['.', '\n'])
-        .next()
-        .unwrap_or(trimmed)
-        .trim();
+    let sentence = trimmed.split(['.', '\n']).next().unwrap_or(trimmed).trim();
     if sentence.is_empty() {
         None
     } else if sentence.ends_with('.') {
@@ -1277,15 +1413,26 @@ impl Counter {
         assert!(docs.markdown.contains("# Counter Documentation"));
         assert!(docs.markdown.contains("## Architecture"));
         assert!(docs.markdown.contains("## Storage Layout"));
+        assert!(docs.markdown.contains("## Configuration Reference"));
         assert!(docs.markdown.contains("## Security Considerations"));
         assert!(docs.markdown.contains("## Usage Guides"));
+        assert!(docs.markdown.contains("## Troubleshooting"));
         assert!(docs.markdown.contains("## API Reference"));
         assert!(docs.markdown.contains("increment"));
         assert!(docs.markdown.contains("get_count"));
         assert!(docs.entry.api.functions.len() >= 3);
-        assert!(docs.entry.api.storage.iter().any(|s| s.key == "COUNTER" || s.key == "Admin"));
+        assert!(docs
+            .entry
+            .api
+            .storage
+            .iter()
+            .any(|s| s.key == "COUNTER" || s.key == "Admin"));
         assert!(docs.rustdoc_stubs.contains("get_count") || docs.markdown.contains("get_count"));
-        assert!(docs.markdown.contains("typescript") || docs.markdown.contains("TypeScript") || docs.markdown.contains("```typescript"));
+        assert!(
+            docs.markdown.contains("typescript")
+                || docs.markdown.contains("TypeScript")
+                || docs.markdown.contains("```typescript")
+        );
     }
 
     #[test]
@@ -1336,5 +1483,42 @@ impl Token {
         let extracted = DocCommentExtractor::extract_from_source(source);
         let notes = analyze_security(source, &extracted);
         assert!(notes.contains("require_auth"));
+    }
+
+    #[test]
+    fn configuration_reference_lists_constants() {
+        let extracted = DocCommentExtractor::extract_from_source(SAMPLE_CONTRACT);
+        let out = document_configuration(&extracted, "testnet", "1.2.3");
+        assert!(out.contains("testnet"));
+        assert!(out.contains("1.2.3"));
+        assert!(out.contains("COUNTER"));
+    }
+
+    #[test]
+    fn configuration_reference_handles_no_constants() {
+        let extracted = DocCommentExtractor::extract_from_source("pub fn noop() {}");
+        let out = document_configuration(&extracted, "testnet", "1.0.0");
+        assert!(out.contains("No module-level constants"));
+    }
+
+    #[test]
+    fn troubleshooting_flags_auth_and_storage() {
+        let extracted = DocCommentExtractor::extract_from_source(SAMPLE_CONTRACT);
+        let storage = vec![StorageDoc {
+            key: "COUNTER".into(),
+            ty: "u32".into(),
+            description: String::new(),
+        }];
+        let tips = build_troubleshooting(SAMPLE_CONTRACT, &extracted, &storage);
+        assert!(tips.contains("Auth, InvalidAction"));
+        assert!(tips.contains("initialize"));
+    }
+
+    #[test]
+    fn troubleshooting_flags_unwrap_panics() {
+        let source = "pub fn f(x: Option<u32>) -> u32 { x.unwrap() }";
+        let extracted = DocCommentExtractor::extract_from_source(source);
+        let tips = build_troubleshooting(source, &extracted, &[]);
+        assert!(tips.to_lowercase().contains("unwrap"));
     }
 }

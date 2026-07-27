@@ -1,9 +1,10 @@
 use crate::utils::{
     config, contract_testing, print as p, rollback_testing, test_automation, test_coverage,
-    test_runner,
+    test_generator, test_runner,
 };
 use anyhow::Result;
 use clap::Args;
+use sha2::Digest;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -111,6 +112,46 @@ pub struct TestArgs {
     /// Disable the Soroban RPC health probe during --testnet
     #[arg(long, default_value = "false")]
     pub skip_rpc_health: bool,
+
+    /// Enable AI-driven test optimization (smart ordering, flaky detection, caching)
+    #[arg(long, default_value = "false")]
+    pub optimize: bool,
+
+    /// Path to write the AI optimization report
+    #[arg(long)]
+    pub optimize_out: Option<PathBuf>,
+
+    /// Flaky test detection threshold (0-100)
+    #[arg(long, default_value = "30.0")]
+    pub flaky_threshold: f64,
+
+    /// Enable test deduplication analysis
+    #[arg(long, default_value = "false")]
+    pub dedup: bool,
+
+    /// Enable test result caching
+    #[arg(long, default_value = "false")]
+    pub cache: bool,
+
+    /// Enable resource-aware scheduling
+    #[arg(long, default_value = "false")]
+    pub resource_aware: bool,
+
+    /// Memory limit per test worker (MB)
+    #[arg(long, default_value = "512")]
+    pub memory_limit_mb: u64,
+
+    /// Maximum concurrency for resource-aware scheduling
+    #[arg(long, default_value = "8")]
+    pub max_concurrency: usize,
+
+    /// Enable performance analysis and reporting
+    #[arg(long, default_value = "false")]
+    pub perf_analysis: bool,
+
+    /// Generate HTML optimization report
+    #[arg(long, default_value = "false")]
+    pub optimize_html: bool,
 }
 
 pub async fn handle(args: TestArgs) -> Result<()> {
@@ -271,7 +312,12 @@ pub async fn handle(args: TestArgs) -> Result<()> {
         let project_path = args
             .contract_path
             .clone()
-            .or_else(|| source.parent().and_then(|path| path.parent()).map(PathBuf::from))
+            .or_else(|| {
+                source
+                    .parent()
+                    .and_then(|path| path.parent())
+                    .map(PathBuf::from)
+            })
             .unwrap_or_else(|| PathBuf::from("."));
         let tests_dir = project_path.join("tests");
         std::fs::create_dir_all(&tests_dir)?;
@@ -364,6 +410,270 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                 return Ok(());
             }
         }
+    }
+
+    // ── AI-Driven Test Optimization ─────────────────────────────────────────
+    let optimization_requested = args.optimize
+        || args.optimize_out.is_some()
+        || args.dedup
+        || args.cache
+        || args.resource_aware
+        || args.perf_analysis
+        || args.optimize_html;
+
+    if optimization_requested || args.parallel {
+        let wasm_bytes = std::fs::read(&args.wasm)?;
+        let wasm_hash = hex::encode(sha2::Sha256::digest(&wasm_bytes));
+        let mut optimizer = test_optimizer::TestOptimizer::new()?;
+
+        // Build test name list
+        let source_tests = if let Some(source) = &args.source {
+            if args.generate {
+                let gen = crate::utils::test_generator::generate_from_source(source)?;
+                gen.cases.iter().map(|c| c.name.clone()).collect::<Vec<_>>()
+            } else {
+                vec![
+                    "wasm_header_valid".into(),
+                    "wasm_size_reasonable".into(),
+                    "exports_present".into(),
+                ]
+            }
+        } else {
+            vec![
+                "wasm_header_valid".into(),
+                "wasm_size_reasonable".into(),
+                "exports_present".into(),
+            ]
+        };
+
+        // Apply smart ordering
+        let ordered_tests = if args.optimize {
+            let optimized = optimizer.optimize_order(&source_tests);
+            p::info(&format!(
+                "AI optimizer: reordered {} tests (security-critical tests first)",
+                optimized.len()
+            ));
+            optimized
+        } else {
+            source_tests.clone()
+        };
+
+        // Check cache
+        let mut cached_count = 0u32;
+        if args.cache {
+            for test_name in &ordered_tests {
+                if let Some(_cached) = optimizer.check_cache(&wasm_hash, test_name) {
+                    cached_count += 1;
+                }
+            }
+            if cached_count > 0 {
+                p::kv("Cache hits", &cached_count.to_string());
+            }
+        }
+
+        // Run tests with optimization tracking
+        let timing_results = if args.parallel {
+            p::info("Running optimized tests in parallel...");
+            let runner = test_automation::ParallelTestRunner::new(args.workers);
+            if let Some(contract_path) = &args.contract_path {
+                let suite_path = contract_path.join("test_suite.json");
+                if suite_path.exists() {
+                    let suite_content = std::fs::read_to_string(&suite_path)?;
+                    let suite: test_automation::TestSuite = serde_json::from_str(&suite_content)?;
+                    let report = runner.run_tests(&suite, &args.wasm)?;
+
+                    // Record results for flaky detection
+                    for result in &report.results {
+                        let passed = matches!(result.status, test_automation::TestStatus::Passed);
+                        optimizer.record_result(&result.test_name, passed, result.duration_ms)?;
+                        if args.cache {
+                            optimizer.update_cache(
+                                &wasm_hash,
+                                &result.test_name,
+                                passed,
+                                result.duration_ms,
+                            )?;
+                        }
+                    }
+
+                    let timings: Vec<test_optimizer::TestCaseTiming> = report
+                        .results
+                        .iter()
+                        .map(|r| test_optimizer::TestCaseTiming {
+                            name: r.test_name.clone(),
+                            duration_ms: r.duration_ms,
+                            passed: matches!(r.status, test_automation::TestStatus::Passed),
+                        })
+                        .collect();
+
+                    // Export report
+                    if let Some(report_format) = &args.report {
+                        let report_path = match report_format.as_str() {
+                            "html" => PathBuf::from("test_report.html"),
+                            "json" => PathBuf::from("test_report.json"),
+                            "junit" => PathBuf::from("test_report.xml"),
+                            _ => PathBuf::from("test_report.html"),
+                        };
+                        match report_format.as_str() {
+                            "html" => test_automation::TestReportExporter::export_html(
+                                &report, &report_path,
+                            )?,
+                            "json" => test_automation::TestReportExporter::export_json(
+                                &report, &report_path,
+                            )?,
+                            "junit" => test_automation::TestReportExporter::export_junit(
+                                &report, &report_path,
+                            )?,
+                            _ => test_automation::TestReportExporter::export_html(
+                                &report, &report_path,
+                            )?,
+                        }
+                        p::kv("Report saved", &report_path.display().to_string());
+                    }
+
+                    println!();
+                    p::separator();
+                    p::kv("Total tests", &report.total_tests.to_string());
+                    p::kv("Passed", &report.passed.to_string());
+                    p::kv("Failed", &report.failed.to_string());
+                    p::kv(
+                        "Coverage",
+                        &format!(
+                            "{}%",
+                            if report.coverage_summary.lines_total > 0 {
+                                (report.coverage_summary.lines_covered as f64
+                                    / report.coverage_summary.lines_total as f64
+                                    * 100.0)
+                                    as u32
+                            } else {
+                                0
+                            }
+                        ),
+                    );
+                    p::kv("Duration", &format!("{}ms", report.total_duration_ms));
+                    p::separator();
+
+                    if report.failed > 0 {
+                        anyhow::bail!("Some contract tests failed");
+                    }
+
+                    p::success("All contract tests passed");
+                    return Ok(());
+                }
+            }
+            // Fallback parallel execution
+            let cases: Vec<String> = ordered_tests.clone();
+            let results = test_runner::run_parallel(&cases, args.workers)?;
+            for r in &results {
+                optimizer.record_result(&r.name, r.passed, r.duration_ms)?;
+                if args.cache {
+                    optimizer.update_cache(&wasm_hash, &r.name, r.passed, r.duration_ms)?;
+                }
+            }
+            results
+                .iter()
+                .map(|r| test_optimizer::TestCaseTiming {
+                    name: r.name.clone(),
+                    duration_ms: r.duration_ms,
+                    passed: r.passed,
+                })
+                .collect()
+        } else {
+            // Sequential run with tracking
+            let cases: Vec<String> = ordered_tests.clone();
+            let results = test_runner::run_sequential(&cases)?;
+            for r in &results {
+                optimizer.record_result(&r.name, r.passed, r.duration_ms)?;
+                if args.cache {
+                    optimizer.update_cache(&wasm_hash, &r.name, r.passed, r.duration_ms)?;
+                }
+            }
+            results
+                .iter()
+                .map(|r| test_optimizer::TestCaseTiming {
+                    name: r.name.clone(),
+                    duration_ms: r.duration_ms,
+                    passed: r.passed,
+                })
+                .collect()
+        };
+
+        // Generate optimization report
+        if args.optimize || args.perf_analysis || args.optimize_out.is_some() || args.optimize_html {
+            let generated_cases = if let Some(source) = &args.source {
+                if args.generate {
+                    crate::utils::test_generator::generate_from_source(source)
+                        .map(|g| g.cases)
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            };
+
+            let opt_report = optimizer.optimize_all(
+                &wasm_hash,
+                &source_tests,
+                &generated_cases,
+                &timing_results,
+            );
+
+            // Log optimization insights
+            println!();
+            p::header("AI Test Optimization Results");
+
+            for flaky in &opt_report.flaky_tests {
+                p::warn(&format!(
+                    "Flaky test '{}' (score: {:.1}, failure rate: {:.1}%)",
+                    flaky.test_name, flaky.flakiness_score, flaky.failure_rate * 100.0
+                ));
+            }
+
+            if !opt_report.duplicate_tests.is_empty() {
+                for dup in &opt_report.duplicate_tests {
+                    p::warn(&format!(
+                        "Duplicate pair: '{}' <-> '{}' (similarity: {:.0}%)",
+                        dup.test_a, dup.test_b, dup.similarity_score * 100.0
+                    ));
+                }
+            }
+
+            p::kv(
+                "Estimated improvement",
+                &format!("{:.1}%", opt_report.estimated_improvement_pct),
+            );
+            p::kv(
+                "Slowest test",
+                &opt_report.performance.slowest_tests.first().cloned().unwrap_or_default(),
+            );
+            p::kv(
+                "Parallel efficiency",
+                &format!("{:.1}%", opt_report.performance.parallel_efficiency),
+            );
+
+            // Export report
+            if let Some(out_path) = &args.optimize_out {
+                test_optimizer::export_optimization_report(&opt_report, out_path)?;
+                p::kv("Optimization report", &out_path.display().to_string());
+            }
+
+            if args.optimize_html {
+                let html_path = PathBuf::from("ai_test_optimization_report.html");
+                let html = test_optimizer::render_optimization_html_report(&opt_report);
+                std::fs::write(&html_path, html)?;
+                p::kv("HTML report", &html_path.display().to_string());
+            }
+
+            p::separator();
+        }
+
+        if !timing_results.iter().all(|r| r.passed) {
+            anyhow::bail!("Some contract tests failed");
+        }
+
+        p::success("All contract tests passed (optimized)");
+        return Ok(());
     }
 
     // Fall back to original test runner

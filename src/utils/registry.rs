@@ -203,7 +203,11 @@ impl RegistryClient {
     }
 
     /// Get details of a specific template.
-    pub async fn get_template(&self, name: &str, version: Option<&str>) -> Result<RemoteTemplateEntry> {
+    pub async fn get_template(
+        &self,
+        name: &str,
+        version: Option<&str>,
+    ) -> Result<RemoteTemplateEntry> {
         let version_param = version.unwrap_or("latest");
         let url = format!(
             "{}/api/templates/{}/{}",
@@ -271,7 +275,12 @@ impl RegistryClient {
     }
 
     /// Sign up for a new registry account.
-    pub async fn signup(&self, email: &str, username: &str, password: &str) -> Result<AuthResponse> {
+    pub async fn signup(
+        &self,
+        email: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<AuthResponse> {
         let url = format!("{}/api/auth/signup", self.registry_url);
         let req = serde_json::json!({
             "email": email,

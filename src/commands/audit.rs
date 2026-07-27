@@ -112,11 +112,7 @@ pub async fn handle(args: AuditArgs) -> Result<()> {
             }
             Err(e) => {
                 if !args.quiet {
-                    eprintln!(
-                        "  {} cargo-audit skipped: {}",
-                        "⚠".yellow(),
-                        e
-                    );
+                    eprintln!("  {} cargo-audit skipped: {}", "⚠".yellow(), e);
                 }
             }
         }
@@ -497,6 +493,8 @@ mod tests {
             score: 75.0,
             findings: vec![],
             tools_used: vec!["builtin".to_string()],
+            tool_statuses: Vec::new(),
+            ci_passed: true,
             summary: AuditSummary {
                 critical: 0,
                 high: 0,
