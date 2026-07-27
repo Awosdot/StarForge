@@ -10,6 +10,7 @@
 //! - `explain`  – plain-English explanation of a Soroban contract
 //! - `test`     – generate a test suite for a Soroban contract
 //! - `optimise` – gas-optimisation suggestions for a Soroban contract
+//! - `plan`     – AI-driven deployment planning with risk assessment
 
 use crate::utils::{
     ollama::{self, GenerateOptions},
@@ -98,6 +99,21 @@ pub enum AiCommands {
         #[arg(short, long, default_value = ollama::DEFAULT_MODEL)]
         model: String,
     },
+
+    /// Translate text using the local AI (for natural language support)
+    Translate {
+        /// The text to translate
+        #[arg(value_name = "TEXT")]
+        text: String,
+
+        /// Target language
+        #[arg(short, long)]
+        target: String,
+
+        /// Model to use
+        #[arg(short, long, default_value = ollama::DEFAULT_MODEL)]
+        model: String,
+    },
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
@@ -119,10 +135,11 @@ pub async fn handle(cmd: AiCommands) -> Result<()> {
         AiCommands::Optimise { file, model } => {
             handle_file_task(&file, &model, Task::Optimise).await
         }
+        AiCommands::Translate { text, target, model } => handle_translate(&text, &target, &model).await,
     }
 }
 
-// ─── Handler implementations ──────────────────────────────────────────────────
+// ─── Existing handlers (unchanged) ──────────────────────────────────────────
 
 async fn handle_status() -> Result<()> {
     p::header("Ollama Local LLM Status");
@@ -288,6 +305,46 @@ async fn handle_ask(question: &str, model: &str, temperature: f32, max_tokens: u
     Ok(())
 }
 
+async fn handle_translate(text: &str, target: &str, model: &str) -> Result<()> {
+    if text.trim().is_empty() {
+        anyhow::bail!("Please provide text to translate.");
+    }
+    if target.trim().is_empty() {
+        anyhow::bail!("Please provide a target language using --target");
+    }
+
+    ensure_ollama_running().await?;
+
+    p::header(&format!("AI Translation — to {}", target));
+    p::separator();
+    p::kv("Model", model);
+    println!();
+
+    let prompt = ollama::prompts::translation_prompt(text, target);
+    let opts = GenerateOptions {
+        temperature: Some(0.1),
+        num_predict: Some(4096),
+        num_ctx: Some(8192),
+    };
+
+    let spinner = p::spinner("Translating…");
+    let response = ollama::generate(model, &prompt, Some(opts))
+        .await
+        .context("LLM translation failed")?;
+    spinner.finish_and_clear();
+
+    println!("{}", response.response.trim());
+
+    if response.total_duration > 0 {
+        println!();
+        let ms = response.total_duration / 1_000_000;
+        p::kv("Time", &format!("{ms}ms"));
+    }
+
+    p::separator();
+    Ok(())
+}
+
 /// Shared handler for file-based tasks (audit / explain / test / optimise).
 async fn handle_file_task(file: &PathBuf, model: &str, task: Task) -> Result<()> {
     let code = std::fs::read_to_string(file)
@@ -322,6 +379,66 @@ async fn handle_file_task(file: &PathBuf, model: &str, task: Task) -> Result<()>
         println!();
         let ms = response.total_duration / 1_000_000;
         p::kv("Time", &format!("{ms}ms"));
+    }
+
+    p::separator();
+    Ok(())
+}
+
+// ─── NEW: AI Deployment Planning Handler ────────────────────────────────────
+
+async fn handle_plan(
+    file: &PathBuf,
+    network: &str,
+    output: &str,
+    max_gas_price: u64,
+    prefer_testnet: bool,
+    model: &str,
+    plan_only: bool,
+) -> Result<()> {
+    use crate::utils::ai_deployment_planner::{AiDeploymentPlanner, OutputFormat};
+
+    p::header(&format!("AI Deployment Planning — {}", file.display()));
+    p::separator();
+
+    p::kv("Contract", &file.display().to_string());
+    p::kv("Network", network);
+    p::kv("Model", model);
+    p::kv("Max Gas Price", &format!("{} gwei", max_gas_price));
+    p::kv("Prefer Testnet", if prefer_testnet { "yes" } else { "no" });
+    p::kv("Plan Only", if plan_only { "yes" } else { "no" });
+
+    if !plan_only {
+        p::info("⚠️  This will execute the deployment if approved.");
+        println!();
+    }
+
+    let output_format = match output {
+        "json" => OutputFormat::Json,
+        "yaml" => OutputFormat::Yaml,
+        _ => OutputFormat::Table,
+    };
+
+    let planner = AiDeploymentPlanner::new(
+        file.clone(),
+        network.to_string(),
+        if max_gas_price > 0 { Some(max_gas_price) } else { None },
+        prefer_testnet,
+        model.to_string(),
+        output_format,
+    );
+
+    let spinner = p::spinner("🤖 Analyzing contract and generating deployment plan…");
+    let plan = planner.generate_plan().await?;
+    spinner.finish_and_clear();
+
+    planner.print_plan(&plan)?;
+
+    if plan_only {
+        p::info("✅ Plan generated successfully (plan-only mode).");
+    } else {
+        println!();
+        p::info("🚀 Ready to deploy? Run: starforge deploy --plan <plan-file>");
     }
 
     p::separator();
