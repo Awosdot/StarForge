@@ -339,17 +339,13 @@ and rewrite it to minimise resource consumption while preserving behaviour.\n\n\
         )
     }
 
-    /// Prompt for turning a structured template community analysis report
-    /// into a short, actionable narrative summary for maintainers.
-    pub fn community_analysis_prompt(report_text: &str) -> String {
+    /// Prompt for translating text with high accuracy and cultural adaptation.
+    pub fn translation_prompt(text: &str, target_lang: &str) -> String {
         format!(
-            "You are helping maintainers of a Soroban smart-contract template marketplace \
-understand community usage and feedback. Given the structured analysis report below, write \
-a concise (5-8 sentence) narrative summary highlighting: which templates are thriving, which \
-need attention, the most impactful improvement to make next, and any notable community \
-sentiment. Do not repeat the raw data verbatim -- synthesise it into plain-English guidance.\n\n\
-{}",
-            report_text
+            "{}Translate the following text into {}, ensuring high accuracy (>90%) and appropriate cultural adaptation. \
+If the text contains CLI commands, error messages, or technical documentation, preserve the technical meaning perfectly.\n\n\
+Text to translate:\n{}",
+            SYSTEM_CONTEXT, target_lang, text
         )
     }
 }

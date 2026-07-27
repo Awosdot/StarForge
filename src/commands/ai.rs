@@ -100,35 +100,19 @@ pub enum AiCommands {
         model: String,
     },
 
-    /// AI-driven deployment planning with risk assessment and recommendations
-    Plan {
-        /// Path to the contract source file to deploy
-        #[arg(value_name = "FILE")]
-        file: PathBuf,
+    /// Translate text using the local AI (for natural language support)
+    Translate {
+        /// The text to translate
+        #[arg(value_name = "TEXT")]
+        text: String,
 
-        /// Target network (mainnet, testnet, or custom)
-        #[arg(short, long, default_value = "testnet")]
-        network: String,
-
-        /// Output format (table, json, yaml)
-        #[arg(short, long, default_value = "table")]
-        output: String,
-
-        /// Maximum gas price in gwei (0 for no limit)
-        #[arg(long, default_value_t = 0)]
-        max_gas_price: u64,
-
-        /// Prefer testnet even if mainnet is recommended
-        #[arg(long)]
-        prefer_testnet: bool,
+        /// Target language
+        #[arg(short, long)]
+        target: String,
 
         /// Model to use
         #[arg(short, long, default_value = ollama::DEFAULT_MODEL)]
         model: String,
-
-        /// Generate plan only (don't execute)
-        #[arg(long)]
-        plan_only: bool,
     },
 }
 
@@ -151,26 +135,7 @@ pub async fn handle(cmd: AiCommands) -> Result<()> {
         AiCommands::Optimise { file, model } => {
             handle_file_task(&file, &model, Task::Optimise).await
         }
-        AiCommands::Plan {
-            file,
-            network,
-            output,
-            max_gas_price,
-            prefer_testnet,
-            model,
-            plan_only,
-        } => {
-            handle_plan(
-                &file,
-                &network,
-                &output,
-                max_gas_price,
-                prefer_testnet,
-                &model,
-                plan_only,
-            )
-            .await
-        }
+        AiCommands::Translate { text, target, model } => handle_translate(&text, &target, &model).await,
     }
 }
 
@@ -326,6 +291,46 @@ async fn handle_ask(question: &str, model: &str, temperature: f32, max_tokens: u
     let response = ollama::generate(model, &prompt, Some(opts))
         .await
         .context("LLM generation failed")?;
+    spinner.finish_and_clear();
+
+    println!("{}", response.response.trim());
+
+    if response.total_duration > 0 {
+        println!();
+        let ms = response.total_duration / 1_000_000;
+        p::kv("Time", &format!("{ms}ms"));
+    }
+
+    p::separator();
+    Ok(())
+}
+
+async fn handle_translate(text: &str, target: &str, model: &str) -> Result<()> {
+    if text.trim().is_empty() {
+        anyhow::bail!("Please provide text to translate.");
+    }
+    if target.trim().is_empty() {
+        anyhow::bail!("Please provide a target language using --target");
+    }
+
+    ensure_ollama_running().await?;
+
+    p::header(&format!("AI Translation — to {}", target));
+    p::separator();
+    p::kv("Model", model);
+    println!();
+
+    let prompt = ollama::prompts::translation_prompt(text, target);
+    let opts = GenerateOptions {
+        temperature: Some(0.1),
+        num_predict: Some(4096),
+        num_ctx: Some(8192),
+    };
+
+    let spinner = p::spinner("Translating…");
+    let response = ollama::generate(model, &prompt, Some(opts))
+        .await
+        .context("LLM translation failed")?;
     spinner.finish_and_clear();
 
     println!("{}", response.response.trim());
