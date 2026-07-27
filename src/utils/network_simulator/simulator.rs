@@ -177,6 +177,8 @@ impl NetworkSimulator {
     /// Create a simulator with a custom configuration.
     pub fn with_config(config: SimulatorConfig) -> Self {
         let seed = config.deterministic.seed;
+        let enable_failure_injection = config.enable_failure_injection;
+        let initial_accounts = config.initial_accounts.clone();
         let mut sim = Self {
             ledger: LedgerInfo {
                 sequence: config.initial_ledger_sequence,
@@ -193,15 +195,15 @@ impl NetworkSimulator {
             tx_nonce: 0,
             tx_history: Vec::new(),
             wasm_store: HashMap::new(),
-            config,
+            config: config.clone(),
         };
 
-        if config.enable_failure_injection {
+        if enable_failure_injection {
             sim.failure_injector.enable();
         }
 
         // Create initial accounts.
-        for (key_or_name, balance) in &config.initial_accounts {
+        for (key_or_name, balance) in &initial_accounts {
             let pk = if key_or_name.starts_with('G') && key_or_name.len() == 56 {
                 key_or_name.clone()
             } else {
@@ -848,7 +850,7 @@ mod tests {
             .submit_invoke(cid, "increment", &[], &account.public_key, 100_000)
             .unwrap();
         assert_eq!(receipt.status, "success");
-        assert_eq!(receipt.contract_id, cid);
+        assert_eq!(&receipt.contract_id, cid);
         assert_eq!(receipt.function, "increment");
         assert_eq!(sim.tx_history.len(), 1);
     }
@@ -905,7 +907,7 @@ mod tests {
         let contract = sim
             .deploy_contract("wh", &account.public_key)
             .unwrap();
-        sim.write_contract_storage(&contract.contract_id, "key", "value")
+        sim.write_contract_storage(&contract.contract_id, "key", "value".to_string())
             .unwrap();
 
         let snap_id = sim.take_snapshot("before-operation");
@@ -956,8 +958,8 @@ mod tests {
         let check = |seed: u64| -> (u32, usize, usize) {
             let mut sim = NetworkSimulator::new().with_deterministic_seed(seed);
             sim.create_account(500.0);
-            sim.deploy_contract("wh", &sim.list_accounts()[0].public_key)
-                .unwrap();
+            let pk = sim.list_accounts()[0].public_key.clone();
+            sim.deploy_contract("wh", &pk).unwrap();
             let snap_id = sim.take_snapshot("check");
             let snap = sim.snapshot_manager.load(&snap_id).unwrap().clone();
             (snap.ledger_info.sequence, snap.accounts.len(), snap.contracts.len())
@@ -1014,8 +1016,8 @@ mod tests {
     fn reset_clears_state() {
         let mut sim = NetworkSimulator::new();
         sim.create_account(100.0);
-        sim.deploy_contract("wh", &sim.list_accounts()[0].public_key)
-            .unwrap();
+        let pk = sim.list_accounts()[0].public_key.clone();
+        sim.deploy_contract("wh", &pk).unwrap();
         assert_eq!(sim.accounts.len(), 1);
         assert_eq!(sim.contracts.len(), 1);
 

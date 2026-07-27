@@ -356,6 +356,15 @@ fn extract_struct_fields(lines: &[&str], start: usize) -> Vec<ExtractedField> {
     let mut depth = 0;
     let mut pending_field_doc = Vec::new();
 
+    // Unit structs (`struct Foo;`) and tuple structs without a brace body
+    // must not scan subsequent `impl` blocks for fake fields.
+    if let Some(header) = lines.get(start) {
+        let trimmed = header.trim();
+        if trimmed.contains(';') && !trimmed.contains('{') {
+            return fields;
+        }
+    }
+
     for line in &lines[start..] {
         let trimmed = line.trim();
 
@@ -364,6 +373,12 @@ fn extract_struct_fields(lines: &[&str], start: usize) -> Vec<ExtractedField> {
                 in_struct = true;
                 depth += trimmed.chars().filter(|&c| c == '{').count();
                 depth -= trimmed.chars().filter(|&c| c == '}').count();
+                if depth == 0 {
+                    break;
+                }
+            } else if trimmed.ends_with(';') {
+                // Reached another item without opening a struct body.
+                break;
             }
             continue;
         }
@@ -380,6 +395,16 @@ fn extract_struct_fields(lines: &[&str], start: usize) -> Vec<ExtractedField> {
             continue;
         }
 
+        // Skip nested items / methods accidentally encountered.
+        if trimmed.starts_with("fn ")
+            || trimmed.starts_with("pub fn ")
+            || trimmed.starts_with("impl ")
+            || trimmed.starts_with("pub impl ")
+        {
+            pending_field_doc.clear();
+            continue;
+        }
+
         // field: Type,
         if let Some(colon_pos) = trimmed.find(':') {
             let field_part = trimmed[..colon_pos]
@@ -392,7 +417,14 @@ fn extract_struct_fields(lines: &[&str], start: usize) -> Vec<ExtractedField> {
                 .to_string();
             if !field_part.is_empty()
                 && !field_part.starts_with("//")
-                && field_part.chars().next().map_or(false, |c| c.is_alphabetic() || c == '_')
+                && !field_part.contains('(')
+                && field_part
+                    .chars()
+                    .next()
+                    .map_or(false, |c| c.is_alphabetic() || c == '_')
+                && field_part
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_')
             {
                 fields.push(ExtractedField {
                     name: field_part.to_string(),
@@ -671,7 +703,7 @@ impl HtmlDocGenerator {
             .filter(|f| f.visibility == Visibility::Public)
             .map(|f| {
                 format!(
-                    r#"<li><a href="#fn-{}">{}</a></li>"#,
+                    r##"<li><a href="#fn-{}">{}</a></li>"##,
                     html_id(&f.name),
                     f.name
                 )

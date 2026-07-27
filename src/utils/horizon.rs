@@ -53,34 +53,6 @@ pub async fn fund_account(public_key: &str, network: &str) -> Result<()> {
         friendbot_url(network)?.unwrap_or_else(|| "https://friendbot.stellar.org".to_string());
     let separator = if friendbot.contains('?') { '&' } else { '?' };
     let url = format!("{}{}addr={}", friendbot, separator, public_key);
-    let res = match ureq::get(&url).call() {
-        Ok(res) => res,
-        Err(ureq::Error::Status(400, _)) => {
-            anyhow::bail!(
-                "Friendbot rejected the funding request for '{}'.\n\
-                 This usually means the account has already been funded on {}.\n\
-                 Check the balance: starforge wallet show",
-                public_key,
-                network
-            )
-        }
-        Err(ureq::Error::Status(status, _)) => {
-            anyhow::bail!(
-                "Friendbot returned HTTP {} for network '{}'.\n\
-                 Friendbot is only available on testnet — verify your active network: starforge network show",
-                status,
-                network
-            )
-        }
-        Err(error) => {
-            return Err(error).with_context(|| {
-                format!(
-                    "Could not reach Friendbot on '{}'. Check your internet connection.",
-                    network
-                )
-            })
-        }
-    };
     let res = HTTP_CLIENT
         .get(&url)
         .send()
@@ -88,6 +60,14 @@ pub async fn fund_account(public_key: &str, network: &str) -> Result<()> {
         .with_context(|| format!("Friendbot request failed for {}", network))?;
     if res.status() == 200 {
         Ok(())
+    } else if res.status() == 400 {
+        anyhow::bail!(
+            "Friendbot rejected the funding request for '{}'.\n\
+             This usually means the account has already been funded on {}.\n\
+             Check the balance: starforge wallet show",
+            public_key,
+            network
+        )
     } else {
         anyhow::bail!(
             "Friendbot returned HTTP {} for network '{}'.\n\

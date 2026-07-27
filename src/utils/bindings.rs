@@ -166,7 +166,8 @@ fn contract_enum(udt: &ScSpecUdtEnumV0) -> ContractEnum {
             .iter()
             .map(|case| ContractVariant {
                 name: case.name.to_string(),
-                type_name: case.type_.as_ref().map(spec_type_name),
+                // Integer UDTs only expose a discriminant value, not an associated type.
+                type_name: None,
             })
             .collect(),
     }

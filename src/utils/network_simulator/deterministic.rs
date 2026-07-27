@@ -7,6 +7,7 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use sha2::{Sha256, Digest};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::sync::Mutex;
 
 // ── Deterministic Configuration ───────────────────────────────────────────────
@@ -42,6 +43,14 @@ impl Default for DeterministicConfig {
 pub struct SeededRng {
     inner: Mutex<StdRng>,
     seed: u64,
+}
+
+impl fmt::Debug for SeededRng {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SeededRng")
+            .field("seed", &self.seed)
+            .finish()
+    }
 }
 
 impl SeededRng {

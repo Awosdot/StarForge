@@ -320,7 +320,7 @@ fn handle_vote(args: VoteArgs) -> Result<()> {
     p::kv("Vote", &choice_label);
     p::kv(
         "Tally",
-        format!(
+        &format!(
             "{} for / {} against (threshold: {})",
             governance::votes_for(&proposal),
             governance::votes_against(&proposal),
@@ -590,7 +590,7 @@ fn print_proposal_detail(proposal: &GovernanceProposal) {
     if let Some(expires) = &proposal.timelock_expires_at {
         p::kv("Timelock expires", expires);
         if let Some(remaining) = governance::timelock_remaining(proposal) {
-            p::kv("Time remaining", format!("{} hours", remaining.num_hours()));
+            p::kv("Time remaining", &format!("{} hours", remaining.num_hours()));
         }
     }
     if proposal.is_emergency {

@@ -221,11 +221,11 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             name,
             version,
             force,
-        } => install(source, name, version, force),
-        TemplateCommands::Update { name, all } => update(name, all),
-        TemplateCommands::Test { name, verbose } => template_test(name, verbose),
-        TemplateCommands::Docs { name, output } => template_docs(name, output),
-        TemplateCommands::Audit { name } => template_audit(name),
+        } => install(source, name, version, force).await,
+        TemplateCommands::Update { name, all } => update(name, all).await,
+        TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
+        TemplateCommands::Docs { name, output } => template_docs(name, output).await,
+        TemplateCommands::Audit { name } => template_audit(name).await,
     }
 }
 
@@ -760,7 +760,7 @@ async fn update(name: Option<String>, all: bool) -> Result<()> {
 
 // ─── template test ────────────────────────────────────────────────────────────
 
-fn template_test(name: String, verbose: bool) -> Result<()> {
+async fn template_test(name: String, verbose: bool) -> Result<()> {
     use std::process::Command;
 
     p::header(&format!("Template Test: {}", name));
@@ -775,7 +775,7 @@ fn template_test(name: String, verbose: bool) -> Result<()> {
         builtin
     } else {
         // Fall back to path stored in the registry.
-        let entry = templates::get_template(&name)?;
+        let entry = templates::get_template(&name).await?;
         match entry.path {
             Some(ref p) => std::path::PathBuf::from(p),
             None => anyhow::bail!(
@@ -807,8 +807,8 @@ fn template_test(name: String, verbose: bool) -> Result<()> {
 
 // ─── template docs ────────────────────────────────────────────────────────────
 
-fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Result<()> {
-    let entry = templates::get_template(&name)?;
+async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Result<()> {
+    let entry = templates::get_template(&name).await?;
 
     let mut md = String::new();
 
@@ -903,8 +903,8 @@ fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Result<()>
 
 // ─── template audit ───────────────────────────────────────────────────────────
 
-fn template_audit(name: Option<String>) -> Result<()> {
-    let registry = templates::load_registry()?;
+async fn template_audit(name: Option<String>) -> Result<()> {
+    let registry = templates::load_registry().await?;
 
     let entries: Vec<&templates::TemplateEntry> = match &name {
         Some(n) => registry
