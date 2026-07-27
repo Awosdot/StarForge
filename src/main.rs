@@ -137,6 +137,11 @@ enum Commands {
     #[command(subcommand)]
     Gas(commands::gas::GasCommands),
 
+    /// AI-assisted deployment cost management: budgets, forecasting,
+    /// cross-network comparison, and reporting
+    #[command(subcommand)]
+    Cost(commands::cost::CostCommands),
+
     /// Manage third-party plugins
     #[command(subcommand)]
     Plugin(commands::plugin::PluginCommands),
@@ -237,43 +242,15 @@ enum Commands {
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
 
-    /// AI-powered template security scanning
+    /// Generate a Soroban smart contract from a natural language prompt (OpenAI)
     #[command(subcommand)]
-    TemplateSecurity(commands::template_security::TemplateSecurityCommands),
+    Generate(commands::generate::GenerateCommands),
 
-    /// AI-powered deployment optimization
+    /// AI Contract Completion Assistant (offline code completion, boilerplate, stubs)
     #[command(subcommand)]
-    DeploymentOptimize(commands::deployment_optimize::DeploymentOptimizeCommands),
+    Complete(commands::complete::CompleteCommands),
 
-    /// AI-powered multi-network deployment support
-    #[command(subcommand)]
-    MultiNetwork(commands::multi_network::MultiNetworkCommands),
-
-    /// AI-powered deployment automation
-    #[command(subcommand)]
-    DeploymentAutomate(commands::deployment_automate::DeploymentAutomateCommands),
-
-    /// AI-driven performance profiling (hotspots, bottlenecks, regressions)
-    #[command(subcommand)]
-    AiProfile(commands::ai_profile::AiProfileCommands),
-
-    /// AI-powered IDE integration (VS Code, IntelliJ, Neovim, Zed)
-    #[command(subcommand)]
-    AiIde(commands::ai_ide::AiIdeCommands),
-
-    /// AI-driven test maintenance (drift, obsolete tests, coverage gaps)
-    #[command(subcommand)]
-    AiTestMaintain(commands::ai_test_maintain::AiTestMaintainCommands),
-
-    /// AI-driven deployment testing (pre/post checks, readiness gate)
-    #[command(subcommand)]
-    AiDeploymentTest(commands::ai_deployment_test::AiDeploymentTestCommands),
-
-    /// Formal verification of Soroban contracts (harness, properties, reports)
-    #[command(subcommand)]
-    Verify(commands::verify::VerifyCommands),
-
-    /// Dispatch an installed third-party plugin command
+    /// Run an installed external plugin by name
     #[command(external_subcommand)]
     External(Vec<String>),
 }
@@ -320,6 +297,7 @@ async fn main() {
         Commands::Benchmark(_) => "benchmark",
         Commands::Test(_) => "test",
         Commands::Gas(_) => "gas",
+        Commands::Cost(_) => "cost",
         Commands::Plugin(_) => "plugin",
         Commands::Privacy(_) => "privacy",
         Commands::Project(_) => "project",
@@ -345,16 +323,9 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
+        Commands::Generate(_) => "generate",
+        Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
-        Commands::TemplateSecurity(_) => "template-security",
-        Commands::DeploymentOptimize(_) => "deployment-optimize",
-        Commands::MultiNetwork(_) => "multi-network",
-        Commands::DeploymentAutomate(_) => "deployment-automate",
-        Commands::AiProfile(_) => "ai-profile",
-        Commands::AiIde(_) => "ai-ide",
-        Commands::AiTestMaintain(_) => "ai-test-maintain",
-        Commands::AiDeploymentTest(_) => "ai-deployment-test",
-        Commands::Verify(_) => "verify",
     }
     .to_string();
 
@@ -399,6 +370,7 @@ async fn main() {
         Commands::Benchmark(args) => commands::benchmark::handle(args).await,
         Commands::Test(args) => commands::test::handle(args).await,
         Commands::Gas(args) => commands::gas::handle(args).await,
+        Commands::Cost(args) => commands::cost::handle(args).await,
         Commands::Plugin(args) => commands::plugin::handle(args).await,
         Commands::Privacy(cmd) => commands::privacy::handle(cmd).await,
         Commands::Project(cmd) => commands::project::handle(cmd).await,
@@ -427,15 +399,6 @@ async fn main() {
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::TemplateSecurity(cmd) => commands::template_security::handle(cmd).await,
-        Commands::DeploymentOptimize(cmd) => commands::deployment_optimize::handle(cmd).await,
-        Commands::MultiNetwork(cmd) => commands::multi_network::handle(cmd).await,
-        Commands::DeploymentAutomate(cmd) => commands::deployment_automate::handle(cmd).await,
-        Commands::AiProfile(cmd) => commands::ai_profile::handle(cmd).await,
-        Commands::AiIde(cmd) => commands::ai_ide::handle(cmd).await,
-        Commands::AiTestMaintain(cmd) => commands::ai_test_maintain::handle(cmd).await,
-        Commands::AiDeploymentTest(cmd) => commands::ai_deployment_test::handle(cmd).await,
-        Commands::Verify(cmd) => commands::verify::handle(cmd).await,
     };
     let duration = start.elapsed();
 
