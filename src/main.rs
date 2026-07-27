@@ -264,9 +264,17 @@ enum Commands {
     #[command(subcommand)]
     Complete(commands::complete::CompleteCommands),
 
-    /// Run an installed external plugin by name
-    #[command(external_subcommand)]
-    External(Vec<String>),
+    /// AI-powered multi-network deployment support
+    #[command(subcommand)]
+    MultiNetwork(commands::multi_network::MultiNetworkCommands),
+
+    /// AI-powered deployment automation
+    #[command(subcommand)]
+    DeploymentAutomate(commands::deployment_automate::DeploymentAutomateCommands),
+
+    /// AI-powered deployment compliance checks, regulatory validation, and reporting
+    #[command(subcommand)]
+    Compliance(commands::compliance::ComplianceCommands),
 }
 
 #[tokio::main]
@@ -341,6 +349,11 @@ async fn main() {
         Commands::Generate(_) => "generate",
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
+        Commands::TemplateSecurity(_) => "template-security",
+        Commands::DeploymentOptimize(_) => "deployment-optimize",
+        Commands::MultiNetwork(_) => "multi-network",
+        Commands::Compliance(_) => "compliance",
+        Commands::DeploymentAutomate(_) => "deployment-automate",
     }
     .to_string();
 
@@ -411,6 +424,11 @@ async fn main() {
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
+        Commands::TemplateSecurity(cmd) => commands::template_security::handle(cmd).await,
+        Commands::DeploymentOptimize(cmd) => commands::deployment_optimize::handle(cmd).await,
+        Commands::MultiNetwork(cmd) => commands::multi_network::handle(cmd).await,
+        Commands::Compliance(cmd) => commands::compliance::handle(cmd),
+        Commands::DeploymentAutomate(cmd) => commands::deployment_automate::handle(cmd).await,
     };
     let duration = start.elapsed();
 

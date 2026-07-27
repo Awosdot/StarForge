@@ -63,6 +63,9 @@ pub struct DeployArgs {
     /// Disable automatic rollback after a failed executed deploy
     #[arg(long, default_value = "false")]
     pub no_auto_rollback: bool,
+    /// Run AI-driven compliance checks before deployment (regulatory, security, best practices)
+    #[arg(long, default_value = "false")]
+    pub compliance: bool,
 }
 
 /// Extract a Soroban contract id (56-char `C…` strkey) from CLI stdout/stderr.
@@ -359,6 +362,94 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
     p::separator();
 
     let wasm_hash = compute_local_wasm_hash(&wasm_bytes);
+
+    // ── AI-driven compliance checks (regulatory, security, best practices) ─
+    if args.compliance {
+        p::header("AI Deployment Compliance Checks");
+        let request_id = format!("deploy-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0000"));
+        let contract_id = format!("wasm:{}", &wasm_hash[..16]);
+
+        match crate::utils::compliance::run_compliance_checks(
+            &request_id,
+            &contract_id,
+            &args.network,
+            wallet.name.as_str(),
+        ) {
+            Ok(report) => {
+                p::kv("Compliance Report ID", &report.request_id[..12]);
+                p::kv("Regulatory checks", &report.regulatory_checks.len().to_string());
+                p::kv("Best practices", &report.best_practices.len().to_string());
+
+                for check in &report.checks {
+                    let status = if check.passed {
+                        "✓".green()
+                    } else {
+                        "✗".red()
+                    };
+                    let sev_label = match check.severity {
+                        crate::utils::compliance::ComplianceSeverity::Blocking => "[BLOCKING]".red(),
+                        crate::utils::compliance::ComplianceSeverity::Warning => "[WARNING]".yellow(),
+                        crate::utils::compliance::ComplianceSeverity::Info => "[INFO]".dimmed(),
+                    };
+                    if !check.passed {
+                        println!("  {} {} {} — {}", status, sev_label, check.policy_name, check.message.dimmed());
+                    }
+                }
+
+                if let Some(ref risk) = report.risk_assessment {
+                    println!();
+                    p::kv(
+                        "Risk Level",
+                        &match risk.overall_level {
+                            crate::utils::compliance::RiskLevel::Low => risk.overall_level.to_string().green(),
+                            crate::utils::compliance::RiskLevel::Medium => risk.overall_level.to_string().yellow(),
+                            crate::utils::compliance::RiskLevel::High => risk.overall_level.to_string().red(),
+                            crate::utils::compliance::RiskLevel::Critical => risk.overall_level.to_string().red().bold(),
+                        }.to_string(),
+                    );
+                    p::kv("Risk Score", &format!("{}/100", risk.overall_score));
+
+                    if !risk.approved_for_deployment {
+                        if args.yes {
+                            p::warn("Deployment NOT approved by risk assessment, but proceeding due to --yes.");
+                        } else {
+                            p::error(&format!(
+                                "Deployment blocked by risk assessment (level: {}, score: {}/100). Use --yes to force.",
+                                risk.overall_level, risk.overall_score
+                            ));
+                        }
+                    }
+                }
+
+                // Enforce blocking policies: bail unless --yes is set
+                if report.blocking_count > 0 && !args.yes {
+                    p::separator();
+                    println!();
+                    anyhow::bail!(
+                        "Compliance check failed: {} blocking issue(s) found.\n  Address the issues or run with --yes to force deployment.\n  Run `starforge compliance report show {}` for full details.",
+                        report.blocking_count,
+                        report.request_id
+                    );
+                }
+
+                if report.warning_count > 0 {
+                    println!();
+                    p::warn(&format!(
+                        "{} warning(s) found — review recommended before deploying.",
+                        report.warning_count
+                    ));
+                }
+            }
+            Err(e) => {
+                if args.yes {
+                    p::warn(&format!("Compliance check failed (bypassed with --yes): {}", e));
+                } else {
+                    anyhow::bail!("Compliance check failed: {}\n  Run with --yes to skip compliance checks.", e);
+                }
+            }
+        }
+        p::separator();
+    }
 
     // --dry-run: validate everything and print deployment plan, then exit.
     if args.dry_run {
