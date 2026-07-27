@@ -551,8 +551,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     success: false,
                     error: Some(stderr.clone()),
                 },
-            ))
-            .await;
+            ));
 
             // Automatic rollback safety net: revert to the last good deployment.
             handle_failed_deploy_rollback(
@@ -590,10 +589,8 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 success: true,
                 error: None,
             },
-        ))
-        .await;
+        ));
 
-        let _ = emit_deployment_monitoring_alert(&args.network, parsed_contract_id.as_deref());
         p::success("Deployment executed successfully!");
         p::kv("Recorded deployment", &record_id[..8.min(record_id.len())]);
         println!("{}", stdout);

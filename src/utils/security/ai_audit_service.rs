@@ -162,14 +162,10 @@ impl AiAuditService {
             .await
             .map_err(|e| anyhow!("Failed to call Anthropic API: {}", e))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+        if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "Anthropic API error {}: {}",
-                status,
-                error_text
-            ));
+            return Err(anyhow!("Anthropic API error {}: {}", status, error_text));
         }
 
         let anthropic_response: AnthropicResponse = response

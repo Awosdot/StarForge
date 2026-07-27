@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::utils::doc_templates::{TemplateContext, TemplateKind, TemplateManager};
-use crate::utils::docs::{DocEntry, FunctionDoc, EventDoc, StorageDoc};
+use crate::utils::docs::{DocEntry, EventDoc, FunctionDoc, StorageDoc};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Public API

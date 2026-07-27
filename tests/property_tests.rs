@@ -80,10 +80,10 @@ proptest! {
     /// Keys shorter or longer than 56 characters must fail.
     #[test]
     fn prop_public_key_wrong_length_fails(
-        (len, body) in (0usize..200usize).prop_flat_map(|len| stellar_chars(len).prop_map(move |body| (len, body))),
+        body in stellar_chars(200),
     ) {
-        prop_assume!(body.len() != 55); // 55-char body + 'G' = 56 total = valid length
         let key = format!("G{}", body);
+        prop_assume!(key.len() != 56);
         prop_assert!(
             starforge::utils::config::validate_public_key(&key).is_err(),
             "expected Err for key length {} (key={:?})", key.len(), key
@@ -133,10 +133,10 @@ proptest! {
     /// Secret keys shorter or longer than 56 must fail (plain key path).
     #[test]
     fn prop_secret_key_wrong_length_fails(
-        (len, body) in (0usize..200usize).prop_flat_map(|len| stellar_chars(len).prop_map(move |body| (len, body))),
+        body in stellar_chars(200),
     ) {
-        prop_assume!(body.len() != 55);
         let key = format!("S{}", body);
+        prop_assume!(key.len() != 56);
         prop_assert!(
             starforge::utils::config::validate_secret_key(&key).is_err(),
             "expected Err for secret key length {} (key={:?})", key.len(), key
