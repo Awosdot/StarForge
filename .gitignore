@@ -172,8 +172,6 @@ benchmark-results/
 
 # Fuzzing
 fuzz/
-# ...but the lockfile is required: CI builds the harnesses with --locked.
-!fuzz/Cargo.lock
 corpus/
 crashes/
 
