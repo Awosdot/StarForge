@@ -479,7 +479,7 @@ fn handle_property_add(args: PropertyAddArgs) -> Result<()> {
     let id = format!(
         "prop-{}-{}",
         &args.contract[..args.contract.len().min(8)],
-        &args.name.to_lowercase().replace(' ', "-")
+        args.name.to_lowercase().replace(' ', "-")
     );
 
     if props.iter().any(|p| p.id == id) {

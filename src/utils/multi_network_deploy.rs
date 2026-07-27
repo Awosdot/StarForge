@@ -5,6 +5,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::collections::HashMap;
 
 /// Multi-network deployment configuration.
@@ -166,31 +167,37 @@ impl MultiNetworkDeployer {
     /// Create default multi-network configuration.
     pub fn create_default_config() -> MultiNetworkConfig {
         let mut networks = HashMap::new();
-        
-        networks.insert("testnet".to_string(), NetworkConfig {
-            network_name: "testnet".to_string(),
-            network_type: NetworkType::Testnet,
-            horizon_url: "https://horizon-testnet.stellar.org".to_string(),
-            soroban_rpc_url: "https://soroban-testnet.stellar.org".to_string(),
-            network_passphrase: "Test SDF Network ; September 2015".to_string(),
-            gas_price: 100,
-            reliability_score: 0.95,
-            estimated_cost_per_tx: 0.00001,
-            confirmation_time_seconds: 5.0,
-        });
-        
-        networks.insert("mainnet".to_string(), NetworkConfig {
-            network_name: "mainnet".to_string(),
-            network_type: NetworkType::Mainnet,
-            horizon_url: "https://horizon.stellar.org".to_string(),
-            soroban_rpc_url: "https://mainnet.sorobanrpc.com".to_string(),
-            network_passphrase: "Public Global Stellar Network ; September 2015".to_string(),
-            gas_price: 1000,
-            reliability_score: 0.99,
-            estimated_cost_per_tx: 0.001,
-            confirmation_time_seconds: 10.0,
-        });
-        
+
+        networks.insert(
+            "testnet".to_string(),
+            NetworkConfig {
+                network_name: "testnet".to_string(),
+                network_type: NetworkType::Testnet,
+                horizon_url: "https://horizon-testnet.stellar.org".to_string(),
+                soroban_rpc_url: "https://soroban-testnet.stellar.org".to_string(),
+                network_passphrase: "Test SDF Network ; September 2015".to_string(),
+                gas_price: 100,
+                reliability_score: 0.95,
+                estimated_cost_per_tx: 0.00001,
+                confirmation_time_seconds: 5.0,
+            },
+        );
+
+        networks.insert(
+            "mainnet".to_string(),
+            NetworkConfig {
+                network_name: "mainnet".to_string(),
+                network_type: NetworkType::Mainnet,
+                horizon_url: "https://horizon.stellar.org".to_string(),
+                soroban_rpc_url: "https://mainnet.sorobanrpc.com".to_string(),
+                network_passphrase: "Public Global Stellar Network ; September 2015".to_string(),
+                gas_price: 1000,
+                reliability_score: 0.99,
+                estimated_cost_per_tx: 0.001,
+                confirmation_time_seconds: 10.0,
+            },
+        );
+
         MultiNetworkConfig {
             networks,
             deployment_strategy: DeploymentStrategy::TestnetFirst,
@@ -218,7 +225,7 @@ impl MultiNetworkDeployer {
             estimated_cost_per_tx: 0.0005,
             confirmation_time_seconds: 8.0,
         };
-        
+
         config.networks.insert(name, network_config);
         Ok(())
     }
@@ -226,7 +233,7 @@ impl MultiNetworkDeployer {
     /// Compare networks for deployment.
     pub fn compare_networks(config: &MultiNetworkConfig) -> NetworkComparison {
         let mut entries = Vec::new();
-        
+
         for (name, net_config) in &config.networks {
             let cost_score = if net_config.estimated_cost_per_tx < 0.001 {
                 100.0
@@ -235,7 +242,7 @@ impl MultiNetworkDeployer {
             } else {
                 50.0
             };
-            
+
             let speed_score = if net_config.confirmation_time_seconds < 5.0 {
                 100.0
             } else if net_config.confirmation_time_seconds < 10.0 {
@@ -243,25 +250,36 @@ impl MultiNetworkDeployer {
             } else {
                 50.0
             };
-            
+
             let reliability_score = net_config.reliability_score * 100.0;
             let overall_score = (cost_score + speed_score + reliability_score) / 3.0;
-            
+
             let (pros, cons) = match net_config.network_type {
                 NetworkType::Testnet => (
-                    vec!["Low cost".to_string(), "Fast confirmation".to_string(), "Safe for testing".to_string()],
+                    vec![
+                        "Low cost".to_string(),
+                        "Fast confirmation".to_string(),
+                        "Safe for testing".to_string(),
+                    ],
                     vec!["Not production".to_string(), "Test tokens only".to_string()],
                 ),
                 NetworkType::Mainnet => (
-                    vec!["Production ready".to_string(), "Real value".to_string(), "High reliability".to_string()],
+                    vec![
+                        "Production ready".to_string(),
+                        "Real value".to_string(),
+                        "High reliability".to_string(),
+                    ],
                     vec!["Higher cost".to_string(), "Slower confirmation".to_string()],
                 ),
                 NetworkType::Custom => (
                     vec!["Custom configuration".to_string(), "Flexible".to_string()],
-                    vec!["Variable reliability".to_string(), "Custom setup required".to_string()],
+                    vec![
+                        "Variable reliability".to_string(),
+                        "Custom setup required".to_string(),
+                    ],
                 ),
             };
-            
+
             entries.push(NetworkComparisonEntry {
                 network_name: name.clone(),
                 cost_score,
@@ -272,13 +290,14 @@ impl MultiNetworkDeployer {
                 cons,
             });
         }
-        
+
         entries.sort_by(|a, b| b.overall_score.partial_cmp(&a.overall_score).unwrap());
-        
-        let recommended = entries.first()
+
+        let recommended = entries
+            .first()
             .map(|e| e.network_name.clone())
             .unwrap_or_else(|| "testnet".to_string());
-        
+
         NetworkComparison {
             networks: entries,
             recommended_for_deployment: recommended,
@@ -294,30 +313,38 @@ impl MultiNetworkDeployer {
     pub fn assess_risk(config: &MultiNetworkConfig, wasm_size_kb: f64) -> RiskAssessment {
         let mut risk_factors = Vec::new();
         let mut recommendations = Vec::new();
-        
+
         // WASM size risk
         if wasm_size_kb > 100.0 {
             risk_factors.push(RiskFactor {
                 factor: "Large WASM size".to_string(),
                 severity: "medium".to_string(),
-                description: format!("WASM is {:.1} KB, may increase deployment costs", wasm_size_kb),
+                description: format!(
+                    "WASM is {:.1} KB, may increase deployment costs",
+                    wasm_size_kb
+                ),
                 mitigation: "Consider using soroban-optimize to reduce size".to_string(),
             });
             recommendations.push("Optimize WASM size before deployment".to_string());
         }
-        
+
         // Network-specific risks
         for (name, net_config) in &config.networks {
-            if net_config.network_type == NetworkType::Mainnet && net_config.reliability_score < 0.98 {
+            if net_config.network_type == NetworkType::Mainnet
+                && net_config.reliability_score < 0.98
+            {
                 risk_factors.push(RiskFactor {
                     factor: format!("Mainnet reliability for {}", name),
                     severity: "high".to_string(),
-                    description: format!("Reliability score {:.2} below threshold", net_config.reliability_score),
+                    description: format!(
+                        "Reliability score {:.2} below threshold",
+                        net_config.reliability_score
+                    ),
                     mitigation: "Consider deploying during low-traffic periods".to_string(),
                 });
             }
         }
-        
+
         // Overall risk level
         let overall_risk = if risk_factors.is_empty() {
             "low".to_string()
@@ -329,15 +356,15 @@ impl MultiNetworkDeployer {
                 "medium".to_string()
             }
         };
-        
+
         let approved = overall_risk != "high";
-        
+
         if approved {
             recommendations.push("Deployment approved based on risk assessment".to_string());
         } else {
             recommendations.push("Address high-risk factors before deployment".to_string());
         }
-        
+
         RiskAssessment {
             overall_risk_level: overall_risk,
             risk_factors,
@@ -354,15 +381,15 @@ impl MultiNetworkDeployer {
     ) -> Result<MultiNetworkDeploymentResult> {
         let deployment_id = uuid::Uuid::new_v4().to_string();
         let timestamp = chrono::Utc::now().to_rfc3339();
-        
+
         let mut network_results = HashMap::new();
         let mut cost_by_network = HashMap::new();
         let mut total_cost = 0.0;
-        
+
         let wasm_bytes = std::fs::read(wasm_path)
             .with_context(|| format!("Failed to read WASM file: {}", wasm_path))?;
         let wasm_size_kb = wasm_bytes.len() as f64 / 1024.0;
-        
+
         // Risk assessment
         let risk_assessment = if config.risk_assessment_enabled {
             Self::assess_risk(config, wasm_size_kb)
@@ -374,16 +401,19 @@ impl MultiNetworkDeployer {
                 approved_for_deployment: true,
             }
         };
-        
+
         if !risk_assessment.approved_for_deployment {
-            anyhow::bail!("Deployment not approved by risk assessment: {}", risk_assessment.overall_risk_level);
+            anyhow::bail!(
+                "Deployment not approved by risk assessment: {}",
+                risk_assessment.overall_risk_level
+            );
         }
-        
+
         // Deploy to each target network
         for network_name in &target_networks {
             if let Some(net_config) = config.networks.get(network_name) {
                 let result = Self::deploy_to_single_network(net_config, &wasm_bytes).await;
-                
+
                 match result {
                     Ok(deployment_result) => {
                         let cost = deployment_result.cost_usd;
@@ -392,42 +422,45 @@ impl MultiNetworkDeployer {
                         network_results.insert(network_name.clone(), deployment_result);
                     }
                     Err(e) => {
-                        network_results.insert(network_name.clone(), NetworkDeploymentResult {
-                            network_name: network_name.clone(),
-                            status: DeploymentStatus::Failed,
-                            contract_id: None,
-                            transaction_hash: None,
-                            gas_used: 0,
-                            cost_usd: 0.0,
-                            deployment_time_ms: 0,
-                            error_message: Some(e.to_string()),
-                        });
+                        network_results.insert(
+                            network_name.clone(),
+                            NetworkDeploymentResult {
+                                network_name: network_name.clone(),
+                                status: DeploymentStatus::Failed,
+                                contract_id: None,
+                                transaction_hash: None,
+                                gas_used: 0,
+                                cost_usd: 0.0,
+                                deployment_time_ms: 0,
+                                error_message: Some(e.to_string()),
+                            },
+                        );
                     }
                 }
             }
         }
-        
+
         // Determine most cost-effective network
         let most_cost_effective = cost_by_network
             .iter()
             .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
             .map(|(name, _)| name.clone())
             .unwrap_or_else(|| "unknown".to_string());
-        
+
         // Calculate cost savings (compared to deploying to all networks individually)
         let cost_savings = if config.cost_optimization_enabled {
             15.0 // Estimated savings from batch optimization
         } else {
             0.0
         };
-        
+
         // Synchronization status
         let successful_networks: Vec<String> = network_results
             .iter()
             .filter(|(_, r)| matches!(r.status, DeploymentStatus::Success))
             .map(|(n, _)| n.clone())
             .collect();
-        
+
         let synchronization_status = SynchronizationStatus {
             synchronized: successful_networks.len() == target_networks.len(),
             synchronized_networks: successful_networks.clone(),
@@ -439,7 +472,7 @@ impl MultiNetworkDeployer {
                 .collect(),
             last_sync_timestamp: timestamp.clone(),
         };
-        
+
         Ok(MultiNetworkDeploymentResult {
             deployment_id,
             timestamp,
@@ -465,10 +498,11 @@ impl MultiNetworkDeployer {
         let gas_used = (wasm_bytes.len() as u64) * config.gas_price;
         let cost_usd = gas_used as f64 * config.estimated_cost_per_tx;
         let deployment_time_ms = (config.confirmation_time_seconds * 1000.0) as u64;
-        
+
         // Simulate contract ID generation
-        let contract_id = Some(format!("C{}", hex::encode(&sha2::Sha256::digest(wasm_bytes))[..56]));
-        
+        let wasm_hash = hex::encode(sha2::Sha256::digest(wasm_bytes));
+        let contract_id = Some(format!("C{}", &wasm_hash[..56]));
+
         Ok(NetworkDeploymentResult {
             network_name: config.network_name.clone(),
             status: DeploymentStatus::Success,
@@ -511,7 +545,8 @@ mod tests {
             "https://custom.horizon".to_string(),
             "https://custom.rpc".to_string(),
             "Custom Network".to_string(),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(config.networks.contains_key("custom"));
     }
 

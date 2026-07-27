@@ -592,8 +592,7 @@ fn check_deployment_window(policy: &CompliancePolicy) -> ComplianceCheckResult {
     let timezone_offset = policy
         .config
         .get("timezone_offset")
-        .map(|v| v.parse::<i32>().ok())
-        .flatten()
+        .and_then(|v| v.parse::<i32>().ok())
         .unwrap_or(0);
 
     let now = Utc::now();

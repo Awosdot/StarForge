@@ -44,7 +44,11 @@ pub fn anonymize_text(input: &str) -> String {
     output
 }
 
-pub fn assess_privacy_impact(payload: &Value, context: &str, consent_granted: bool) -> PrivacyAssessment {
+pub fn assess_privacy_impact(
+    payload: &Value,
+    context: &str,
+    consent_granted: bool,
+) -> PrivacyAssessment {
     let mut pii_detected = Vec::new();
     let mut risk_score = 20u32;
 
@@ -113,7 +117,10 @@ pub fn sanitize_payload(payload: &Value) -> Value {
     if let Some(obj) = payload.as_object() {
         for (key, value) in obj {
             let normalized_key = key.to_ascii_lowercase();
-            if normalized_key.contains("email") || normalized_key.contains("phone") || normalized_key.contains("name") {
+            if normalized_key.contains("email")
+                || normalized_key.contains("phone")
+                || normalized_key.contains("name")
+            {
                 sanitized.insert(key.clone(), Value::String("[REDACTED]".to_string()));
             } else if let Some(str_value) = value.as_str() {
                 sanitized.insert(key.clone(), Value::String(str_value.to_string()));
@@ -136,9 +143,19 @@ pub fn build_privacy_report(assessment: &PrivacyAssessment, consent: &ConsentRec
         "Privacy Report".to_string(),
         "===============".to_string(),
         format!("Context: {}", assessment.processing_context),
-        format!("Risk Level: {} ({} / 100)", assessment.risk_level, assessment.risk_score),
+        format!(
+            "Risk Level: {} ({} / 100)",
+            assessment.risk_level, assessment.risk_score
+        ),
         format!("PII Detected: {}", pii_text),
-        format!("Consent: {}", if consent.granted { "granted" } else { "not granted" }),
+        format!(
+            "Consent: {}",
+            if consent.granted {
+                "granted"
+            } else {
+                "not granted"
+            }
+        ),
         "GDPR: baseline controls present".to_string(),
         "Retention: data retained only for the minimum necessary period".to_string(),
         "Access Control: role-based access enforced".to_string(),

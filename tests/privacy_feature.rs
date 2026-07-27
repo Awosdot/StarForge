@@ -24,7 +24,10 @@ fn it_assesses_privacy_risk_and_recommends_controls() {
 
     assert!(assessment.risk_score >= 40);
     assert!(matches!(assessment.risk_level.as_str(), "high" | "medium"));
-    assert!(assessment.pii_detected.iter().any(|field| field.contains("email")));
+    assert!(assessment
+        .pii_detected
+        .iter()
+        .any(|field| field.contains("email")));
     assert!(!assessment.recommendations.is_empty());
 }
 
@@ -47,7 +50,8 @@ fn it_minimizes_payload_to_required_fields() {
 
 #[test]
 fn it_builds_a_comprehensive_report() {
-    let assessment = privacy::assess_privacy_impact(&json!({ "email": "user@example.com" }), "analytics", true);
+    let assessment =
+        privacy::assess_privacy_impact(&json!({ "email": "user@example.com" }), "analytics", true);
     let consent = privacy::ConsentRecord::new("analytics", true);
     let report = privacy::build_privacy_report(&assessment, &consent);
 

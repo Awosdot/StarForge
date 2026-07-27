@@ -146,7 +146,8 @@ impl ContractTestRunner {
         }
 
         for h in handles {
-            h.join().map_err(|_| anyhow::anyhow!("Worker thread panicked"))?;
+            h.join()
+                .map_err(|_| anyhow::anyhow!("Worker thread panicked"))?;
         }
 
         let collected = results.lock().unwrap().clone();
@@ -191,7 +192,9 @@ fn build_hints(cases: &[RunnerCaseResult]) -> Vec<FailureHint> {
                 category: category.into(),
                 suggestion: match category {
                     "authorization" => "Add require_auth() or validate caller permissions".into(),
-                    "input-validation" => "Validate inputs with explicit guards at function entry".into(),
+                    "input-validation" => {
+                        "Validate inputs with explicit guards at function entry".into()
+                    }
                     _ => "Review test output and contract logic".into(),
                 },
             }
@@ -213,6 +216,7 @@ mod tests {
 
     #[test]
     fn runner_basic_execution() {
+        let _home_guard = crate::utils::lock_home_env();
         let home = TempDir::new().unwrap();
         std::env::set_var("HOME", home.path());
 
@@ -236,6 +240,7 @@ mod tests {
 
     #[test]
     fn runner_parallel_execution() {
+        let _home_guard = crate::utils::lock_home_env();
         let home = TempDir::new().unwrap();
         std::env::set_var("HOME", home.path());
 

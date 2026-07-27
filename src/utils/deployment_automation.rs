@@ -5,6 +5,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::path::Path;
 
 /// Deployment automation configuration.
@@ -249,9 +250,18 @@ impl PreDeploymentValidator {
             check_name: "network_connectivity".to_string(),
             status: network_check.status.clone(),
             description: "Network connectivity check".to_string(),
-            details: Some(format!("Horizon: {}, RPC: {}", 
-                if network_check.horizon_reachable { "reachable" } else { "unreachable" },
-                if network_check.soroban_rpc_reachable { "reachable" } else { "unreachable" }
+            details: Some(format!(
+                "Horizon: {}, RPC: {}",
+                if network_check.horizon_reachable {
+                    "reachable"
+                } else {
+                    "unreachable"
+                },
+                if network_check.soroban_rpc_reachable {
+                    "reachable"
+                } else {
+                    "unreachable"
+                }
             )),
             severity: "critical".to_string(),
             fix_suggestion: if !network_check.horizon_reachable {
@@ -268,8 +278,10 @@ impl PreDeploymentValidator {
             check_name: "wallet_balance".to_string(),
             status: wallet_check.status.clone(),
             description: "Wallet balance check".to_string(),
-            details: Some(format!("Balance: {} XLM, Required: {} XLM", 
-                wallet_check.balance_xlm, wallet_check.required_xlm)),
+            details: Some(format!(
+                "Balance: {} XLM, Required: {} XLM",
+                wallet_check.balance_xlm, wallet_check.required_xlm
+            )),
             severity: "critical".to_string(),
             fix_suggestion: if !wallet_check.sufficient_for_deployment {
                 Some("Fund wallet using Friendbot or transfer XLM".to_string())
@@ -295,7 +307,7 @@ impl PreDeploymentValidator {
 
     fn validate_wasm_file(wasm_path: &str) -> ValidationCheck {
         let path = Path::new(wasm_path);
-        if path.exists() && path.extension().map_or(false, |e| e == "wasm") {
+        if path.exists() && path.extension().is_some_and(|e| e == "wasm") {
             ValidationCheck {
                 check_name: "wasm_file".to_string(),
                 status: "pass".to_string(),
@@ -311,7 +323,9 @@ impl PreDeploymentValidator {
                 description: "WASM file not found or invalid extension".to_string(),
                 details: Some(format!("Expected .wasm file at: {}", wasm_path)),
                 severity: "critical".to_string(),
-                fix_suggestion: Some("Ensure WASM file is compiled and path is correct".to_string()),
+                fix_suggestion: Some(
+                    "Ensure WASM file is compiled and path is correct".to_string(),
+                ),
             }
         }
     }
@@ -365,7 +379,10 @@ impl PreDeploymentValidator {
     fn check_wallet_balance(config: &DeploymentAutomationConfig) -> WalletBalanceCheck {
         // Simulated wallet check
         WalletBalanceCheck {
-            wallet_name: config.wallet.clone().unwrap_or_else(|| "default".to_string()),
+            wallet_name: config
+                .wallet
+                .clone()
+                .unwrap_or_else(|| "default".to_string()),
             public_key: "GABCD...".to_string(),
             balance_xlm: 10000.0,
             sufficient_for_deployment: true,
@@ -388,7 +405,7 @@ impl PreDeploymentValidator {
             estimated_cost_usd: estimated_gas as f64 / 1_000_000.0,
             confidence_level: "high".to_string(),
             optimization_suggestions: vec![
-                "Consider using soroban-optimize to reduce gas costs".to_string(),
+                "Consider using soroban-optimize to reduce gas costs".to_string()
             ],
         }
     }
@@ -400,32 +417,30 @@ pub struct AutomatedTestRunner;
 impl AutomatedTestRunner {
     /// Run automated tests on the contract.
     pub fn run_tests(wasm_path: &str) -> Result<AutomatedTestingResult> {
-        let mut test_results = Vec::new();
-
         // Simulated test results
-        test_results.push(TestResult {
-            test_name: "test_initialize".to_string(),
-            status: "pass".to_string(),
-            duration_ms: 50,
-            error_message: None,
-            output: Some("Contract initialized successfully".to_string()),
-        });
-
-        test_results.push(TestResult {
-            test_name: "test_transfer".to_string(),
-            status: "pass".to_string(),
-            duration_ms: 75,
-            error_message: None,
-            output: Some("Transfer executed successfully".to_string()),
-        });
-
-        test_results.push(TestResult {
-            test_name: "test_balance".to_string(),
-            status: "pass".to_string(),
-            duration_ms: 30,
-            error_message: None,
-            output: Some("Balance query successful".to_string()),
-        });
+        let test_results = vec![
+            TestResult {
+                test_name: "test_initialize".to_string(),
+                status: "pass".to_string(),
+                duration_ms: 50,
+                error_message: None,
+                output: Some("Contract initialized successfully".to_string()),
+            },
+            TestResult {
+                test_name: "test_transfer".to_string(),
+                status: "pass".to_string(),
+                duration_ms: 75,
+                error_message: None,
+                output: Some("Transfer executed successfully".to_string()),
+            },
+            TestResult {
+                test_name: "test_balance".to_string(),
+                status: "pass".to_string(),
+                duration_ms: 30,
+                error_message: None,
+                output: Some("Balance query successful".to_string()),
+            },
+        ];
 
         let passed = test_results.iter().filter(|t| t.status == "pass").count();
         let failed = test_results.iter().filter(|t| t.status == "fail").count();
@@ -458,7 +473,10 @@ impl DeploymentExecutor {
             deployment_id: uuid::Uuid::new_v4().to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             status: "success".to_string(),
-            contract_id: Some(format!("C{}", hex::encode(&sha2::Sha256::digest(&wasm_bytes))[..56].to_string())),
+            contract_id: Some(format!(
+                "C{}",
+                &hex::encode(&sha2::Sha256::digest(&wasm_bytes))[..56]
+            )),
             transaction_hash: Some(format!("tx_{}", uuid::Uuid::new_v4())),
             gas_used,
             cost_usd: gas_used as f64 / 1_000_000.0,
@@ -516,7 +534,10 @@ pub struct RollbackAutomator;
 
 impl RollbackAutomator {
     /// Automated rollback on failure.
-    pub async fn rollback(previous_contract_id: &str, reason: &str) -> Result<RollbackAutomationResult> {
+    pub async fn rollback(
+        previous_contract_id: &str,
+        reason: &str,
+    ) -> Result<RollbackAutomationResult> {
         Ok(RollbackAutomationResult {
             rollback_id: uuid::Uuid::new_v4().to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -551,10 +572,7 @@ impl MonitoringSetup {
                     error_rate_threshold: 0.05,
                     gas_cost_threshold_stroops: 100_000,
                 },
-                notification_channels: vec![
-                    "email".to_string(),
-                    "webhook".to_string(),
-                ],
+                notification_channels: vec!["email".to_string(), "webhook".to_string()],
             },
             alerts_configured: vec![
                 "Low balance alert".to_string(),

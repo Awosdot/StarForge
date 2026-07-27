@@ -43,12 +43,29 @@ pub struct AiAuditService {
     model: String,
 }
 
+impl std::fmt::Debug for AiAuditService {
+    /// Redacts `api_key` so the credential never reaches logs or panic output.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiAuditService")
+            .field("model", &self.model)
+            .field("api_key", &"<redacted>")
+            .finish()
+    }
+}
+
 impl AiAuditService {
     /// Create a new audit service with Anthropic API key.
     pub fn new(api_key: String) -> Result<Self> {
+        let api_key = api_key.trim().to_string();
+        if api_key.is_empty() {
+            return Err(anyhow!(
+                "Anthropic API key is empty - set ANTHROPIC_API_KEY in your environment"
+            ));
+        }
+
         Ok(AiAuditService {
             client: Client::new(),
-            api_key: api_key.trim().to_string(),
+            api_key,
             model: "claude-opus-4-1".to_string(), // High-capability model for security
         })
     }
@@ -113,7 +130,9 @@ impl AiAuditService {
             best_practice_violations: ai_result.best_practice_violations.clone(),
             fix_suggestions: ai_result.fix_suggestions.clone(),
             security_score: ai_result.security_score,
-            false_positive_warning: "AI analysis may produce false positives. Review all findings with a human auditor.".to_string(),
+            false_positive_warning:
+                "AI analysis may produce false positives. Review all findings with a human auditor."
+                    .to_string(),
             tools_used: vec!["claude-opus-4-1".to_string(), "static-analysis".to_string()],
         };
 
@@ -143,8 +162,8 @@ impl AiAuditService {
             .await
             .map_err(|e| anyhow!("Failed to call Anthropic API: {}", e))?;
 
-        let status = response.status();
-        if !status.is_success() {
+        if !response.status().is_success() {
+            let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
             return Err(anyhow!(
                 "Anthropic API error {}: {}",

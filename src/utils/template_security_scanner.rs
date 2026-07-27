@@ -145,32 +145,34 @@ impl KnownVulnerabilities {
 
         // Check for missing authorization
         for (i, line) in lines.iter().enumerate() {
-            if line.contains("pub fn ") && !line.trim().starts_with("//") {
-                if line.contains("&mut") || line.contains("env:") {
-                    let mut has_auth = false;
-                    for j in i..std::cmp::min(i + 20, lines.len()) {
-                        if lines[j].contains("require_auth") {
-                            has_auth = true;
-                            break;
-                        }
-                        if lines[j].contains("pub fn ") {
-                            break;
-                        }
+            if line.contains("pub fn ")
+                && !line.trim().starts_with("//")
+                && (line.contains("&mut") || line.contains("env:"))
+            {
+                let mut has_auth = false;
+                for j in i..std::cmp::min(i + 20, lines.len()) {
+                    if lines[j].contains("require_auth") {
+                        has_auth = true;
+                        break;
                     }
-                    if !has_auth {
-                        vulnerabilities.push(TemplateVulnerability {
-                            id: format!("VULN-AUTH-{}", i),
-                            severity: "high".to_string(),
-                            category: "access-control".to_string(),
-                            title: "Missing Authorization Check".to_string(),
-                            description: "Public state-mutating function without require_auth()".to_string(),
-                            file_path: Some(file_path.to_string()),
-                            line_number: Some(i + 1),
-                            code_snippet: Some(line.to_string()),
-                            recommendation: "Add require_auth() to verify caller identity".to_string(),
-                            confidence_score: 0.90,
-                        });
+                    if lines[j].contains("pub fn ") {
+                        break;
                     }
+                }
+                if !has_auth {
+                    vulnerabilities.push(TemplateVulnerability {
+                        id: format!("VULN-AUTH-{}", i),
+                        severity: "high".to_string(),
+                        category: "access-control".to_string(),
+                        title: "Missing Authorization Check".to_string(),
+                        description: "Public state-mutating function without require_auth()"
+                            .to_string(),
+                        file_path: Some(file_path.to_string()),
+                        line_number: Some(i + 1),
+                        code_snippet: Some(line.to_string()),
+                        recommendation: "Add require_auth() to verify caller identity".to_string(),
+                        confidence_score: 0.90,
+                    });
                 }
             }
         }
@@ -178,19 +180,32 @@ impl KnownVulnerabilities {
         // Check for integer overflow risks
         for (i, line) in lines.iter().enumerate() {
             if !line.trim().starts_with("//") {
-                let arithmetic_ops = [("+", "checked_add"), ("-", "checked_sub"), ("*", "checked_mul")];
+                let arithmetic_ops = [
+                    ("+", "checked_add"),
+                    ("-", "checked_sub"),
+                    ("*", "checked_mul"),
+                ];
                 for (op, checked_fn) in arithmetic_ops.iter() {
-                    if line.contains(op) && !line.contains(checked_fn) && !line.contains(&format!("{}{}", op, op)) {
+                    if line.contains(op)
+                        && !line.contains(checked_fn)
+                        && !line.contains(&format!("{}{}", op, op))
+                    {
                         vulnerabilities.push(TemplateVulnerability {
                             id: format!("VULN-OVERFLOW-{}", i),
                             severity: "medium".to_string(),
                             category: "integer-overflow".to_string(),
                             title: "Unchecked Arithmetic Operation".to_string(),
-                            description: format!("Arithmetic operation '{}' without checked_ variant", op),
+                            description: format!(
+                                "Arithmetic operation '{}' without checked_ variant",
+                                op
+                            ),
                             file_path: Some(file_path.to_string()),
                             line_number: Some(i + 1),
                             code_snippet: Some(line.to_string()),
-                            recommendation: format!("Use {}() instead of direct operator", checked_fn),
+                            recommendation: format!(
+                                "Use {}() instead of direct operator",
+                                checked_fn
+                            ),
                             confidence_score: 0.75,
                         });
                         break;
@@ -215,7 +230,8 @@ impl KnownVulnerabilities {
                     severity: "high".to_string(),
                     category: "code-injection".to_string(),
                     title: "Unsafe Code Block".to_string(),
-                    description: "Unsafe code in Soroban contract may cause memory safety issues".to_string(),
+                    description: "Unsafe code in Soroban contract may cause memory safety issues"
+                        .to_string(),
                     file_path: Some(file_path.to_string()),
                     line_number: Some(i + 1),
                     code_snippet: Some(line.to_string()),
@@ -267,11 +283,13 @@ impl KnownVulnerabilities {
                         severity: "critical".to_string(),
                         category: "access-control".to_string(),
                         title: "Unprotected Admin Function".to_string(),
-                        description: "Admin/owner function without access control check".to_string(),
+                        description: "Admin/owner function without access control check"
+                            .to_string(),
                         file_path: Some(file_path.to_string()),
                         line_number: Some(i + 1),
                         code_snippet: Some(line.to_string()),
-                        recommendation: "Add proper authorization check using require_auth()".to_string(),
+                        recommendation: "Add proper authorization check using require_auth()"
+                            .to_string(),
                         confidence_score: 0.95,
                     });
                 }
@@ -298,7 +316,8 @@ impl KnownVulnerabilities {
                     file_path: Some(file_path.to_string()),
                     line_number: Some(i + 1),
                     code_snippet: Some(line.to_string()),
-                    recommendation: "Use cryptographic PRNG for security-sensitive operations".to_string(),
+                    recommendation: "Use cryptographic PRNG for security-sensitive operations"
+                        .to_string(),
                     confidence_score: 0.70,
                 });
             }
@@ -322,11 +341,16 @@ impl KnownVulnerabilities {
                             severity: "high".to_string(),
                             category: "data-leakage".to_string(),
                             title: "Sensitive Data On-Chain".to_string(),
-                            description: format!("Potentially sensitive data '{}' stored on-chain", pattern),
+                            description: format!(
+                                "Potentially sensitive data '{}' stored on-chain",
+                                pattern
+                            ),
                             file_path: Some(file_path.to_string()),
                             line_number: Some(i + 1),
                             code_snippet: Some(line.to_string()),
-                            recommendation: "Avoid storing sensitive data on-chain; use off-chain storage".to_string(),
+                            recommendation:
+                                "Avoid storing sensitive data on-chain; use off-chain storage"
+                                    .to_string(),
                             confidence_score: 0.80,
                         });
                         break;
@@ -412,7 +436,8 @@ impl AntiPatternDetector {
                 description: "Use of .unwrap() can cause panics on error".to_string(),
                 severity: "medium".to_string(),
                 occurrences: unwrap_occurrences,
-                remediation: "Replace .unwrap() with proper error handling using ? or match".to_string(),
+                remediation: "Replace .unwrap() with proper error handling using ? or match"
+                    .to_string(),
             });
         }
 
@@ -446,19 +471,31 @@ pub fn calculate_security_score(
     let mut score = 100.0;
 
     // Deduct for critical vulnerabilities
-    let critical_count = vulnerabilities.iter().filter(|v| v.severity == "critical").count();
+    let critical_count = vulnerabilities
+        .iter()
+        .filter(|v| v.severity == "critical")
+        .count();
     score -= critical_count as f64 * 25.0;
 
     // Deduct for high vulnerabilities
-    let high_count = vulnerabilities.iter().filter(|v| v.severity == "high").count();
+    let high_count = vulnerabilities
+        .iter()
+        .filter(|v| v.severity == "high")
+        .count();
     score -= high_count as f64 * 15.0;
 
     // Deduct for medium vulnerabilities
-    let medium_count = vulnerabilities.iter().filter(|v| v.severity == "medium").count();
+    let medium_count = vulnerabilities
+        .iter()
+        .filter(|v| v.severity == "medium")
+        .count();
     score -= medium_count as f64 * 8.0;
 
     // Deduct for low vulnerabilities
-    let low_count = vulnerabilities.iter().filter(|v| v.severity == "low").count();
+    let low_count = vulnerabilities
+        .iter()
+        .filter(|v| v.severity == "low")
+        .count();
     score -= low_count as f64 * 3.0;
 
     // Deduct for malicious indicators
@@ -467,7 +504,7 @@ pub fn calculate_security_score(
     // Deduct for anti-patterns
     score -= anti_patterns.len() as f64 * 5.0;
 
-    score.max(0.0).min(100.0)
+    score.clamp(0.0, 100.0)
 }
 
 /// Determine overall risk level from security score.
@@ -490,53 +527,73 @@ pub fn scan_template_security(
     config: &TemplateSecurityScannerConfig,
 ) -> Result<TemplateSecurityScanResult> {
     let template_path = Path::new(&config.template_path);
-    
+
     // Read all Rust source files in the template
     let mut all_code = String::new();
     let mut vulnerabilities = Vec::new();
     let mut malicious_indicators = Vec::new();
-    
+
     if template_path.is_dir() {
-        for entry in std::fs::read_dir(template_path)
-            .context("Failed to read template directory")?
+        for entry in
+            std::fs::read_dir(template_path).context("Failed to read template directory")?
         {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "rs") {
+            if path.extension().is_some_and(|e| e == "rs") {
                 let code = std::fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read file: {}", path.display()))?;
                 let file_path = path.to_string_lossy().to_string();
-                
+
                 // Run all vulnerability checks
-                vulnerabilities.extend(KnownVulnerabilities::check_known_vulnerabilities(&code, &file_path));
-                vulnerabilities.extend(KnownVulnerabilities::check_code_injection(&code, &file_path));
-                vulnerabilities.extend(KnownVulnerabilities::check_access_control(&code, &file_path));
-                vulnerabilities.extend(KnownVulnerabilities::check_cryptographic_issues(&code, &file_path));
+                vulnerabilities.extend(KnownVulnerabilities::check_known_vulnerabilities(
+                    &code, &file_path,
+                ));
+                vulnerabilities.extend(KnownVulnerabilities::check_code_injection(
+                    &code, &file_path,
+                ));
+                vulnerabilities.extend(KnownVulnerabilities::check_access_control(
+                    &code, &file_path,
+                ));
+                vulnerabilities.extend(KnownVulnerabilities::check_cryptographic_issues(
+                    &code, &file_path,
+                ));
                 vulnerabilities.extend(KnownVulnerabilities::check_data_leakage(&code, &file_path));
-                
+
                 // Detect malicious code indicators
                 if config.include_malicious_detection {
-                    malicious_indicators.extend(MaliciousCodeDetector::detect_malicious_indicators(&code, &file_path));
+                    malicious_indicators.extend(
+                        MaliciousCodeDetector::detect_malicious_indicators(&code, &file_path),
+                    );
                 }
-                
+
                 all_code.push_str(&code);
             }
         }
-    } else if template_path.extension().map_or(false, |e| e == "rs") {
+    } else if template_path.extension().is_some_and(|e| e == "rs") {
         let code = std::fs::read_to_string(template_path)
             .with_context(|| format!("Failed to read file: {}", template_path.display()))?;
         let file_path = template_path.to_string_lossy().to_string();
-        
-        vulnerabilities.extend(KnownVulnerabilities::check_known_vulnerabilities(&code, &file_path));
-        vulnerabilities.extend(KnownVulnerabilities::check_code_injection(&code, &file_path));
-        vulnerabilities.extend(KnownVulnerabilities::check_access_control(&code, &file_path));
-        vulnerabilities.extend(KnownVulnerabilities::check_cryptographic_issues(&code, &file_path));
+
+        vulnerabilities.extend(KnownVulnerabilities::check_known_vulnerabilities(
+            &code, &file_path,
+        ));
+        vulnerabilities.extend(KnownVulnerabilities::check_code_injection(
+            &code, &file_path,
+        ));
+        vulnerabilities.extend(KnownVulnerabilities::check_access_control(
+            &code, &file_path,
+        ));
+        vulnerabilities.extend(KnownVulnerabilities::check_cryptographic_issues(
+            &code, &file_path,
+        ));
         vulnerabilities.extend(KnownVulnerabilities::check_data_leakage(&code, &file_path));
-        
+
         if config.include_malicious_detection {
-            malicious_indicators.extend(MaliciousCodeDetector::detect_malicious_indicators(&code, &file_path));
+            malicious_indicators.extend(MaliciousCodeDetector::detect_malicious_indicators(
+                &code, &file_path,
+            ));
         }
-        
+
         all_code = code;
     }
 
@@ -544,7 +601,8 @@ pub fn scan_template_security(
     let anti_patterns = AntiPatternDetector::detect_anti_patterns(&all_code);
 
     // Calculate security score
-    let security_score = calculate_security_score(&vulnerabilities, &malicious_indicators, &anti_patterns);
+    let security_score =
+        calculate_security_score(&vulnerabilities, &malicious_indicators, &anti_patterns);
     let overall_risk_level = determine_risk_level(security_score);
 
     // Generate fix suggestions
@@ -559,7 +617,8 @@ pub fn scan_template_security(
     };
 
     Ok(TemplateSecurityScanResult {
-        template_name: template_path.file_name()
+        template_name: template_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string(),
@@ -577,8 +636,9 @@ pub fn scan_template_security(
 
 /// Generate fix suggestions from vulnerabilities.
 fn generate_fix_suggestions(vulnerabilities: &[TemplateVulnerability]) -> Vec<FixSuggestion> {
-    vulnerabilities.iter().map(|v| {
-        FixSuggestion {
+    vulnerabilities
+        .iter()
+        .map(|v| FixSuggestion {
             vulnerability_id: v.id.clone(),
             title: v.title.clone(),
             description: v.description.clone(),
@@ -590,8 +650,8 @@ fn generate_fix_suggestions(vulnerabilities: &[TemplateVulnerability]) -> Vec<Fi
                 _ => "low".to_string(),
             },
             estimated_effort: estimate_effort(&v.category),
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 fn generate_code_example(category: &str) -> String {
@@ -642,20 +702,18 @@ pub fn backdoor(env: Env) {
 
     #[test]
     fn test_security_score_calculation() {
-        let vulns = vec![
-            TemplateVulnerability {
-                id: "VULN-1".to_string(),
-                severity: "critical".to_string(),
-                category: "test".to_string(),
-                title: "Test".to_string(),
-                description: "Test".to_string(),
-                file_path: None,
-                line_number: None,
-                code_snippet: None,
-                recommendation: "Test".to_string(),
-                confidence_score: 0.9,
-            }
-        ];
+        let vulns = vec![TemplateVulnerability {
+            id: "VULN-1".to_string(),
+            severity: "critical".to_string(),
+            category: "test".to_string(),
+            title: "Test".to_string(),
+            description: "Test".to_string(),
+            file_path: None,
+            line_number: None,
+            code_snippet: None,
+            recommendation: "Test".to_string(),
+            confidence_score: 0.9,
+        }];
         let score = calculate_security_score(&vulns, &[], &[]);
         assert!(score < 100.0);
         assert!(score >= 0.0);

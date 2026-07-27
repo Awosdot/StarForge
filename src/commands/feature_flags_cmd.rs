@@ -28,7 +28,7 @@ use crate::utils::print as p;
 use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 use colored::*;
-use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL};
+use comfy_table::{presets::UTF8_FULL, ContentArrangement, Table};
 
 #[derive(Args, Debug)]
 pub struct FeatureFlagsArgs {
@@ -122,9 +122,17 @@ pub enum SegmentCommands {
     /// List the segment rules currently attached to a flag.
     List { flag_name: String },
     /// Append an allow-list rule (`--user id` can be repeated).
-    AddAllowlist { flag_name: String, #[arg(long = "user")] users: Vec<String> },
+    AddAllowlist {
+        flag_name: String,
+        #[arg(long = "user")]
+        users: Vec<String>,
+    },
     /// Append a percentage rule.
-    AddPercent { flag_name: String, #[arg(long)] percent: u8 },
+    AddPercent {
+        flag_name: String,
+        #[arg(long)]
+        percent: u8,
+    },
     /// Append an attribute predicate (`--key X --any-of a,b`).
     AddAttribute {
         flag_name: String,
@@ -215,20 +223,22 @@ pub async fn handle(args: FeatureFlagsArgs) -> Result<()> {
     let install_id = crate::utils::feature_flags::load_or_create_install_id(&db)
         .context("Failed to resolve install_id")?;
     let user_ctx = if cfg.feature_flags.default_attributes.is_empty() {
-        UserContext::new(install_id)
+        UserContext::new(install_id.clone())
     } else {
         UserContext {
             user_id: install_id.clone(),
             attributes: cfg.feature_flags.default_attributes.clone(),
         }
     };
-    let mgr = FlagManager::new(&db, user_ctx)
-        .with_exposure_recording(cfg.feature_flags.metrics_enabled);
+    let mgr =
+        FlagManager::new(&db, user_ctx).with_exposure_recording(cfg.feature_flags.metrics_enabled);
 
     match args.command {
-        FeatureFlagsCommands::List { json, category, enabled_only } => {
-            handle_list(&mgr, &db, category, enabled_only, json)
-        }
+        FeatureFlagsCommands::List {
+            json,
+            category,
+            enabled_only,
+        } => handle_list(&mgr, &db, category, enabled_only, json),
         FeatureFlagsCommands::Show { flag_name, json } => handle_show(&mgr, &db, &flag_name, json),
         FeatureFlagsCommands::Enable { flag_name } => {
             let s = mgr.set_enabled(&flag_name, true)?;
@@ -386,12 +396,7 @@ fn handle_list(
     Ok(())
 }
 
-fn handle_show(
-    mgr: &FlagManager,
-    db: &Database,
-    flag_name: &str,
-    json: bool,
-) -> Result<()> {
+fn handle_show(mgr: &FlagManager, db: &Database, flag_name: &str, json: bool) -> Result<()> {
     let def = db
         .get_definition(flag_name)?
         .ok_or_else(|| anyhow::anyhow!("flag '{}' is not defined", flag_name))?;
@@ -413,7 +418,7 @@ fn handle_show(
         return Ok(());
     }
 
-    p::header(&format!("Flag {}", &def.name));
+    p::header(&format!("Flag {}", def.name));
     p::kv("Category", def.category.slug());
     p::kv("Description", &def.description);
     if let Some(o) = &def.owner {
@@ -479,7 +484,11 @@ fn handle_show(
             println!(
                 "  • {} -> {} (variant: {})",
                 ov.user_id,
-                if ov.enabled { "on".green() } else { "off".red() },
+                if ov.enabled {
+                    "on".green()
+                } else {
+                    "off".red()
+                },
                 ov.variant.as_deref().unwrap_or("—")
             );
         }
@@ -508,6 +517,24 @@ fn handle_show(
             h.version, h.created_at, h.enabled, h.rollout_percent, h.note
         );
     }
+    Ok(())
+}
+
+/// Ensures `flag_name` has a persisted definition and an initial state row.
+///
+/// Built-in flags are seeded lazily — the definition only reaches the database
+/// the first time a command touches the flag — so the segment, variant, and
+/// override subcommands hydrate it before reading `latest_state`.
+fn hydrate_definition(db: &Database, flag_name: &str) -> Result<()> {
+    let def = match db.get_definition(flag_name)? {
+        Some(def) => def,
+        None => crate::utils::feature_flags::builtin_definitions()
+            .into_iter()
+            .find(|d| d.name == flag_name)
+            .ok_or_else(|| anyhow::anyhow!("unknown feature flag '{}'", flag_name))?,
+    };
+    // `upsert_definition` also seeds the initial state row when it is missing.
+    db.upsert_definition(&def)?;
     Ok(())
 }
 
@@ -699,7 +726,11 @@ fn handle_override(
                     println!(
                         "  • {} -> {} (variant: {}) [{}]",
                         ov.user_id,
-                        if ov.enabled { "on".green() } else { "off".red() },
+                        if ov.enabled {
+                            "on".green()
+                        } else {
+                            "off".red()
+                        },
                         ov.variant.as_deref().unwrap_or("\u{2014}"),
                         ov.created_at
                     );
@@ -753,7 +784,11 @@ fn handle_metrics(
     cmd: MetricsCommands,
 ) -> Result<()> {
     match cmd {
-        MetricsCommands::Show { flag_name, limit, json } => {
+        MetricsCommands::Show {
+            flag_name,
+            limit,
+            json,
+        } => {
             let summary = db.metrics_summary(&flag_name)?;
             let recent = db.metrics_recent(&flag_name, limit)?;
             if json {
@@ -802,7 +837,10 @@ fn handle_metrics(
                 );
             }
             let n = db.prune_metrics(cut)?;
-            p::success(&format!("Pruned {} metric row(s) older than {} day(s)", n, cut));
+            p::success(&format!(
+                "Pruned {} metric row(s) older than {} day(s)",
+                n, cut
+            ));
             Ok(())
         }
     }
@@ -818,15 +856,13 @@ fn handle_history(db: &Database, flag_name: &str) -> Result<()> {
         return Ok(());
     }
     let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_header(vec![
-            "Version".to_string(),
-            "Enabled".to_string(),
-            "Rollout %".to_string(),
-            "Note".to_string(),
-            "Created at".to_string(),
-        ]);
+    table.load_preset(UTF8_FULL).set_header(vec![
+        "Version".to_string(),
+        "Enabled".to_string(),
+        "Rollout %".to_string(),
+        "Note".to_string(),
+        "Created at".to_string(),
+    ]);
     for h in &history {
         table.add_row(vec![
             format!("v{}", h.version),
@@ -970,7 +1006,11 @@ mod tests {
 
     #[test]
     fn metric_kind_roundtrips_parsed_slugs() {
-        for k in [MetricKind::Exposure, MetricKind::Conversion, MetricKind::Rejection] {
+        for k in [
+            MetricKind::Exposure,
+            MetricKind::Conversion,
+            MetricKind::Rejection,
+        ] {
             assert!(MetricKind::parse(k.slug()).is_some());
         }
     }

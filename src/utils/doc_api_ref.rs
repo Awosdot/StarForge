@@ -84,12 +84,7 @@ pub fn build_api_reference(entry: &DocEntry) -> ApiReference {
         name: entry.name.clone(),
         version: entry.version.clone(),
         network: entry.network.clone(),
-        functions: entry
-            .api
-            .functions
-            .iter()
-            .map(build_function_ref)
-            .collect(),
+        functions: entry.api.functions.iter().map(build_function_ref).collect(),
         events: entry.api.events.iter().map(build_event_ref).collect(),
         storage: entry.api.storage.iter().map(build_storage_ref).collect(),
         generated_at: entry.generated_at.clone(),
@@ -103,10 +98,7 @@ fn build_function_ref(func: &FunctionDoc) -> ApiFunctionRef {
         .map(|p| format!("{}: {}", p.name, p.ty))
         .collect();
 
-    let returns_str = func
-        .returns
-        .as_deref()
-        .unwrap_or("()");
+    let returns_str = func.returns.as_deref().unwrap_or("()");
 
     let signature = format!(
         "fn {}({}) -> {}",
@@ -117,7 +109,10 @@ fn build_function_ref(func: &FunctionDoc) -> ApiFunctionRef {
 
     // Heuristic: functions whose name starts with common mutation verbs are
     // considered state-mutating.
-    let mutation_prefixes = ["set_", "transfer", "mint", "burn", "create", "init", "update", "delete", "add", "remove", "approve"];
+    let mutation_prefixes = [
+        "set_", "transfer", "mint", "burn", "create", "init", "update", "delete", "add", "remove",
+        "approve",
+    ];
     let is_mutating = mutation_prefixes
         .iter()
         .any(|p| func.name.starts_with(p) || func.name == p.trim_end_matches('_'));
@@ -196,7 +191,9 @@ pub fn to_markdown(reference: &ApiReference) -> String {
             md.push_str(&format!("```rust\n{}\n```\n\n", func.signature));
 
             if func.is_mutating {
-                md.push_str("> ⚠️ **State-mutating** — this function modifies contract storage.\n\n");
+                md.push_str(
+                    "> ⚠️ **State-mutating** — this function modifies contract storage.\n\n",
+                );
             }
 
             if !func.parameters.is_empty() {
