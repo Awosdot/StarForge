@@ -64,6 +64,7 @@ pub mod pipeline_builder;
 pub mod print;
 pub mod privacy;
 pub mod profiler;
+pub mod quality_analysis;
 pub mod registry;
 pub mod repl;
 pub mod rollback_testing;

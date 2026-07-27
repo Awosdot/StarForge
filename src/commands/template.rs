@@ -1,6 +1,7 @@
-use crate::utils::{ai_docs, print as p, registry, templates};
+use crate::utils::{print as p, quality_analysis, registry, templates};
 use anyhow::Result;
 use clap::Subcommand;
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -159,21 +160,17 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
-    /// Generate comprehensive AI-assisted documentation for a template: getting
-    /// started guide, function/API reference, configuration reference,
-    /// multi-language usage examples, and a troubleshooting guide
-    GenerateDocs {
+    /// AI-assisted quality analysis: code quality, security, best practices,
+    /// documentation completeness, test coverage, and a weighted quality score
+    Quality {
         /// Template name
         name: String,
-        /// Languages for usage examples: rust,ts,python,go (comma-separated)
-        #[arg(long, default_value = "rust,ts,python")]
-        lang: String,
-        /// Skip optional LLM enrichment; use heuristic generation only
-        #[arg(long, default_value_t = false)]
-        no_ai: bool,
-        /// Write Markdown documentation to this path (defaults to <template>/DOCS.md)
+        /// Output format: text or json
+        #[arg(long, default_value = "text")]
+        format: String,
+        /// Write the report to this file instead of stdout
         #[arg(long)]
-        output: Option<PathBuf>,
+        out: Option<PathBuf>,
     },
 }
 
@@ -254,12 +251,9 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
-        TemplateCommands::GenerateDocs {
-            name,
-            lang,
-            no_ai,
-            output,
-        } => template_generate_docs(name, lang, no_ai, output).await,
+        TemplateCommands::Quality { name, format, out } => {
+            template_quality(name, format, out).await
+        }
     }
 }
 
@@ -1122,7 +1116,7 @@ async fn template_audit(name: Option<String>) -> Result<()> {
     Ok(())
 }
 
-// ─── template generate-docs ───────────────────────────────────────────────────
+// ─── template quality ─────────────────────────────────────────────────────────
 
 /// Locate a template's local source directory — prefer the built-in examples
 /// shipped with StarForge, falling back to whatever path the registry has
@@ -1168,77 +1162,95 @@ fn read_template_source(template_dir: &std::path::Path) -> Result<(PathBuf, Stri
     )
 }
 
-async fn template_generate_docs(
-    name: String,
-    lang: String,
-    no_ai: bool,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    p::header(&format!("AI Template Documentation Generation — {}", name));
-
-    p::step(1, 4, "Locating template source...");
+async fn template_quality(name: String, format: String, out: Option<PathBuf>) -> Result<()> {
     let template_dir = resolve_template_dir(&name).await?;
-    let (source_path, _code) = read_template_source(&template_dir)?;
-    p::kv("Source", &source_path.display().to_string());
+    let (source_path, code) = read_template_source(&template_dir)?;
 
-    // Pull registry metadata (description/version) when available; fall back
-    // to sensible defaults for templates that aren't in the registry yet
-    // (e.g. a bare built-in example that hasn't been published).
-    let (description, version) = match templates::get_template(&name).await {
-        Ok(entry) => (Some(entry.description), entry.version),
-        Err(_) => (None, "0.1.0".to_string()),
-    };
+    let report = quality_analysis::analyze_source(&name, &code);
 
-    let languages = {
-        let parsed = ai_docs::DocLanguage::parse_list(&lang);
-        if parsed.is_empty() {
-            vec![
-                ai_docs::DocLanguage::Rust,
-                ai_docs::DocLanguage::TypeScript,
-                ai_docs::DocLanguage::Python,
-            ]
-        } else {
-            parsed
+    let output = match format.to_lowercase().as_str() {
+        "json" => serde_json::to_string_pretty(&report)?,
+        _ => {
+            print_quality_report(&report, &source_path);
+            String::new()
         }
     };
 
-    let options = ai_docs::AiDocsOptions {
-        contract_id: name.clone(),
-        name: name.clone(),
-        description,
-        network: "template".to_string(),
-        version,
-        languages,
-        use_llm: !no_ai,
-    };
-
-    p::step(
-        2,
-        4,
-        "Generating documentation (functions, storage, configuration, security, troubleshooting)...",
-    );
-    let generated = ai_docs::generate_from_source(&source_path, &options)?;
-
-    p::step(3, 4, "Persisting documentation to the docs store...");
-    let markdown_out = output
-        .clone()
-        .unwrap_or_else(|| template_dir.join("DOCS.md"));
-    let entry = ai_docs::persist_generated(&generated, Some(&markdown_out), None)?;
-
-    p::step(4, 4, "Done.");
-    println!();
-    p::success(&format!(
-        "Documentation generated for '{}' ({})",
-        entry.name, generated.enrichment_mode
-    ));
-    p::kv("Template", &entry.contract_id);
-    p::kv("Version", &entry.version);
-    p::kv("Functions documented", &entry.api.functions.len().to_string());
-    p::kv("Storage keys", &entry.api.storage.len().to_string());
-    p::kv("Sections", &entry.sections.len().to_string());
-    p::kv("Markdown", &markdown_out.display().to_string());
-    p::info("Use `starforge docs show <name>` to view the stored documentation.");
-    p::info("Use `starforge docs export <name>` for Markdown on stdout.");
+    if !output.is_empty() {
+        if let Some(out_path) = out {
+            std::fs::write(&out_path, &output)?;
+            p::success(&format!("Report written to {}", out_path.display()));
+        } else {
+            println!("{}", output);
+        }
+    }
 
     Ok(())
+}
+
+fn quality_score_color(score: u8) -> colored::ColoredString {
+    let label = format!("{}/100", score);
+    match score {
+        90..=100 => label.green().bold(),
+        70..=89 => label.green(),
+        50..=69 => label.yellow(),
+        25..=49 => label.red(),
+        _ => label.red().bold(),
+    }
+}
+
+fn print_quality_report(
+    report: &quality_analysis::TemplateQualityReport,
+    source_path: &std::path::Path,
+) {
+    p::header(&format!("AI Template Quality Analysis — {}", report.template_name));
+    p::separator();
+    p::kv("Source", &source_path.display().to_string());
+    p::kv(
+        "Overall Score",
+        &quality_score_color(report.overall_score).to_string(),
+    );
+    println!();
+
+    for category in &report.categories {
+        println!(
+            "  {} {} — {}/{}",
+            "→".cyan(),
+            category.name.bold(),
+            category.score,
+            category.max_score
+        );
+        for finding in &category.findings {
+            println!("      • {}", finding);
+        }
+    }
+
+    if !report.suggestions.is_empty() {
+        println!();
+        println!("{}", "Suggestions".bold());
+        println!("{}", "─".repeat(60));
+        for (i, suggestion) in report.suggestions.iter().enumerate() {
+            println!("  {}. {}", i + 1, suggestion);
+        }
+    }
+
+    println!();
+    p::separator();
+    p::kv("Functions", &report.code_metrics.total_functions.to_string());
+    p::kv(
+        "Public functions",
+        &report.code_metrics.public_functions.to_string(),
+    );
+    p::kv(
+        "Documentation",
+        &format!("{:.0}%", report.doc_metrics.completeness_pct),
+    );
+    p::kv(
+        "Test functions",
+        &report.test_metrics.test_function_count.to_string(),
+    );
+    p::kv(
+        "Vulnerabilities",
+        &report.vulnerabilities.len().to_string(),
+    );
 }

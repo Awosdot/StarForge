@@ -124,7 +124,7 @@ impl std::fmt::Display for AuditLevel {
 }
 
 /// Static security pattern check result.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StaticCheckResult {
     pub pattern_name: String,
     pub description: String,
