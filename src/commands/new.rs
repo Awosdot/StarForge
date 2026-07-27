@@ -69,7 +69,8 @@ pub async fn handle(cmd: NewCommands) -> Result<()> {
                     "none",
                     true,
                     force_refresh,
-                ).await
+                )
+                .await
             }
         }
         NewCommands::Dapp { name } => scaffold_dapp(name),
@@ -271,7 +272,9 @@ async fn scaffold_contract(
         "voting" => voting_template(&name),
         "nft" => nft_template(&name),
         _ => {
-            if let Some(custom) = templates::template_source_content(&template, force_refresh).await? {
+            if let Some(custom) =
+                templates::template_source_content(&template, force_refresh).await?
+            {
                 custom
             } else if template == "hello-world" {
                 hello_world_template(&name, storage, include_tests)
@@ -290,6 +293,13 @@ async fn scaffold_contract(
 
     // Scaffolding completed: keep the directory.
     target_guard.commit();
+
+    // Best-effort usage tracking for community analytics — never fail
+    // scaffolding just because analytics logging had a problem.
+    let _ = crate::utils::template_analytics::record_usage(
+        &template,
+        crate::utils::template_analytics::UsageAction::Scaffold,
+    );
 
     println!();
     p::success(&format!("Contract '{}' scaffolded!", name));

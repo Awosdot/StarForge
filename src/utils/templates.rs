@@ -1,5 +1,6 @@
 use crate::utils::http_client;
 use anyhow::{Context, Result};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -740,7 +741,10 @@ fn relevance_for(entry: &TemplateEntry, query_lower: &str) -> (u32, Vec<String>)
 /// (verification, documentation, usage, maintenance), then by raw downloads.
 /// An empty query lists every template that satisfies the filters, ranked by
 /// quality alone.
-pub async fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<Vec<SearchResult>> {
+pub async fn search_templates_ranked(
+    query: &str,
+    filters: &SearchFilters,
+) -> Result<Vec<SearchResult>> {
     let registry = load_registry().await?;
     let query_lower = query.trim().to_lowercase();
 
@@ -796,19 +800,34 @@ pub async fn search_templates(query: &str, tags: Option<&[String]>) -> Result<Ve
         tags: tags.map(|t| t.to_vec()).unwrap_or_default(),
         ..Default::default()
     };
-    Ok(search_templates_ranked(query, &filters).await?
+    Ok(search_templates_ranked(query, &filters)
+        .await?
         .into_iter()
         .map(|r| r.entry)
         .collect())
 }
 
 pub async fn get_template(name: &str) -> Result<TemplateEntry> {
-    let registry = load_registry().await?;
-    registry
+    let mut versions = get_templates_by_name(name).await?;
+    versions
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Template '{}' not found in registry", name))
+}
+
+pub async fn get_templates_by_name(name: &str) -> Result<Vec<TemplateEntry>> {
+    let mut registry = load_registry().await?;
+    let mut matching: Vec<TemplateEntry> = registry
         .templates
         .into_iter()
-        .find(|t| t.name == name)
-        .ok_or_else(|| anyhow::anyhow!("Template '{}' not found in registry", name))
+        .filter(|t| t.name == name)
+        .collect();
+    matching.sort_by(|a, b| {
+        let a_ver = semver::Version::parse(&a.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+        let b_ver = semver::Version::parse(&b.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+        b_ver.cmp(&a_ver)
+    });
+    Ok(matching)
 }
 
 /// Render a Markdown documentation page for a template from its registry
@@ -829,12 +848,18 @@ pub fn generate_template_docs(entry: &TemplateEntry) -> String {
 
     md.push_str("## Overview\n\n");
     md.push_str(&format!("- **Version:** {}\n", entry.version));
-    md.push_str(&format!("- **Quality score:** {}/100\n", entry.quality_score()));
+    md.push_str(&format!(
+        "- **Quality score:** {}/100\n",
+        entry.quality_score()
+    ));
     md.push_str(&format!(
         "- **Verified:** {}\n",
         if entry.verified { "yes" } else { "no" }
     ));
-    md.push_str(&format!("- **Maintenance:** {}\n", entry.maintenance.label()));
+    md.push_str(&format!(
+        "- **Maintenance:** {}\n",
+        entry.maintenance.label()
+    ));
     if !entry.author.is_empty() {
         md.push_str(&format!("- **Author:** {}\n", entry.author));
     }
@@ -882,26 +907,18 @@ pub async fn get_template_by_name_and_version(
     name: &str,
     version: Option<&str>,
 ) -> Result<TemplateEntry> {
-    let registry = load_registry().await?;
-    let mut matching: Vec<_> = registry
-        .templates
-        .into_iter()
-        .filter(|t| t.name == name)
-        .collect();
-
-    if matching.is_empty() {
-        return Err(anyhow::anyhow!("Template '{}' not found", name));
-    }
+    let versions = get_templates_by_name(name).await?;
 
     if let Some(v) = version {
-        matching.sort_by(|a, b| semver_cmp(&b.version, &a.version));
-        matching
+        versions
             .into_iter()
             .find(|t| t.version == v)
             .ok_or_else(|| anyhow::anyhow!("Template '{}@{}' not found", name, v))
     } else {
-        matching.sort_by(|a, b| semver_cmp(&b.version, &a.version));
-        Ok(matching.into_iter().next().unwrap())
+        versions
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", name))
     }
 }
 
@@ -919,12 +936,13 @@ fn semver_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 pub async fn add_template(entry: TemplateEntry) -> Result<()> {
     let mut registry = load_registry().await?;
 
-    // Check if template already exists
-    if let Some(existing) = registry.templates.iter_mut().find(|t| t.name == entry.name) {
-        // Update existing template
+    if let Some(existing) = registry
+        .templates
+        .iter_mut()
+        .find(|t| t.name == entry.name && t.version == entry.version)
+    {
         *existing = entry;
     } else {
-        // Add new template
         registry.templates.push(entry);
     }
 
@@ -1121,7 +1139,8 @@ pub async fn publish_template(
         None,
         None,
         None,
-    ).await
+    )
+    .await
 }
 
 /// Like `publish_template` but also records optional CLI version constraints.
@@ -1149,7 +1168,8 @@ pub async fn install_template_package(
         None,
         None,
         None,
-    ).await
+    )
+    .await
 }
 
 pub async fn publish_template_versioned(
@@ -1174,20 +1194,42 @@ pub async fn publish_template_versioned(
 
     validate_template_structure(&source_root, &name, &description, &author, &version)?;
 
-    let dest = template_storage_dir()?.join(&name);
+    let storage_root = template_storage_dir()?.join(&name);
+    let dest = storage_root.join(&version);
+
+    let mut registry = load_registry().await?;
+    let same_version_exists = registry
+        .templates
+        .iter()
+        .any(|t| t.name == name && t.version == version);
 
     if dest.exists() {
-        anyhow::bail!(
-            "Template '{}' already exists. Remove it first or use a different name.",
-            name
-        );
+        if same_version_exists {
+            fs::remove_dir_all(&dest).with_context(|| {
+                format!("Failed to remove existing template version directory {}", dest.display())
+            })?;
+        } else {
+            anyhow::bail!(
+                "Template '{}' version '{}' already exists. Remove the old version or choose a new version.",
+                name,
+                version
+            );
+        }
     }
 
     copy_dir_recursive(&source_root, &dest)?;
 
+    let created_at = Utc::now().to_rfc3339();
+    let mut changelog: Vec<ChangelogEntry> = Vec::new();
+    changelog.push(ChangelogEntry {
+        version: version.clone(),
+        date: Utc::now().format("%Y-%m-%d").to_string(),
+        notes: "Initial release".to_string(),
+    });
+
     let entry = TemplateEntry {
         name: name.clone(),
-        version,
+        version: version.clone(),
         description,
         author,
         tags,
@@ -1197,8 +1239,8 @@ pub async fn publish_template_versioned(
         path: Some(dest.to_string_lossy().to_string()),
         downloads: 0,
         verified: false,
-        created_at: String::new(),
-        updated_at: String::new(),
+        created_at: created_at.clone(),
+        updated_at: created_at,
         cli_version_min,
         cli_version_max,
         documented: source_root.join("README.md").exists(),
@@ -1207,8 +1249,14 @@ pub async fn publish_template_versioned(
         repository,
         homepage,
         documentation,
-        security_review: None,
-        changelog: vec![],
+        security_review: Some(SecurityReview {
+            status: "pending".to_string(),
+            audited_at: None,
+            auditor: None,
+            findings: None,
+            score: None,
+        }),
+        changelog,
     };
 
     add_template(entry).await?;
@@ -1529,7 +1577,11 @@ async fn install_from_local_path(
     Ok(entry)
 }
 
-async fn install_from_registry(name: &str, version: Option<&str>, force: bool) -> Result<TemplateEntry> {
+async fn install_from_registry(
+    name: &str,
+    version: Option<&str>,
+    force: bool,
+) -> Result<TemplateEntry> {
     let entry = get_template_by_name_and_version(name, version).await?;
     assert_template_compatible(&entry)?;
 
@@ -1883,6 +1935,70 @@ mod tests {
             err.to_string().contains("greater than"),
             "error should explain min > max"
         );
+    }
+
+    #[test]
+    fn test_publish_template_versioned_stores_by_version() {
+        let tmp = tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::env::set_var("HOME", home.as_os_str());
+        let registry_dir = home.join(".starforge").join("templates");
+        fs::create_dir_all(&registry_dir).unwrap();
+        fs::write(
+            registry_dir.join("registry.json"),
+            "{\"version\": \"1\", \"templates\": []}",
+        )
+        .unwrap();
+
+        let tpl_dir = tmp.path().join("template");
+        make_valid_template(&tpl_dir);
+
+        futures::executor::block_on(async {
+            publish_template_versioned(
+                &tpl_dir,
+                "my-template".to_string(),
+                "A test template".to_string(),
+                "Alice".to_string(),
+                vec!["defi".to_string()],
+                "1.0.0".to_string(),
+                Some("0.1.0".to_string()),
+                Some("1.0.0".to_string()),
+                Some("MIT".to_string()),
+                Some("https://example.com".to_string()),
+                Some("https://docs.example.com".to_string()),
+                Some("https://homepage.example.com".to_string()),
+            )
+            .await
+            .unwrap();
+
+            let storage = home.join(".starforge").join("templates").join("storage");
+            assert!(storage.join("my-template").join("1.0.0").exists());
+
+            publish_template_versioned(
+                &tpl_dir,
+                "my-template".to_string(),
+                "A test template".to_string(),
+                "Alice".to_string(),
+                vec!["defi".to_string()],
+                "1.1.0".to_string(),
+                Some("0.1.0".to_string()),
+                Some("1.0.0".to_string()),
+                Some("MIT".to_string()),
+                Some("https://example.com".to_string()),
+                Some("https://docs.example.com".to_string()),
+                Some("https://homepage.example.com".to_string()),
+            )
+            .await
+            .unwrap();
+
+            let latest = get_template("my-template").await.unwrap();
+            assert_eq!(latest.version, "1.1.0");
+
+            let older = get_template_by_name_and_version("my-template", Some("1.0.0"))
+                .await
+                .unwrap();
+            assert_eq!(older.version, "1.0.0");
+        });
     }
 
     #[test]

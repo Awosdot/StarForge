@@ -199,7 +199,10 @@ fn stub_write_applies_bodies() {
         .expect("spawn stub write");
     assert_success(&output, "starforge complete stub --write");
     let after = std::fs::read_to_string(&path).expect("read written file");
-    assert!(after.contains("false"), "generated body should return false");
+    assert!(
+        after.contains("false"),
+        "generated body should return false"
+    );
     assert!(after.contains("// TODO: implement"));
     // Braces stay balanced.
     assert_eq!(after.matches('{').count(), after.matches('}').count());
