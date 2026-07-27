@@ -10,8 +10,9 @@
 )]
 
 mod commands;
-pub use starforge::plugins;
-pub use starforge::utils;
+pub mod curation;
+pub mod plugins;
+mod utils;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -54,11 +55,25 @@ enum Commands {
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
     /// Generate Soroban project boilerplate
-    /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
+    /// Generate contract scaffolding, bindings, and docs
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+    /// AI-assisted code completion (suggestions, boilerplate, stubs, imports)
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
     #[command(subcommand)]
     Contract(commands::contract::ContractCommands),
+    /// Generate smart contracts from natural language prompts
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+    /// Smart contract completion assistant
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+    /// External plugins
+    #[command(external_subcommand)]
+    External(Vec<String>),
     /// Debug Soroban contracts with breakpoints, stepping, and inspection
     #[command(subcommand)]
     Debug(commands::debug::DebugCommands),
@@ -76,7 +91,7 @@ enum Commands {
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
 
-    /// Manage telemetry collection
+    /// Manage telemetry settings directly
     #[command(subcommand)]
     Telemetry(commands::telemetry::TelemetryCommands),
 
@@ -136,12 +151,20 @@ enum Commands {
     #[command(subcommand)]
     Gas(commands::gas::GasCommands),
 
+    /// AI-assisted deployment cost management: budgets, forecasting,
+    /// cross-network comparison, and reporting
+    #[command(subcommand)]
+    Cost(commands::cost::CostCommands),
+
     /// Manage third-party plugins
     #[command(subcommand)]
     Plugin(commands::plugin::PluginCommands),
     /// Privacy protection, anonymization, consent, and reporting
     #[command(subcommand)]
     Privacy(commands::privacy::PrivacyCommands),
+    /// AI-driven project management for task tracking, sprints, resources, risks, and timelines
+    #[command(subcommand)]
+    Project(commands::project::ProjectCommands),
     /// Manage community contract templates from the marketplace
     #[command(subcommand)]
     Template(commands::template::TemplateCommands),
@@ -179,6 +202,10 @@ enum Commands {
 
     /// AI-powered security audit for Soroban contracts using Claude
     AiAudit(commands::ai_audit::AiAuditArgs),
+
+    /// AI-driven testing assistance (generate, optimize, analyze, maintain tests)
+    #[command(subcommand)]
+    AiTest(commands::ai_test::AiTestCommands),
 
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
@@ -222,9 +249,32 @@ enum Commands {
     #[command(subcommand)]
     Approval(commands::approval::ApprovalCommands),
 
+    /// Manage feature flags for AI features (rollouts, A/B tests, rollback)
+    FeatureFlags(commands::feature_flags_cmd::FeatureFlagsArgs),
+
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+
+    /// Generate a Soroban smart contract from a natural language prompt (OpenAI)
+    #[command(subcommand)]
+    Generate(commands::generate::GenerateCommands),
+
+    /// AI Contract Completion Assistant (offline code completion, boilerplate, stubs)
+    #[command(subcommand)]
+    Complete(commands::complete::CompleteCommands),
+
+    /// AI-powered multi-network deployment support
+    #[command(subcommand)]
+    MultiNetwork(commands::multi_network::MultiNetworkCommands),
+
+    /// AI-powered deployment automation
+    #[command(subcommand)]
+    DeploymentAutomate(commands::deployment_automate::DeploymentAutomateCommands),
+
+    /// AI-powered deployment compliance checks, regulatory validation, and reporting
+    #[command(subcommand)]
+    Compliance(commands::compliance::ComplianceCommands),
 }
 
 #[tokio::main]
@@ -249,6 +299,8 @@ async fn main() {
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
+        Commands::Complete(_) => "complete",
+        Commands::FeatureFlags(_) => "feature-flags",
         Commands::Debug(_) => "debug",
         Commands::Inspect(_) => "inspect",
         Commands::Deploy(_) => "deploy",
@@ -268,10 +320,12 @@ async fn main() {
         Commands::Benchmark(_) => "benchmark",
         Commands::Test(_) => "test",
         Commands::Gas(_) => "gas",
+        Commands::Cost(_) => "cost",
         Commands::Plugin(_) => "plugin",
         Commands::Privacy(_) => "privacy",
+        Commands::Project(_) => "project",
         Commands::Template(_) => "template",
-        Commands::Registry(_) => "registry",
+        Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -279,6 +333,7 @@ async fn main() {
         Commands::Security(_) => "security",
         Commands::Audit(_) => "audit",
         Commands::AiAudit(_) => "ai-audit",
+        Commands::AiTest(_) => "ai-test",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -291,9 +346,14 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
+        Commands::Generate(_) => "generate",
         Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
-        Commands::Migrate(_) => "migrate",
+        Commands::TemplateSecurity(_) => "template-security",
+        Commands::DeploymentOptimize(_) => "deployment-optimize",
+        Commands::MultiNetwork(_) => "multi-network",
+        Commands::Compliance(_) => "compliance",
+        Commands::DeploymentAutomate(_) => "deployment-automate",
     }
     .to_string();
 
@@ -303,7 +363,7 @@ async fn main() {
         Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
-        Commands::Generate(cmd) => commands::generate::handle(cmd).await,
+        Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
         Commands::Inspect(cmd) => commands::inspect::handle(cmd).await,
         Commands::Debug(cmd) => commands::debug::handle(cmd).await,
@@ -316,9 +376,22 @@ async fn main() {
         Commands::Network(cmd) => commands::network::handle(cmd).await,
         Commands::Node(cmd) => commands::node::handle(cmd).await,
         Commands::Completions(shell) => commands::completions::handle(shell).await,
-        Commands::Autocomplete { suggest, record, interactive, clear_history, stats } => {
-            commands::autocomplete::handle_autocomplete(suggest, record, interactive, clear_history, stats).await
-        },
+        Commands::Autocomplete {
+            suggest,
+            record,
+            interactive,
+            clear_history,
+            stats,
+        } => {
+            commands::autocomplete::handle_autocomplete(
+                suggest,
+                record,
+                interactive,
+                clear_history,
+                stats,
+            )
+            .await
+        }
         Commands::Shell(args) => commands::shell::handle(args).await,
         Commands::Monitor(args) => commands::monitor::handle(args).await,
         Commands::Multisig(cmd) => commands::multisig_builder::handle(cmd).await,
@@ -337,6 +410,7 @@ async fn main() {
         Commands::Security(cmd) => commands::security::handle(cmd).await,
         Commands::Audit(args) => commands::audit::handle(args).await,
         Commands::AiAudit(args) => commands::ai_audit::handle(args).await,
+        Commands::AiTest(cmd) => commands::ai_test::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
@@ -351,7 +425,11 @@ async fn main() {
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
-        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+        Commands::TemplateSecurity(cmd) => commands::template_security::handle(cmd).await,
+        Commands::DeploymentOptimize(cmd) => commands::deployment_optimize::handle(cmd).await,
+        Commands::MultiNetwork(cmd) => commands::multi_network::handle(cmd).await,
+        Commands::Compliance(cmd) => commands::compliance::handle(cmd),
+        Commands::DeploymentAutomate(cmd) => commands::deployment_automate::handle(cmd).await,
     };
     let duration = start.elapsed();
 
@@ -413,21 +491,31 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Build your contract first: stellar contract build".into());
                 hints.push("Make sure you pass the correct --wasm path to deploy.".into());
             } else if msg.contains("account") || msg.contains("not found on") {
-                hints.push("Fund your account before deploying: starforge wallet fund <name>".into());
+                hints.push(
+                    "Fund your account before deploying: starforge wallet fund <name>".into(),
+                );
                 hints.push("Check the active network: starforge network show".into());
             } else if msg.contains("network") {
                 hints.push("Check available networks: starforge network show".into());
-                hints.push("Switch to testnet for free deployments: starforge network switch testnet".into());
+                hints.push(
+                    "Switch to testnet for free deployments: starforge network switch testnet"
+                        .into(),
+                );
             }
         }
         "contract" => {
             if msg.contains("no wallet") || msg.contains("wallet not found") {
                 hints.push("Create a wallet first: starforge wallet create deployer --fund".into());
             } else if msg.contains("contract id") || msg.contains("invalid contract") {
-                hints.push("Contract IDs start with 'C' and are exactly 56 characters long.".into());
-                hints.push("Find your contract ID in the deploy output or: starforge contract list".into());
+                hints
+                    .push("Contract IDs start with 'C' and are exactly 56 characters long.".into());
+                hints.push(
+                    "Find your contract ID in the deploy output or: starforge contract list".into(),
+                );
             } else if msg.contains("invoke") || msg.contains("simulate") {
-                hints.push("Run `stellar contract build` to ensure the contract is up to date.".into());
+                hints.push(
+                    "Run `stellar contract build` to ensure the contract is up to date.".into(),
+                );
                 hints.push("Check function name and argument types match the contract ABI.".into());
             }
         }
@@ -439,34 +527,47 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Check your XLM balance: starforge wallet show <name>".into());
                 hints.push("Fund the account: starforge wallet fund <name>".into());
             } else if msg.contains("asset") {
-                hints.push("Asset format is CODE:ISSUER (e.g. USDC:GA5ZS...) or XLM for native.".into());
+                hints.push(
+                    "Asset format is CODE:ISSUER (e.g. USDC:GA5ZS...) or XLM for native.".into(),
+                );
             }
         }
         "network" => {
             if msg.contains("unsupported") || msg.contains("not found") {
                 hints.push("List configured networks: starforge network show".into());
-                hints.push("Add a custom network: starforge network add <name> --horizon <url>".into());
+                hints.push(
+                    "Add a custom network: starforge network add <name> --horizon <url>".into(),
+                );
                 hints.push("Valid built-in networks: testnet, mainnet, docker-testnet".into());
             }
         }
         "node" => {
             if msg.contains("docker") || msg.contains("not found") || msg.contains("command") {
-                hints.push("Install Docker Desktop from https://www.docker.com/products/docker-desktop".into());
+                hints.push(
+                    "Install Docker Desktop from https://www.docker.com/products/docker-desktop"
+                        .into(),
+                );
                 hints.push("Ensure the Docker daemon is running before retrying.".into());
             }
         }
         "config" => {
             if msg.contains("parse") || msg.contains("toml") || msg.contains("json") {
                 hints.push("Your config file may be corrupted. Inspect it at: ~/.config/starforge/config.toml".into());
-                hints.push("Run `starforge config doctor` to diagnose configuration issues.".into());
+                hints
+                    .push("Run `starforge config doctor` to diagnose configuration issues.".into());
             }
         }
         "plugin" => {
             if msg.contains("not found") || msg.contains("load") {
-                hints.push("Re-install the plugin: starforge plugin install <name> --path <lib>".into());
+                hints.push(
+                    "Re-install the plugin: starforge plugin install <name> --path <lib>".into(),
+                );
                 hints.push("List installed plugins: starforge plugin list".into());
             } else if msg.contains("untrusted") || msg.contains("trust") {
-                hints.push("Review the plugin source and mark it trusted: starforge plugin trust <name>".into());
+                hints.push(
+                    "Review the plugin source and mark it trusted: starforge plugin trust <name>"
+                        .into(),
+                );
             }
         }
         "template" => {
@@ -476,9 +577,24 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             }
         }
         "ai-debug" => {
-            hints.push("Provide the full error message in quotes: starforge ai-debug analyse \"<error>\"".into());
+            hints.push(
+                "Provide the full error message in quotes: starforge ai-debug analyse \"<error>\""
+                    .into(),
+            );
             hints.push("Explain a specific category: starforge ai-debug explain auth".into());
             hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
+        }
+        "ai-test" => {
+            if msg.contains("not found") || msg.contains("no such file") {
+                hints.push("Ensure the source file exists: ls src/lib.rs".into());
+                hints.push("Build your contract first: stellar contract build".into());
+            } else if msg.contains("ollama") || msg.contains("not running") {
+                hints.push("Install Ollama: https://ollama.ai/download".into());
+                hints.push("Start Ollama: ollama serve".into());
+                hints.push("Or run without --use-ai for local generation".into());
+            } else if msg.contains("coverage") {
+                hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
+            }
         }
         "benchmark" | "test" => {
             if msg.contains("wasm") || msg.contains("not found") {
