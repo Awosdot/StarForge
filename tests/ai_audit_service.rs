@@ -202,11 +202,14 @@ fn test_security_vulnerability_without_optional_fields() {
 
 #[test]
 fn test_audit_service_model_selection() {
-    let service = AiAuditService::new("sk-ant-test".to_string()).unwrap();
-    // Service should use claude-opus-4-1 (best model for security)
-    // We verify this by the fact it was created successfully
-    // (Actual model selection is verified by API integration)
-    assert!(service.is_ok() == false || service.is_ok() == true); // Compiler check
+    // Service should use claude-opus-4-1 (best model for security).
+    // We verify this by the fact it was created successfully.
+    // (Actual model selection is verified by API integration.)
+    let service = AiAuditService::new("sk-ant-test".to_string());
+    assert!(
+        service.is_ok(),
+        "service should build from a well-formed key"
+    );
 }
 
 #[test]

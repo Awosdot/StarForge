@@ -382,7 +382,6 @@ pub fn execute_pipeline(
                 pipeline.stages[i].status = StageStatus::Failed;
                 pipeline.stages[i].error = Some(e.to_string());
                 failed += 1;
-                let on_failure = stage.config.on_failure;
                 pipeline.status = PipelineStatus::Failed;
                 pipeline.updated_at = Utc::now().to_rfc3339();
                 save_pipeline(pipeline)?;
@@ -918,10 +917,11 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn temp_home() -> TempDir {
+    fn temp_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::utils::lock_home_env();
         let home = TempDir::new().unwrap();
         std::env::set_var("HOME", home.path());
-        home
+        (home, guard)
     }
 
     fn write_minimal_wasm(path: &Path) {
