@@ -34,6 +34,10 @@ impl AnomalyDetector {
         }
     }
 
+    pub fn contract_id(&self) -> &str {
+        &self.contract_id
+    }
+
     pub fn record_event(&mut self, numeric_value: Option<f64>) -> Option<AnomalyFinding> {
         let now = Instant::now();
         self.event_counts.push((now, 1));
