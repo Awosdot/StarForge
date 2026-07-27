@@ -724,28 +724,42 @@ fn check_freeze_period(policy: &CompliancePolicy) -> ComplianceCheckResult {
     let now = Utc::now();
 
     if let (Some(start_str), Some(end_str)) = (freeze_start, freeze_end) {
-        if let (Ok(start), Ok(end)) = (
+        match (
             chrono::NaiveDateTime::parse_from_str(start_str, "%Y-%m-%dT%H:%M:%S"),
             chrono::NaiveDateTime::parse_from_str(end_str, "%Y-%m-%dT%H:%M:%S"),
         ) {
-            let start_dt: DateTime<Utc> = DateTime::from_naive_utc_and_offset(start, Utc);
-            let end_dt: DateTime<Utc> = DateTime::from_naive_utc_and_offset(end, Utc);
+            (Ok(start), Ok(end)) => {
+                let start_dt: DateTime<Utc> = DateTime::from_naive_utc_and_offset(start, Utc);
+                let end_dt: DateTime<Utc> = DateTime::from_naive_utc_and_offset(end, Utc);
 
-            let in_freeze = now >= start_dt && now <= end_dt;
-            return ComplianceCheckResult {
-                policy_id: policy.id.clone(),
-                policy_name: policy.name.clone(),
-                passed: !in_freeze,
-                severity: ComplianceSeverity::Blocking,
-                message: if in_freeze {
-                    format!(
-                        "Currently in deployment freeze period ({} to {})",
+                let in_freeze = now >= start_dt && now <= end_dt;
+                return ComplianceCheckResult {
+                    policy_id: policy.id.clone(),
+                    policy_name: policy.name.clone(),
+                    passed: !in_freeze,
+                    severity: ComplianceSeverity::Blocking,
+                    message: if in_freeze {
+                        format!(
+                            "Currently in deployment freeze period ({} to {})",
+                            start_str, end_str
+                        )
+                    } else {
+                        "Not in a deployment freeze period".to_string()
+                    },
+                };
+            }
+            _ => {
+                return ComplianceCheckResult {
+                    policy_id: policy.id.clone(),
+                    policy_name: policy.name.clone(),
+                    passed: false,
+                    severity: ComplianceSeverity::Warning,
+                    message: format!(
+                        "Freeze period configuration has invalid date format (start: '{}', end: '{}'). Expected format: YYYY-MM-DDTHH:MM:SS",
                         start_str, end_str
-                    )
-                } else {
-                    "Not in a deployment freeze period".to_string()
-                },
-            };
+                    ),
+                };
+            }
         }
     }
 
@@ -1441,33 +1455,56 @@ pub fn generate_compliance_statistics() -> Result<ComplianceStatistics> {
         total_reports: reports.len(),
         recent_blocking: recent_reports.iter().map(|r| r.blocking_count).sum(),
         recent_warnings: recent_reports.iter().map(|r| r.warning_count).sum(),
-        most_failed,
+        most_failed_policies: most_failed,
         network_breakdown,
     })
+}
+
+/// Escape a string for CSV by wrapping in quotes and doubling internal quotes.
+fn csv_escape(value: impl std::fmt::Display) -> String {
+    let s = value.to_string();
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s
+    }
 }
 
 pub fn export_report_csv(report: &ComplianceReport) -> String {
     let mut csv = String::from("type,policy_id,check_name,passed,severity,message,framework\n");
     for check in &report.checks {
         csv.push_str(&format!(
-            "policy,{},{},{},{},{},\n",
-            check.policy_id, check.policy_name, check.passed, check.severity, check.message
+            "{},{},{},{},{},{},\n",
+            csv_escape("policy"),
+            csv_escape(&check.policy_id),
+            csv_escape(&check.policy_name),
+            csv_escape(&check.passed),
+            csv_escape(&check.severity),
+            csv_escape(&check.message),
         ));
     }
     for check in &report.regulatory_checks {
         csv.push_str(&format!(
-            "regulatory,,{},{},{},{},{}\n",
-            check.requirement, check.passed, check.severity, check.message, check.framework
+            "{},{},{},{},{},{},{}\n",
+            csv_escape("regulatory"),
+            csv_escape(""),
+            csv_escape(&check.requirement),
+            csv_escape(&check.passed),
+            csv_escape(&check.severity),
+            csv_escape(&check.message),
+            csv_escape(&check.framework),
         ));
     }
     for practice in &report.best_practices {
         csv.push_str(&format!(
-            "best_practice,,{},{},{},{},{}\n",
-            practice.check,
-            practice.passed,
-            practice.severity,
-            practice.recommendation,
-            practice.category
+            "{},{},{},{},{},{},{}\n",
+            csv_escape("best_practice"),
+            csv_escape(""),
+            csv_escape(&practice.check),
+            csv_escape(&practice.passed),
+            csv_escape(&practice.severity),
+            csv_escape(&practice.recommendation),
+            csv_escape(&practice.category),
         ));
     }
     csv

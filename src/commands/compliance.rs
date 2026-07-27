@@ -816,11 +816,11 @@ fn handle_dashboard() -> Result<()> {
     p::kv("Blocking issues (30d)", &stats.recent_blocking.to_string());
     p::kv("Warnings (30d)", &stats.recent_warnings.to_string());
 
-    if !stats.most_failed.is_empty() {
+    if !stats.most_failed_policies.is_empty() {
         println!();
         p::separator();
         println!("  {}:", "Most Failed Policies".bright_white().red());
-        for (policy, count) in &stats.most_failed {
+        for (policy, count) in &stats.most_failed_policies {
             println!(
                 "  {} {} times",
                 format!("  • {}:", policy).dimmed(),
@@ -905,11 +905,11 @@ fn handle_stats() -> Result<()> {
     );
     p::kv("  Warnings (30d)", &stats.recent_warnings.to_string());
 
-    if !stats.most_failed.is_empty() {
+    if !stats.most_failed_policies.is_empty() {
         println!();
         p::separator();
         println!("  {}:", "Most Frequently Failed Policies".bright_white());
-        for (policy, count) in &stats.most_failed {
+        for (policy, count) in &stats.most_failed_policies {
             println!(
                 "  {} {} failures",
                 format!("  • {}:", policy).dimmed(),
