@@ -1,6 +1,10 @@
 pub mod ai;
 pub mod ai_audit;
+pub mod ai_chat;
 pub mod ai_debug;
+pub mod ai_error;
+pub mod ai_test_gen;
+pub mod ai_tutorial_cmd;
 pub mod analytics;
 pub mod approval;
 pub mod audit;

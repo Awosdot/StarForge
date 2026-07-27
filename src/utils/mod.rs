@@ -1,6 +1,10 @@
+pub mod ai_conversation;
 pub mod ai_debugger;
 pub mod ai_docs;
+pub mod ai_error_handler;
 pub mod ai_gas_estimation;
+pub mod ai_test_generator;
+pub mod ai_tutorial;
 pub mod approval_engine;
 pub mod audit;
 pub mod backup;
