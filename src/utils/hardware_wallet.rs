@@ -90,9 +90,13 @@ pub fn map_signing_error(err: anyhow::Error, kind: HardwareWalletKind) -> anyhow
     let message = err.to_string().to_lowercase();
     let remediation = if message.contains("timeout") || message.contains("timed out") {
         "Ensure the device is unlocked, the Stellar app is open, and approve the prompt on-screen. Retry when ready."
-    } else if message.contains("not found") || message.contains("no ledger") || message.contains("no trezor") {
+    } else if message.contains("not found")
+        || message.contains("no ledger")
+        || message.contains("no trezor")
+    {
         "Connect the device via USB, unlock it, open the Stellar app, then retry."
-    } else if message.contains("reject") || message.contains("denied") || message.contains("cancel") {
+    } else if message.contains("reject") || message.contains("denied") || message.contains("cancel")
+    {
         "The request was rejected on the device. Review the transaction details and approve to continue."
     } else if message.contains("status") || message.contains("apdu") {
         "Close other wallet apps, reopen the Stellar app on the device, and retry the operation."
@@ -149,7 +153,10 @@ pub fn device_status(kind: HardwareWalletKind) -> Result<String> {
 }
 
 #[cfg(feature = "hardware-wallet")]
-pub fn connect_with_timeout(kind: HardwareWalletKind, timeout: std::time::Duration) -> Result<HardwareWalletInfo> {
+pub fn connect_with_timeout(
+    kind: HardwareWalletKind,
+    timeout: std::time::Duration,
+) -> Result<HardwareWalletInfo> {
     match kind {
         HardwareWalletKind::Ledger => {
             let transport = LedgerTransport::connect_with_timeout(timeout)?;
@@ -481,30 +488,17 @@ impl TrezorTransport {
         transaction: &[u8],
         network_passphrase: &str,
     ) -> Result<Vec<u8>> {
-        let mut trezor = Self::connect()?;
-        trezor
-            .init_device(None)
-            .context("Failed to initialize Trezor session")?;
-
-        let mut request = trezor_client::protos::StellarSignTx::new();
-        request.address_n = parse_hd_path(hd_path)?;
-        if !network_passphrase.is_empty() {
-            request.set_network(network_passphrase);
-        }
-        request.set_transaction(transaction);
-
-        let response = trezor.call(
-            request,
-            Box::new(|_, message: trezor_client::protos::StellarSignedTx| {
-                Ok(message.signature().to_vec())
-            }),
-        )?;
-        let signature = trezor_client::client::handle_interaction(response)
-            .context("Trezor did not return a transaction signature")?;
-        if signature.len() < 64 {
-            anyhow::bail!("Trezor signature response was too short");
-        }
-        Ok(signature)
+        // Trezor's Stellar protocol has no "raw envelope" field. Signing requires
+        // decomposing the transaction into a `StellarSignTx` header followed by one
+        // protobuf message per operation (`StellarPaymentOp`, `StellarCreateAccountOp`,
+        // …), which starforge does not build yet. Refuse clearly rather than sending a
+        // request the device is guaranteed to reject.
+        let _ = (hd_path, transaction, network_passphrase);
+        anyhow::bail!(
+            "Trezor transaction signing is not supported yet.\n\
+             The device requires per-operation messages rather than a raw XDR envelope.\n\
+             Use a Ledger device, or sign with a software wallet: starforge wallet sign <name>."
+        )
     }
 
     fn connect() -> Result<trezor_client::Trezor> {

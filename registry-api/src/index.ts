@@ -54,10 +54,13 @@ app.use((req, res) => {
 // Error handler
 app.use(errorHandler);
 
-// Start server
-app.listen(PORT, () => {
-  logger.info(`StarForge Registry API running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
-});
+// Start server (skipped when this module is imported by the test suite,
+// so multiple test files can require `app` without fighting over the port)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    logger.info(`StarForge Registry API running on port ${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+  });
+}
 
 export default app;

@@ -1,6 +1,4 @@
-use crate::utils::{
-    config, cost_estimation as ce, optimizer, print as p, profiler,
-};
+use crate::utils::{config, cost_estimation as ce, optimizer, print as p, profiler};
 use anyhow::Result;
 use clap::Subcommand;
 use colored::*;
@@ -139,9 +137,18 @@ fn analyze(wasm: PathBuf, network: Option<String>) -> Result<()> {
         "Estimated CPU",
         &format!("{} instructions", report.gas.cpu_instructions),
     );
-    p::kv("Estimated memory", &format!("{} bytes", report.gas.memory_bytes));
-    p::kv("Estimated storage", &format!("{} bytes", report.gas.storage_bytes));
-    p::kv("Estimated fee", &format!("{} stroops", report.gas.fee_stroops));
+    p::kv(
+        "Estimated memory",
+        &format!("{} bytes", report.gas.memory_bytes),
+    );
+    p::kv(
+        "Estimated storage",
+        &format!("{} bytes", report.gas.storage_bytes),
+    );
+    p::kv(
+        "Estimated fee",
+        &format!("{} stroops", report.gas.fee_stroops),
+    );
     p::kv("Host calls", &report.resources.host_calls.to_string());
     p::kv(
         "Control flow ops",
@@ -206,22 +213,13 @@ fn diff(old_wasm: PathBuf, new_wasm: PathBuf) -> Result<()> {
     p::separator();
     p::kv("Old size (bytes)", &old_report.size_bytes.to_string());
     p::kv("New size (bytes)", &new_report.size_bytes.to_string());
-    p::kv(
-        "Old est. fee",
-        &comparison.baseline_fee_stroops.to_string(),
-    );
+    p::kv("Old est. fee", &comparison.baseline_fee_stroops.to_string());
     p::kv(
         "New est. fee",
         &comparison.candidate_fee_stroops.to_string(),
     );
-    p::kv(
-        "Old est. CPU",
-        &old_report.gas.cpu_instructions.to_string(),
-    );
-    p::kv(
-        "New est. CPU",
-        &new_report.gas.cpu_instructions.to_string(),
-    );
+    p::kv("Old est. CPU", &old_report.gas.cpu_instructions.to_string());
+    p::kv("New est. CPU", &new_report.gas.cpu_instructions.to_string());
     p::kv("Old risk", &format!("{:?}", old_report.risk));
     p::kv("New risk", &format!("{:?}", new_report.risk));
     p::kv(
@@ -282,18 +280,9 @@ fn estimate(
 
     // Gas breakdown
     p::header("Gas Breakdown");
-    p::kv(
-        "CPU instructions",
-        &format!("{}", est.gas.cpu_instructions),
-    );
-    p::kv(
-        "Memory bytes",
-        &format!("{}", est.gas.memory_bytes),
-    );
-    p::kv(
-        "CPU fee",
-        &format!("{} stroops", est.gas.cpu_fee_stroops),
-    );
+    p::kv("CPU instructions", &format!("{}", est.gas.cpu_instructions));
+    p::kv("Memory bytes", &format!("{}", est.gas.memory_bytes));
+    p::kv("CPU fee", &format!("{} stroops", est.gas.cpu_fee_stroops));
     p::kv(
         "Memory fee",
         &format!("{} stroops", est.gas.memory_fee_stroops),
@@ -322,8 +311,7 @@ fn estimate(
         "Est. data entries",
         &format!(
             "{}  → {} stroops",
-            est.storage.estimated_data_entries,
-            est.storage.data_entries_fee_stroops
+            est.storage.estimated_data_entries, est.storage.data_entries_fee_stroops
         ),
     );
     p::kv_accent(
@@ -441,10 +429,20 @@ fn history(network: Option<String>, limit: usize) -> Result<()> {
     if let Some(ref n) = network {
         p::kv("Network filter", n);
     }
-    p::kv("Showing", &format!("{} entries (most recent first)", filtered.len()));
+    p::kv(
+        "Showing",
+        &format!("{} entries (most recent first)", filtered.len()),
+    );
     println!();
 
-    let headers = &["ID", "Network", "WASM", "Total Fee (stroops)", "XLM", "Recorded At"];
+    let headers = &[
+        "ID",
+        "Network",
+        "WASM",
+        "Total Fee (stroops)",
+        "XLM",
+        "Recorded At",
+    ];
     let rows: Vec<Vec<String>> = filtered
         .iter()
         .map(|e| {

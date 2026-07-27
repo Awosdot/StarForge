@@ -2,6 +2,8 @@ import express, { Request, Response } from "express";
 import { v4 as uuid } from "uuid";
 import { TemplateStore, ITemplate } from "../models/Template";
 import { ReviewStore } from "../models/Review";
+import { searchAnalytics } from "../models/SearchAnalytics";
+import { searchEngine, SearchOptions } from "../services/searchEngine";
 import { verifyToken, optionalAuth } from "../middleware/auth";
 import logger from "../utils/logger";
 import fs from "fs";
@@ -18,7 +20,45 @@ if (!fs.existsSync(STORAGE_DIR)) {
   fs.mkdirSync(STORAGE_DIR, { recursive: true });
 }
 
-// Search templates
+// Shared response shape for a template across every endpoint below.
+function serializeTemplate(tpl: ITemplate) {
+  return {
+    id: tpl.id,
+    name: tpl.name,
+    version: tpl.version,
+    description: tpl.description,
+    author: tpl.author,
+    tags: tpl.tags,
+    functionality: tpl.functionality || [],
+    license: tpl.license,
+    repository: tpl.repository,
+    homepage: tpl.homepage,
+    documentation: tpl.documentation,
+    downloads: tpl.downloads,
+    verified: tpl.verified,
+    created_at: tpl.createdAt,
+    updated_at: tpl.updatedAt,
+    ratings: {
+      average_rating: tpl.ratings.average,
+      review_count: tpl.ratings.count,
+      five_star: tpl.ratings.distribution[5] || 0,
+      four_star: tpl.ratings.distribution[4] || 0,
+      three_star: tpl.ratings.distribution[3] || 0,
+      two_star: tpl.ratings.distribution[2] || 0,
+      one_star: tpl.ratings.distribution[1] || 0,
+    },
+    download_url: tpl.downloadUrl,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Intelligent search
+// ---------------------------------------------------------------------------
+//
+// Natural language + semantic search over the template corpus, with
+// personalization, filtering, sorting, and usage analytics. See
+// registry-api/INTELLIGENT_SEARCH.md for the full design notes.
+
 router.post("/search", optionalAuth, async (req: Request, res: Response) => {
   try {
     const {
@@ -26,50 +66,318 @@ router.post("/search", optionalAuth, async (req: Request, res: Response) => {
       tags,
       verified,
       min_quality,
+      min_downloads,
+      license,
+      author,
+      date_from,
+      date_to,
+      sort_by = "relevance",
       limit = 20,
       offset = 0,
     } = req.body;
 
-    const results = await templateStore.search(query, tags, verified);
-    const paginated = results.slice(offset, offset + limit);
+    const allTemplates = await templateStore.all();
+
+    const filterOptions: SearchOptions = {
+      tags,
+      verified,
+      license,
+      minQuality: min_quality,
+      minDownloads: min_downloads,
+      author,
+      dateFrom: date_from,
+      dateTo: date_to,
+    };
+
+    let scored = searchEngine.search(allTemplates, query, filterOptions);
+
+    // Personalization: nudge templates that match this user's historical
+    // tag / author affinity (built from their view & download history).
+    let personalized = false;
+    if (req.userId) {
+      const { tagScores, authorScores } = searchAnalytics.getUserAffinity(
+        req.userId,
+        (id) => allTemplates.find((t) => t.id === id),
+      );
+      if (tagScores.size > 0 || authorScores.size > 0) {
+        personalized = true;
+        scored = scored.map((r) => {
+          let boost = 0;
+          for (const tag of r.template.tags) {
+            boost += (tagScores.get(tag.toLowerCase()) || 0) * 0.05;
+          }
+          boost += (authorScores.get(r.template.author) || 0) * 0.03;
+          return { ...r, relevanceScore: r.relevanceScore + boost };
+        });
+      }
+    }
+
+    // Trending boost: recently popular templates surface slightly higher,
+    // which helps discovery even when the query is broad.
+    const trending = searchAnalytics.getTrendingTemplateIds();
+    const trendingScores = new Map(trending.map((t) => [t.templateId, t.score]));
+    if (trendingScores.size > 0) {
+      scored = scored.map((r) => ({
+        ...r,
+        relevanceScore:
+          r.relevanceScore + (trendingScores.get(r.template.id) || 0) * 0.01,
+      }));
+    }
+
+    switch (sort_by) {
+      case "downloads":
+        scored.sort((a, b) => b.template.downloads - a.template.downloads);
+        break;
+      case "rating":
+        scored.sort(
+          (a, b) => b.template.ratings.average - a.template.ratings.average,
+        );
+        break;
+      case "recent":
+        scored.sort(
+          (a, b) =>
+            new Date(b.template.createdAt).getTime() -
+            new Date(a.template.createdAt).getTime(),
+        );
+        break;
+      case "trending":
+        scored.sort(
+          (a, b) =>
+            (trendingScores.get(b.template.id) || 0) -
+            (trendingScores.get(a.template.id) || 0),
+        );
+        break;
+      case "relevance":
+      default:
+        if (query && query.trim()) {
+          scored.sort((a, b) => b.relevanceScore - a.relevanceScore);
+        } else {
+          scored.sort((a, b) => b.template.downloads - a.template.downloads);
+        }
+    }
+
+    const total = scored.length;
+    const paginated = scored.slice(offset, offset + limit);
+
+    searchAnalytics.recordSearch(
+      req.userId,
+      query,
+      filterOptions as Record<string, unknown>,
+      total,
+    );
 
     res.json({
       success: true,
-      results: paginated.map((tpl) => ({
-        id: tpl.id,
-        name: tpl.name,
-        version: tpl.version,
-        description: tpl.description,
-        author: tpl.author,
-        tags: tpl.tags,
-        license: tpl.license,
-        repository: tpl.repository,
-        homepage: tpl.homepage,
-        documentation: tpl.documentation,
-        downloads: tpl.downloads,
-        verified: tpl.verified,
-        created_at: tpl.createdAt,
-        updated_at: tpl.updatedAt,
-        ratings: {
-          average_rating: tpl.ratings.average,
-          review_count: tpl.ratings.count,
-          five_star: tpl.ratings.distribution[5] || 0,
-          four_star: tpl.ratings.distribution[4] || 0,
-          three_star: tpl.ratings.distribution[3] || 0,
-          two_star: tpl.ratings.distribution[2] || 0,
-          one_star: tpl.ratings.distribution[1] || 0,
-        },
-        download_url: tpl.downloadUrl,
+      results: paginated.map((r) => ({
+        ...serializeTemplate(r.template),
+        match_score: Number(r.relevanceScore.toFixed(4)),
+        matched_terms: r.matchedTerms,
       })),
-      total: results.length,
+      total,
       limit,
       offset,
+      personalized,
     });
   } catch (err) {
     logger.error("Search error", err);
     res.status(500).json({ error: "Search failed" });
   }
 });
+
+// Search suggestions / autocomplete: past popular queries plus matching
+// template names and tags for the given prefix.
+router.get(
+  "/search/suggestions",
+  optionalAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const q = String(req.query.q || "");
+      const limit = Number(req.query.limit) || 10;
+      const prefix = q.toLowerCase().trim();
+
+      const allTemplates = await templateStore.all();
+      const nameMatches = new Set<string>();
+      const tagMatches = new Set<string>();
+
+      if (prefix) {
+        for (const tpl of allTemplates) {
+          if (tpl.name.toLowerCase().includes(prefix)) {
+            nameMatches.add(tpl.name);
+          }
+          for (const tag of tpl.tags) {
+            if (tag.toLowerCase().startsWith(prefix)) {
+              tagMatches.add(tag);
+            }
+          }
+        }
+      }
+
+      const queryMatches = searchAnalytics.getSuggestions(prefix, limit);
+
+      const suggestions = [
+        ...queryMatches.map((value) => ({ type: "query", value })),
+        ...[...nameMatches].slice(0, limit).map((value) => ({
+          type: "template",
+          value,
+        })),
+        ...[...tagMatches].slice(0, limit).map((value) => ({
+          type: "tag",
+          value,
+        })),
+      ].slice(0, limit);
+
+      res.json({ success: true, suggestions });
+    } catch (err) {
+      logger.error("Suggestions error", err);
+      res.status(500).json({ error: "Failed to fetch suggestions" });
+    }
+  },
+);
+
+// Trending templates: recent view/click/download activity, weighted, with
+// a most-downloaded fallback so the endpoint is useful from a cold start.
+router.get(
+  "/discover/trending",
+  optionalAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const limit = Number(req.query.limit) || 10;
+      const windowDays = Number(req.query.window_days) || 7;
+
+      const allTemplates = await templateStore.all();
+      const trending = searchAnalytics.getTrendingTemplateIds(
+        windowDays * 24 * 60 * 60 * 1000,
+        limit,
+      );
+      const byId = new Map(allTemplates.map((t) => [t.id, t]));
+
+      let results = trending
+        .map((t) => byId.get(t.templateId))
+        .filter((t): t is ITemplate => Boolean(t));
+
+      if (results.length < limit) {
+        const seen = new Set(results.map((t) => t.id));
+        const fallback = [...allTemplates]
+          .filter((t) => !seen.has(t.id))
+          .sort((a, b) => b.downloads - a.downloads)
+          .slice(0, limit - results.length);
+        results = [...results, ...fallback];
+      }
+
+      res.json({ success: true, results: results.map(serializeTemplate) });
+    } catch (err) {
+      logger.error("Trending error", err);
+      res.status(500).json({ error: "Failed to fetch trending templates" });
+    }
+  },
+);
+
+// Personalized recommendations based on the current user's view/download
+// history. Falls back to most-downloaded templates for anonymous users or
+// users without enough history yet.
+router.get(
+  "/discover/recommended",
+  optionalAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const limit = Number(req.query.limit) || 10;
+      const allTemplates = await templateStore.all();
+
+      const fallback = () =>
+        res.json({
+          success: true,
+          results: [...allTemplates]
+            .sort((a, b) => b.downloads - a.downloads)
+            .slice(0, limit)
+            .map(serializeTemplate),
+          personalized: false,
+        });
+
+      if (!req.userId) return fallback();
+
+      const { tagScores, authorScores } = searchAnalytics.getUserAffinity(
+        req.userId,
+        (id) => allTemplates.find((t) => t.id === id),
+      );
+
+      if (tagScores.size === 0 && authorScores.size === 0) return fallback();
+
+      const scored = allTemplates.map((tpl) => {
+        let score = 0;
+        for (const tag of tpl.tags) {
+          score += tagScores.get(tag.toLowerCase()) || 0;
+        }
+        score += authorScores.get(tpl.author) || 0;
+        return { tpl, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score || b.tpl.downloads - a.tpl.downloads);
+
+      res.json({
+        success: true,
+        results: scored.slice(0, limit).map((s) => serializeTemplate(s.tpl)),
+        personalized: true,
+      });
+    } catch (err) {
+      logger.error("Recommendation error", err);
+      res.status(500).json({ error: "Failed to fetch recommendations" });
+    }
+  },
+);
+
+// Search usage analytics summary (top queries, trending ids, totals).
+router.get(
+  "/analytics/summary",
+  optionalAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const limit = Number(req.query.limit) || 10;
+      res.json({
+        success: true,
+        top_queries: searchAnalytics.getTopQueries(limit),
+        trending_template_ids: searchAnalytics.getTrendingTemplateIds(
+          7 * 24 * 60 * 60 * 1000,
+          limit,
+        ),
+        totals: searchAnalytics.getEventCounts(),
+      });
+    } catch (err) {
+      logger.error("Analytics summary error", err);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  },
+);
+
+// Find templates similar to a given one (by TF-IDF document similarity).
+router.get(
+  "/:id/similar",
+  optionalAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const limit = Number(req.query.limit) || 5;
+
+      const allTemplates = await templateStore.all();
+      const target = allTemplates.find((t) => t.id === id);
+      if (!target) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      const similar = searchEngine.findSimilar(allTemplates, target.id, limit);
+
+      res.json({
+        success: true,
+        results: similar.map((r) => ({
+          ...serializeTemplate(r.template),
+          similarity_score: Number(r.relevanceScore.toFixed(4)),
+        })),
+      });
+    } catch (err) {
+      logger.error("Similar templates error", err);
+      res.status(500).json({ error: "Failed to fetch similar templates" });
+    }
+  },
+);
 
 // Get template by name and version
 router.get(
@@ -90,32 +398,9 @@ router.get(
         tpl = results.find((t) => t.version === versionQuery) || results[0];
       }
 
-      res.json({
-        id: tpl.id,
-        name: tpl.name,
-        version: tpl.version,
-        description: tpl.description,
-        author: tpl.author,
-        tags: tpl.tags,
-        license: tpl.license,
-        repository: tpl.repository,
-        homepage: tpl.homepage,
-        documentation: tpl.documentation,
-        downloads: tpl.downloads,
-        verified: tpl.verified,
-        created_at: tpl.createdAt,
-        updated_at: tpl.updatedAt,
-        ratings: {
-          average_rating: tpl.ratings.average,
-          review_count: tpl.ratings.count,
-          five_star: tpl.ratings.distribution[5] || 0,
-          four_star: tpl.ratings.distribution[4] || 0,
-          three_star: tpl.ratings.distribution[3] || 0,
-          two_star: tpl.ratings.distribution[2] || 0,
-          one_star: tpl.ratings.distribution[1] || 0,
-        },
-        download_url: tpl.downloadUrl,
-      });
+      searchAnalytics.recordInteraction(req.userId, tpl.id, "view");
+
+      res.json(serializeTemplate(tpl));
     } catch (err) {
       logger.error("Get template error", err);
       res.status(500).json({ error: "Failed to fetch template" });
@@ -132,6 +417,7 @@ router.post("/publish", verifyToken, async (req: Request, res: Response) => {
       description,
       author,
       tags,
+      functionality,
       license,
       repository,
       homepage,
@@ -166,6 +452,7 @@ router.post("/publish", verifyToken, async (req: Request, res: Response) => {
       description,
       author,
       tags: tags || [],
+      functionality: functionality || [],
       license,
       repository,
       homepage,
@@ -210,6 +497,7 @@ router.get(
       }
 
       await templateStore.incrementDownloads(tpl.id);
+      searchAnalytics.recordInteraction(req.userId, tpl.id, "download");
 
       const fileName = path.basename(tpl.downloadUrl);
       const filePath = path.join(

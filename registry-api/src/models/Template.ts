@@ -5,6 +5,10 @@ export interface ITemplate {
   description: string;
   author: string;
   tags: string[];
+  // Structured functionality keywords (e.g. ["escrow", "refund", "timeout"])
+  // used by search to match "find a template that does X" style queries
+  // even when the words aren't in the description.
+  functionality?: string[];
   license?: string;
   repository?: string;
   homepage?: string;
@@ -44,6 +48,11 @@ export class TemplateStore {
       }
     }
     return null;
+  }
+
+  /** All templates currently in the store, in no particular order. */
+  async all(): Promise<ITemplate[]> {
+    return Array.from(this.templates.values());
   }
 
   async findByName(name: string): Promise<ITemplate[]> {
