@@ -1,5 +1,5 @@
 pub mod ai_debugger;
-pub mod ai_refactor;
+pub mod ai_template_testing;
 pub mod approval_engine;
 pub mod audit;
 pub mod backup;
