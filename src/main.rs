@@ -189,16 +189,13 @@ enum Commands {
     #[command(external_subcommand)]
     External(Vec<String>),
 
-    // in the Commands enum, after the Upgrade variant:
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
 
-    // in the command_name match:
-    Commands::Migrate(_) => "migrate",
-
-    // in the result dispatch match:
-    Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+    /// AI-assisted migration analysis, breaking change detection, and code generation
+    #[command(subcommand)]
+    MigrateAi(commands::migrate_ai::MigrateAiCommands),
 }
 
 #[tokio::main]
@@ -258,6 +255,8 @@ async fn main() {
         Commands::Docs(_) => "docs",
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
+        Commands::Migrate(_) => "migrate",
+        Commands::MigrateAi(_) => "migrate-ai",
         Commands::External(_) => "external",
     }
     .to_string();
@@ -305,6 +304,8 @@ async fn main() {
         Commands::Docs(cmd) => commands::docs::handle(cmd).await,
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
+        Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+        Commands::MigrateAi(cmd) => commands::migrate_ai::handle(cmd),
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();

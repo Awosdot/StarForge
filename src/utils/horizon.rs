@@ -101,18 +101,6 @@ pub async fn fund_account(public_key: &str, network: &str) -> Result<()> {
 pub async fn fetch_account(public_key: &str, network: &str) -> Result<AccountResponse> {
     let horizon = horizon_url(network)?;
     let url = format!("{}/accounts/{}", horizon, public_key);
-    let res = ureq::get(&url)
-        .call()
-        .with_context(|| {
-            format!(
-                "Could not reach Horizon on '{}'. Check your internet connection or run: starforge network test",
-                network
-            )
-        })?;
-    if res.status() == 200 {
-        let account: AccountResponse = res
-            .into_json()
-            .with_context(|| "Failed to parse account response from Horizon")?;
     let res = HTTP_CLIENT
         .get(&url)
         .send()
