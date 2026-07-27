@@ -186,7 +186,7 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
 
         println!(
             "  {:<10}  {:<10}  {:<10}  {:<12}  {:<16}  {}",
-            &rec.id[..8.min(rec.id.len())].cyan(),
+            rec.id[..8.min(rec.id.len())].cyan(),
             rec.network.as_str(),
             status_colored,
             rec.wallet.chars().take(10).collect::<String>(),
@@ -499,7 +499,7 @@ fn handle_dashboard(args: DashboardArgs) -> Result<()> {
             println!(
                 "    {} {} | {} | {}",
                 status_colored,
-                &rec.id[..8.min(rec.id.len())].dimmed(),
+                rec.id[..8.min(rec.id.len())].dimmed(),
                 rec.timestamp.get(..16).unwrap_or(&rec.timestamp).dimmed(),
                 rec.contract_id
                     .as_deref()
