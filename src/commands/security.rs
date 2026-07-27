@@ -667,8 +667,37 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
     }
 }
 
-    fn handle_dashboard() -> Result<()> {
-        p::header("Security Dashboard");
+fn handle_dashboard() -> Result<()> {
+    p::header("Security Dashboard");
+
+    let mut incidents = IncidentStore::load_all()?;
+
+    let critical_open = incidents
+        .iter()
+        .filter(|i| {
+            i.severity.eq_ignore_ascii_case("critical")
+                && !matches!(i.status, crate::utils::security::IncidentStatus::Closed)
+        })
+        .count();
+    let open_incidents = incidents
+        .iter()
+        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Closed))
+        .count();
+
+    let remediation_items = crate::utils::security::remediation::load_all()?;
+    let open_remediation = remediation_items
+        .iter()
+        .filter(|i| {
+            let s = i.status.to_string();
+            s != "resolved" && s != "verified"
+        })
+        .count();
+
+    let mut score: i32 = 100;
+    score -= (critical_open as i32) * 20;
+    score -= ((open_incidents - critical_open) as i32) * 10;
+    score -= (open_remediation as i32) * 5;
+    let score = score.max(0);
 
         let mut incidents = IncidentStore::load_all()?;
 
@@ -734,25 +763,7 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
         );
         println!();
 
-        p::info("Run `starforge security audit <path>` for a live per-contract score.");
-        p::success("Dashboard generated");
-        Ok(())
-    }
-
-    /// Track remediation of findings from audit/pentest/checklist runs
-    Remediation(RemediationArgs),
-    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
-    Dashboard,
-}
-
-#[derive(Subcommand)]
-pub enum SecurityCommands {
-    /// Run a security audit on a contract or template
-    Audit(SecurityAuditArgs),
-    /// Run a simulated penetration test against a contract
-    Pentest(PentestArgs),
-    /// Track remediation of findings from audit/pentest/checklist runs
-    Remediation(RemediationArgs),
-    /// Show an aggregated security dashboard (score, risk heatmap, incidents, compliance)
-    Dashboard,
+    p::info("Run `starforge security audit <path>` for a live per-contract score.");
+    p::success("Dashboard generated");
+    Ok(())
 }
