@@ -1,6 +1,7 @@
 use crate::utils::deploy_history::{
     get_record, last_successful, load_history, set_verified, update_status, DeployStatus,
 };
+use crate::utils::deployment_monitor;
 use crate::utils::deployment_verify::{
     generate_ci_snippet, load_report, save_report, DeploymentVerifier,
 };
@@ -27,6 +28,8 @@ pub enum DeploymentsCommands {
     Report(ReportArgs),
     /// Generate CI snippet for automated deployment verification
     Ci(CiArgs),
+    /// Run AI-assisted deployment monitoring and predictions
+    Monitor(MonitorArgs),
 }
 
 #[derive(Args)]
@@ -111,6 +114,16 @@ pub struct DashboardArgs {
 }
 
 #[derive(Args)]
+pub struct MonitorArgs {
+    /// Network to analyze
+    #[arg(long, default_value = "testnet")]
+    pub network: String,
+    /// Optional contract ID to scope the analysis
+    #[arg(long)]
+    pub contract: Option<String>,
+}
+
+#[derive(Args)]
 pub struct ApproveArgs {
     /// Deployment ID to approve
     #[arg(long)]
@@ -129,6 +142,7 @@ pub async fn handle(cmd: DeploymentsCommands) -> Result<()> {
         DeploymentsCommands::Approve(args) => handle_approve(args),
         DeploymentsCommands::Report(args) => handle_report(args),
         DeploymentsCommands::Ci(args) => handle_ci(args),
+        DeploymentsCommands::Monitor(args) => handle_monitor(args),
     }
 }
 
@@ -186,7 +200,7 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
 
         println!(
             "  {:<10}  {:<10}  {:<10}  {:<12}  {:<16}  {}",
-            &rec.id[..8.min(rec.id.len())].cyan(),
+            rec.id[..8.min(rec.id.len())].cyan(),
             rec.network.as_str(),
             status_colored,
             rec.wallet.chars().take(10).collect::<String>(),
@@ -404,6 +418,55 @@ fn handle_report(args: ReportArgs) -> Result<()> {
     Ok(())
 }
 
+fn handle_monitor(args: MonitorArgs) -> Result<()> {
+    p::header("AI Deployment Monitoring");
+    config::validate_network(&args.network)?;
+
+    let report = deployment_monitor::analyze_deployments(&args.network, args.contract.as_deref())?;
+
+    p::separator();
+    p::kv("Network", &report.network);
+    p::kv("Deployments", &report.total_deployments.to_string());
+    p::kv("Success rate", &format!("{:.1}%", report.success_rate));
+    p::kv("Error rate", &format!("{:.1}%", report.error_rate));
+    p::kv("Avg duration", &format!("{:.0} ms", report.avg_duration_ms));
+    p::kv("Tracked wallets", &report.unique_wallets.to_string());
+    p::kv("Tracked contracts", &report.unique_contracts.to_string());
+    println!();
+
+    p::info("Alerts");
+    for alert in &report.alerts {
+        println!(
+            "  [{}] {} — {}",
+            alert.severity.to_uppercase(),
+            alert.title,
+            alert.detail
+        );
+        println!("    → {}", alert.recommendation);
+    }
+
+    println!();
+    p::info("Predictions");
+    for prediction in &report.predictions {
+        println!(
+            "  [{}] {} — {}",
+            prediction.confidence,
+            prediction.title,
+            prediction.detail
+        );
+        println!("    → {}", prediction.recommended_action);
+    }
+
+    println!();
+    p::info("Recent trend indicators");
+    for trend in &report.history {
+        println!("  {}: {:.0} ms ({})", trend.label, trend.value, trend.direction);
+    }
+
+    p::separator();
+    Ok(())
+}
+
 fn handle_ci(args: CiArgs) -> Result<()> {
     p::header("Deployment Verification CI");
     let snippet = generate_ci_snippet(&args.id, &args.network);
@@ -499,7 +562,7 @@ fn handle_dashboard(args: DashboardArgs) -> Result<()> {
             println!(
                 "    {} {} | {} | {}",
                 status_colored,
-                &rec.id[..8.min(rec.id.len())].dimmed(),
+                rec.id[..8.min(rec.id.len())].dimmed(),
                 rec.timestamp.get(..16).unwrap_or(&rec.timestamp).dimmed(),
                 rec.contract_id
                     .as_deref()

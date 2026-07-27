@@ -1,0 +1,62 @@
+stages:
+  - quality
+  - deploy
+
+default:
+  image: rust:latest
+
+quality:
+  stage: quality
+  before_script:
+    - apt-get update -y && apt-get install -y libudev-dev
+    - rustup component add rustfmt clippy
+  script:
+    - cargo fmt --all --check
+    - cargo build --locked
+    - cargo test --locked
+    - cargo clippy --all-features --locked -- -D warnings
+    - cargo test --test cli_smoke --locked
+
+deploy_staging:
+  stage: deploy
+  needs: [quality]
+  environment: staging
+  resource_group: deployment-staging
+  when: manual
+  script:
+    - export STARFORGE_DEPLOY_ENVIRONMENT=staging
+    - bash scripts/ci-deploy.sh
+
+rollback_staging:
+  stage: deploy
+  needs: [quality]
+  environment: staging
+  resource_group: deployment-staging
+  when: manual
+  script:
+    - export STARFORGE_DEPLOY_ENVIRONMENT=staging
+    - bash scripts/ci-rollback.sh
+
+deploy_production:
+  stage: deploy
+  needs: [quality]
+  environment: production
+  resource_group: deployment-production
+  when: manual
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - export STARFORGE_DEPLOY_ENVIRONMENT=production STARFORGE_DEPLOY_APPROVED=true
+    - bash scripts/ci-deploy.sh
+
+rollback_production:
+  stage: deploy
+  needs: [quality]
+  environment: production
+  resource_group: deployment-production
+  when: manual
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  script:
+    - export STARFORGE_DEPLOY_ENVIRONMENT=production STARFORGE_ROLLBACK_APPROVED=true
+    - bash scripts/ci-rollback.sh

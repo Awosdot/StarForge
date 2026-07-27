@@ -1,10 +1,11 @@
 use starforge::utils::pipeline_builder::{self, PipelineStatus, StageType};
 use tempfile::TempDir;
 
-fn temp_home() -> TempDir {
+fn temp_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+    let guard = home_lock();
     let home = TempDir::new().unwrap();
     std::env::set_var("HOME", home.path());
-    home
+    (home, guard)
 }
 
 fn write_minimal_wasm(path: &std::path::Path) {
@@ -137,4 +138,14 @@ fn configure_stage_updates_wasm_path() {
 
     let stage = pipeline.stages.iter().find(|s| s.id == test_stage).unwrap();
     assert_eq!(stage.config.wasm_path.as_ref(), Some(&wasm));
+}
+
+/// Serialises tests that replace the process-wide `HOME`.
+///
+/// `std::env::set_var` affects every thread in the binary while libtest runs
+/// these tests in parallel, so without this two tests race and one reads back
+/// paths under the other's temp home.
+fn home_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
