@@ -45,7 +45,6 @@ pub mod refactor;
 pub mod schedule;
 pub mod security;
 pub mod shell;
-pub mod simulate;
 pub mod social;
 pub mod telemetry;
 pub mod template;

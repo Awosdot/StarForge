@@ -250,22 +250,6 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
-
-    /// Generate contract code from built-in generators
-    #[command(subcommand)]
-    Generate(commands::generate::GenerateCommands),
-
-    /// AI contract completion assistant (suggest, boilerplate, stub, imports, infer)
-    #[command(subcommand)]
-    Complete(commands::complete::CompleteCommands),
-
-    /// AI mutation testing - measure test effectiveness by mutating contracts
-    #[command(subcommand)]
-    Mutate(commands::mutate::MutateCommands),
-
-    /// Execute an installed plugin command (e.g. `starforge defi ...`)
-    #[command(external_subcommand)]
-    External(Vec<String>),
 }
 
 #[tokio::main]
@@ -337,9 +321,6 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
-        Commands::Generate(_) => "generate",
-        Commands::Complete(_) => "complete",
-        Commands::Mutate(_) => "mutate",
         Commands::External(_) => "external",
     }
     .to_string();
@@ -410,8 +391,6 @@ async fn main() {
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
-        Commands::Complete(cmd) => commands::complete::handle(cmd).await,
-        Commands::Mutate(cmd) => commands::mutate::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
     };
     let duration = start.elapsed();
