@@ -80,6 +80,7 @@ pub mod template;
 pub mod template_integration;
 pub mod template_vcs;
 pub mod templates;
+pub mod template_performance;
 pub mod test_automation;
 pub mod test_coverage;
 pub mod test_generator;
