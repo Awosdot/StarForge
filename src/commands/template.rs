@@ -1,5 +1,5 @@
-use crate::utils::{print as p, registry, templates};
-use anyhow::Result;
+use crate::utils::{print as p, registry, template_integration, templates};
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::path::PathBuf;
 
@@ -154,29 +154,22 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
-    /// Get AI-powered template recommendations based on your project requirements
-    Recommend {
-        /// Free-form description of what you want to build (e.g. "decentralized exchange")
-        #[arg(default_value = "")]
-        query: String,
-        /// Filter by tags (comma-separated, e.g. "defi,amm")
+    /// Analyze and guide integration of a template into an existing project
+    Assist {
+        /// Template directory or installed template name
+        template: String,
+        /// Existing target project directory
+        #[arg(default_value = ".")]
+        project: PathBuf,
+        /// Execute cargo tests in the target project
         #[arg(long)]
-        tags: Option<String>,
-        /// Your skill level: beginner, intermediate, or advanced
+        run_tests: bool,
+        /// Emit machine-readable JSON instead of Markdown
         #[arg(long)]
-        skill: Option<String>,
-        /// Maximum number of recommendations to show (default 5)
-        #[arg(long, default_value_t = 5)]
-        limit: usize,
-        /// Show detailed scoring breakdown for each recommendation
-        #[arg(long)]
-        explain: bool,
-        /// Ignore past usage history when ranking recommendations
-        #[arg(long)]
-        no_personalise: bool,
-        /// Ignore community popularity when ranking recommendations
-        #[arg(long)]
-        no_community: bool,
+        json: bool,
+        /// Write the generated report to a file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -251,11 +244,65 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             name,
             version,
             force,
-        } => fetch(source, name, version, force),
-        TemplateCommands::Update { name, all } => update(name, all),
+        } => install(source, name, version, force).await,
+        TemplateCommands::Update { name, all } => update(name, all).await,
+        TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
+        TemplateCommands::Docs { name, output } => template_docs(name, output).await,
+        TemplateCommands::Audit { name } => template_audit(name).await,
+        TemplateCommands::Assist {
+            template,
+            project,
+            run_tests,
+            json,
+            output,
+        } => template_assist(template, project, run_tests, json, output).await,
     }
 }
 
+async fn template_assist(
+    template: String,
+    project: PathBuf,
+    run_tests: bool,
+    json: bool,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let direct = PathBuf::from(&template);
+    let template_path = if direct.is_dir() {
+        direct
+    } else {
+        let entry = templates::get_template(&template).await.with_context(|| {
+            format!("Template '{}' was not found. Pass a directory or run `starforge template list`.", template)
+        })?;
+        entry.path.map(PathBuf::from).filter(|path| path.is_dir()).or_else(|| {
+            if let templates::TemplateSource::Local { path } = entry.source {
+                let path = PathBuf::from(path);
+                path.is_dir().then_some(path)
+            } else {
+                None
+            }
+        }).ok_or_else(|| anyhow::anyhow!(
+            "Template '{}' is not available locally. Install it first with `starforge template install {}`.",
+            template,
+            template
+        ))?
+    };
+    let mut report = template_integration::analyze(&template_path, &project)?;
+    if run_tests {
+        report.test_result = Some(template_integration::run_integration_tests(&project));
+    }
+    let rendered = if json {
+        serde_json::to_string_pretty(&report)?
+    } else {
+        report.to_markdown()
+    };
+    if let Some(path) = output {
+        std::fs::write(&path, rendered).with_context(|| format!("Failed to write {}", path.display()))?;
+        p::success(&format!("Integration report written to {}", path.display()));
+    } else {
+        println!("{rendered}");
+    }
+    Ok(())
+}
 async fn import(
     path: PathBuf,
     name: Option<String>,

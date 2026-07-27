@@ -77,7 +77,7 @@ pub mod state_diff;
 pub mod stream;
 pub mod telemetry;
 pub mod template;
-pub mod template_recommender;
+pub mod template_integration;
 pub mod template_vcs;
 pub mod templates;
 pub mod test_automation;
