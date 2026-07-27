@@ -4,15 +4,17 @@ use starforge::utils::security::{
 use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
 
-fn use_temp_home() -> TempDir {
+fn use_temp_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+    let guard = home_lock();
     let home = TempDir::new().unwrap();
     std::env::set_var("HOME", home.path());
-    home
+    (home, guard)
 }
 
 const SAMPLE_CONTRACT: &str = r#"
 #![no_std]
 use soroban_sdk::{contract, contractimpl, Env};
+
 
 #[contract]
 pub struct Token;
@@ -93,4 +95,14 @@ fn hardening_apply_writes_output() {
     if result.transforms_applied > 0 {
         assert!(result.output_path.is_some());
     }
+}
+
+/// Serialises tests that replace the process-wide `HOME`.
+///
+/// `std::env::set_var` affects every thread in the binary while libtest runs
+/// these tests in parallel, so without this two tests race and one reads back
+/// paths under the other's temp home.
+fn home_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }

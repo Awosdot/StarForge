@@ -496,7 +496,7 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
             } else {
                 "…".yellow()
             },
-            &t.id[..8.min(t.id.len())].dimmed(),
+            t.id[..8.min(t.id.len())].dimmed(),
             t.source_network,
             t.dest_network,
             t.amount,

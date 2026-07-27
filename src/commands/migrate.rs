@@ -329,7 +329,11 @@ pub fn snapshot_checksum(snapshot: &StorageSnapshot) -> String {
 
 /// Apply a single transform op to the working entry map. Returns `true` if
 /// the op changed something, and may push a human-readable warning.
-fn apply_op(entries: &mut BTreeMap<String, Value>, op: &TransformOp, warnings: &mut Vec<String>) -> bool {
+fn apply_op(
+    entries: &mut BTreeMap<String, Value>,
+    op: &TransformOp,
+    warnings: &mut Vec<String>,
+) -> bool {
     match op {
         TransformOp::RenameKey { from, to } => {
             if let Some(val) = entries.remove(from) {
@@ -342,7 +346,10 @@ fn apply_op(entries: &mut BTreeMap<String, Value>, op: &TransformOp, warnings: &
                 entries.insert(to.clone(), val);
                 true
             } else {
-                warnings.push(format!("RenameKey: source key '{}' not found, skipped", from));
+                warnings.push(format!(
+                    "RenameKey: source key '{}' not found, skipped",
+                    from
+                ));
                 false
             }
         }
@@ -401,7 +408,11 @@ fn cast_value(val: &Value, to_type: &str) -> Option<Value> {
         })),
         "number" => match val {
             Value::Number(_) => Some(val.clone()),
-            Value::String(s) => s.parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(Value::Number),
+            Value::String(s) => s
+                .parse::<f64>()
+                .ok()
+                .and_then(serde_json::Number::from_f64)
+                .map(Value::Number),
             Value::Bool(b) => Some(Value::Number((*b as u64).into())),
             _ => None,
         },
@@ -543,7 +554,10 @@ fn handle_init(args: InitArgs) -> Result<()> {
 
     fs::write(&args.output, serde_json::to_string_pretty(&template)?)?;
 
-    p::success(&format!("Wrote migration rules template to {}", args.output.display()));
+    p::success(&format!(
+        "Wrote migration rules template to {}",
+        args.output.display()
+    ));
     p::info("Edit the `ops` array to describe your real schema changes, then:");
     println!(
         "  {}",
@@ -592,7 +606,11 @@ fn handle_run(args: RunArgs) -> Result<()> {
             args.output.display()
         );
         use std::io::BufRead;
-        let line = std::io::stdin().lock().lines().next().unwrap_or(Ok(String::new()))?;
+        let line = std::io::stdin()
+            .lock()
+            .lines()
+            .next()
+            .unwrap_or(Ok(String::new()))?;
         if !matches!(line.trim().to_lowercase().as_str(), "y" | "yes") {
             p::info("Migration cancelled.");
             return Ok(());
@@ -620,7 +638,10 @@ fn handle_run(args: RunArgs) -> Result<()> {
             p::warn(&format!("Missing required key after migration: {}", k));
         }
         for k in &validation.present_forbidden {
-            p::warn(&format!("Forbidden key still present after migration: {}", k));
+            p::warn(&format!(
+                "Forbidden key still present after migration: {}",
+                k
+            ));
         }
         for issue in &validation.type_issues {
             p::warn(issue);
@@ -721,14 +742,23 @@ fn handle_test(args: TestArgs) -> Result<()> {
     let report = apply_rules(&sample, &rules);
     let after_keys: Vec<String> = report.snapshot.entries.keys().cloned().collect();
 
-    let added: Vec<_> = after_keys.iter().filter(|k| !before_keys.contains(k)).collect();
-    let removed: Vec<_> = before_keys.iter().filter(|k| !after_keys.contains(k)).collect();
+    let added: Vec<_> = after_keys
+        .iter()
+        .filter(|k| !before_keys.contains(k))
+        .collect();
+    let removed: Vec<_> = before_keys
+        .iter()
+        .filter(|k| !after_keys.contains(k))
+        .collect();
 
     p::kv("Sample entries (before)", &before_keys.len().to_string());
     p::kv("Sample entries (after)", &after_keys.len().to_string());
     p::kv("Fields added", &added.len().to_string());
     p::kv("Fields removed", &removed.len().to_string());
-    p::kv("Ops applied successfully", &report.entries_migrated.to_string());
+    p::kv(
+        "Ops applied successfully",
+        &report.entries_migrated.to_string(),
+    );
     println!();
 
     if !added.is_empty() {
@@ -792,9 +822,16 @@ fn handle_rollback(args: RollbackArgs) -> Result<()> {
 
     if !args.yes {
         println!();
-        print!("  Overwrite {} with the pre-migration backup? [y/N] ", args.output.display());
+        print!(
+            "  Overwrite {} with the pre-migration backup? [y/N] ",
+            args.output.display()
+        );
         use std::io::BufRead;
-        let line = std::io::stdin().lock().lines().next().unwrap_or(Ok(String::new()))?;
+        let line = std::io::stdin()
+            .lock()
+            .lines()
+            .next()
+            .unwrap_or(Ok(String::new()))?;
         if !matches!(line.trim().to_lowercase().as_str(), "y" | "yes") {
             p::info("Rollback cancelled.");
             return Ok(());
@@ -807,7 +844,10 @@ fn handle_rollback(args: RollbackArgs) -> Result<()> {
     save_history(&history)?;
 
     println!();
-    p::success(&format!("Restored pre-migration snapshot to {}", args.output.display()));
+    p::success(&format!(
+        "Restored pre-migration snapshot to {}",
+        args.output.display()
+    ));
     p::separator();
     Ok(())
 }
@@ -818,7 +858,11 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
     let history = load_history()?;
     let filtered: Vec<_> = history
         .iter()
-        .filter(|r| args.contract_id.as_deref().is_none_or(|id| r.contract_id == id))
+        .filter(|r| {
+            args.contract_id
+                .as_deref()
+                .is_none_or(|id| r.contract_id == id)
+        })
         .collect();
 
     if filtered.is_empty() {
@@ -841,7 +885,9 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
     for record in &filtered {
         let status_colored = match record.status {
             MigrationStatus::Completed => record.status.to_string().green().to_string(),
-            MigrationStatus::CompletedWithWarnings => record.status.to_string().yellow().to_string(),
+            MigrationStatus::CompletedWithWarnings => {
+                record.status.to_string().yellow().to_string()
+            }
             MigrationStatus::Failed => record.status.to_string().red().to_string(),
             MigrationStatus::RolledBack => record.status.to_string().cyan().to_string(),
         };
@@ -852,7 +898,11 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
             record.to_version.dimmed(),
             status_colored,
             record.entries_migrated.to_string().white(),
-            record.timestamp.get(..16).unwrap_or(&record.timestamp).dimmed(),
+            record
+                .timestamp
+                .get(..16)
+                .unwrap_or(&record.timestamp)
+                .dimmed(),
         );
     }
     p::separator();
@@ -972,7 +1022,10 @@ mod tests {
             contract_id: Some("CTEST".to_string()),
             version: Some("v1".to_string()),
             captured_at: None,
-            entries: entries.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            entries: entries
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
         }
     }
 
@@ -991,7 +1044,10 @@ mod tests {
         };
         let report = apply_rules(&snap, &rules);
         assert!(!report.snapshot.entries.contains_key("old"));
-        assert_eq!(report.snapshot.entries.get("new"), Some(&Value::String("hi".into())));
+        assert_eq!(
+            report.snapshot.entries.get("new"),
+            Some(&Value::String("hi".into()))
+        );
         assert_eq!(report.entries_migrated, 1);
     }
 
@@ -1016,7 +1072,10 @@ mod tests {
         };
         let report = apply_rules(&snap, &rules);
         // Existing field untouched.
-        assert_eq!(report.snapshot.entries.get("existing"), Some(&Value::Bool(true)));
+        assert_eq!(
+            report.snapshot.entries.get("existing"),
+            Some(&Value::Bool(true))
+        );
         // New field inserted.
         assert_eq!(
             report.snapshot.entries.get("fresh"),
@@ -1054,7 +1113,10 @@ mod tests {
             forbidden_keys: vec![],
         };
         let report = apply_rules(&snap, &rules);
-        assert_eq!(report.snapshot.entries.get("balance").unwrap().is_number(), true);
+        assert_eq!(
+            report.snapshot.entries.get("balance").unwrap().is_number(),
+            true
+        );
         assert!(report.warnings.is_empty());
     }
 
@@ -1109,7 +1171,10 @@ mod tests {
         let report = validate_snapshot(&snap, &rules);
         assert!(!report.is_ok());
         assert_eq!(report.missing_required, vec!["schema_version".to_string()]);
-        assert_eq!(report.present_forbidden, vec!["deprecated_field".to_string()]);
+        assert_eq!(
+            report.present_forbidden,
+            vec!["deprecated_field".to_string()]
+        );
     }
 
     #[test]

@@ -111,7 +111,9 @@ pub fn write_generated_tests(result: &TestGenerationResult, output_path: &Path) 
         for input in &case.input_data {
             code.push_str(&format!(
                 "    let {}: &str = {:?};\n    assert!(!{}.is_empty());\n",
-                safe_identifier(&input.name), input.value, safe_identifier(&input.name)
+                safe_identifier(&input.name),
+                input.value,
+                safe_identifier(&input.name)
             ));
         }
         for check in &case.security_checks {
@@ -139,14 +141,19 @@ fn extract_public_functions(content: &str) -> Vec<String> {
 fn function_signature(content: &str, function: &str) -> String {
     content
         .lines()
-        .find(|line| line.trim_start().starts_with(&format!("pub fn {}(", function)))
+        .find(|line| {
+            line.trim_start()
+                .starts_with(&format!("pub fn {}(", function))
+        })
         .unwrap_or_default()
         .trim()
         .to_string()
 }
 
 fn generate_input_data(signature: &str) -> Vec<GeneratedInput> {
-    let Some(parameters) = signature.split_once('(').and_then(|(_, rest)| rest.split_once(')'))
+    let Some(parameters) = signature
+        .split_once('(')
+        .and_then(|(_, rest)| rest.split_once(')'))
     else {
         return Vec::new();
     };
@@ -192,7 +199,12 @@ fn safe_identifier(value: &str) -> String {
             }
         })
         .collect::<String>();
-    if identifier.is_empty() || identifier.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+    if identifier.is_empty()
+        || identifier
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit())
+    {
         identifier.insert(0, '_');
     }
     identifier
