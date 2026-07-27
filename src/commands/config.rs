@@ -295,7 +295,10 @@ fn show() -> Result<()> {
     p::header("StarForge Configuration");
     p::separator();
 
-    p::kv("Config database", &database::db_path().display().to_string());
+    p::kv(
+        "Config database",
+        &database::db_path().display().to_string(),
+    );
     p::kv("Active network", &cfg.network);
     p::kv(
         "telemetry.enabled",
