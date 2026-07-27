@@ -2,10 +2,10 @@ use crate::plugins::interface::CORE_VERSION;
 use crate::plugins::manifest;
 use crate::plugins::registry::{self, RegisteredCommand, TrustLevel, UninstallOptions};
 use crate::plugins::{PluginLoadError, PluginManager};
+use crate::utils::config;
 use crate::utils::print as p;
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use starforge::utils::config;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -83,9 +83,14 @@ pub enum PluginCommands {
         /// Show commands for a specific plugin only
         name: Option<String>,
     },
+    /// Search the plugin marketplace for available plugins
+    Search {
+        /// Search query (e.g. "ai", "security")
+        query: Option<String>,
+    },
 }
 
-pub fn handle(cmd: PluginCommands) -> Result<()> {
+pub async fn handle(cmd: PluginCommands) -> Result<()> {
     match cmd {
         PluginCommands::Install {
             name,
@@ -107,6 +112,7 @@ pub fn handle(cmd: PluginCommands) -> Result<()> {
         } => audit(name, runtime_check),
         PluginCommands::Update { name, yes } => update(name, yes),
         PluginCommands::Commands { name } => commands(name),
+        PluginCommands::Search { query } => search(query).await,
     }
 }
 
@@ -135,29 +141,22 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
 
     let plugin_manifest = manifest::require_compatible_manifest(&lib_path, &name)?;
 
-    // Attempt to load the plugin to discover commands and description. Best-effort:
-    // libraries that cannot load at install time should not block registration.
-    let (discovered_commands, plugin_description) =
-        match discover_plugin_metadata(&lib_path.to_string_lossy()) {
-            Ok((commands, description)) => {
-                let description = if description.is_empty() {
-                    plugin_manifest.description.clone()
-                } else {
-                    description
-                };
-                (commands, description)
-            }
-            Err(e) => {
-                p::warn(&format!(
-                    "Could not load plugin '{}' to discover commands: {}",
-                    name, e
-                ));
-                p::info(
-                    "Proceeding with installation; run 'starforge plugin audit' to validate it.",
-                );
-                (Vec::new(), plugin_manifest.description.clone())
-            }
-        };
+    // Load the plugin to discover the commands it registers.
+    let discovered_commands: Vec<RegisteredCommand> = {
+        let mut pm = PluginManager::new();
+        unsafe {
+            pm.load_plugin(&lib_path).with_context(|| {
+                format!("Failed to load plugin '{}' to discover commands", name)
+            })?;
+        }
+        pm.list_commands()
+            .into_iter()
+            .map(|c| RegisteredCommand {
+                name: c.name,
+                description: c.description,
+            })
+            .collect()
+    };
 
     registry::install_plugin(
         &name,
@@ -189,6 +188,63 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
         }
     }
     p::info("Load plugins with: starforge plugin load");
+    Ok(())
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct MarketplacePlugin {
+    name: String,
+    description: String,
+    url: String,
+}
+
+async fn search(query: Option<String>) -> Result<()> {
+    p::header("Plugin Marketplace — Search");
+    if let Some(ref q) = query {
+        p::kv("Query", q);
+    }
+    
+    // Attempt to fetch from official plugin registry, fallback to hardcoded examples for demonstration.
+    let registry_url = "https://starforge-protocol.github.io/starforge/plugins/registry.json";
+    
+    let mut available_plugins = vec![
+        MarketplacePlugin {
+            name: "starforge-ai-audit".to_string(),
+            description: "AI-powered smart contract auditing plugin".to_string(),
+            url: "https://github.com/StarForge-Labs/starforge-ai-audit".to_string(),
+        },
+        MarketplacePlugin {
+            name: "starforge-defi".to_string(),
+            description: "DeFi scaffold and AMM tools".to_string(),
+            url: "https://github.com/Nanle-code/starforge-defi".to_string(),
+        }
+    ];
+
+    if let Ok(resp) = reqwest::get(registry_url).await {
+        if let Ok(plugins) = resp.json::<Vec<MarketplacePlugin>>().await {
+            available_plugins = plugins;
+        }
+    }
+
+    if let Some(q) = query {
+        let q = q.to_lowercase();
+        available_plugins.retain(|p| p.name.to_lowercase().contains(&q) || p.description.to_lowercase().contains(&q));
+    }
+
+    if available_plugins.is_empty() {
+        p::info("No plugins found matching your search.");
+        return Ok(());
+    }
+
+    println!("\n  Found {} plugin(s):\n", available_plugins.len());
+    
+    let rows: Vec<Vec<String>> = available_plugins.into_iter().map(|p| {
+        vec![p.name, p.description, p.url]
+    }).collect();
+    
+    p::table(&["Name", "Description", "Source URL"], &rows);
+    println!("\nTo install a plugin, run: starforge plugin install <name> --source <url>");
+
     Ok(())
 }
 
@@ -492,7 +548,6 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                         &pl.source,
                         &pl.starforge_version,
                         &pl.plugin_version,
-                        &pl.description,
                         pl.commands.clone(),
                     )?;
                     p::success(&format!("  '{}' updated via cargo install", pl.name));
@@ -541,7 +596,6 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                             &pl.source,
                             &pl.starforge_version,
                             &pl.plugin_version,
-                            &description,
                             cmds,
                         )?;
                         p::success(&format!(

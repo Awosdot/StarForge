@@ -68,7 +68,8 @@ fn test_hardware_wallet_without_device_handling() {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let combined = format!("{}{}", stderr, stdout);
+        // Diagnostics are user-facing prose ("Error: ..."), so match case-insensitively.
+        let combined = format!("{}{}", stderr, stdout).to_lowercase();
 
         assert!(
             combined.contains("not found")
@@ -184,6 +185,88 @@ fn test_hardware_wallet_offline_behavior() {
 }
 
 #[test]
+fn test_hardware_wallet_deploy_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("deploy")
+        .arg("--help")
+        .output()
+        .expect("Failed to get deploy help");
+
+    assert!(output.status.success(), "Deploy help should be available");
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("hardware"),
+        "Deploy command should document --hardware flag"
+    );
+}
+
+#[test]
+fn test_hardware_wallet_tx_send_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("tx")
+        .arg("send")
+        .arg("--help")
+        .output()
+        .expect("Failed to get tx send help");
+
+    assert!(output.status.success(), "Tx send help should be available");
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("hardware"),
+        "Tx send command should document --hardware flag"
+    );
+}
+
+#[test]
+fn test_hardware_wallet_multisig_sign_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("wallet")
+        .arg("multisig")
+        .arg("sign")
+        .arg("--help")
+        .output()
+        .expect("Failed to get multisig sign help");
+
+    assert!(
+        output.status.success(),
+        "Multisig sign help should be available"
+    );
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("hardware"),
+        "Multisig sign should document --hardware flag"
+    );
+}
+
+#[test]
+fn test_hardware_wallet_connect_timeout_flag_documented() {
+    let starforge_binary = env!("CARGO_BIN_EXE_starforge");
+
+    let output = Command::new(starforge_binary)
+        .arg("wallet")
+        .arg("connect")
+        .arg("--help")
+        .output()
+        .expect("Failed to get wallet connect help");
+
+    assert!(
+        output.status.success(),
+        "Wallet connect help should be available"
+    );
+    let help_text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    assert!(
+        help_text.contains("timeout"),
+        "Wallet connect should document --timeout flag"
+    );
+}
+
+#[test]
 fn test_hardware_wallet_timeout_behavior() {
     let starforge_binary = env!("CARGO_BIN_EXE_starforge");
 
@@ -198,7 +281,7 @@ fn test_hardware_wallet_timeout_behavior() {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let combined = format!("{}{}", stderr, stdout);
+            let combined = format!("{}{}", stderr, stdout).to_lowercase();
 
             assert!(
                 combined.contains("timeout")

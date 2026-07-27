@@ -1,6 +1,7 @@
-use crate::utils::{print as p, registry, templates};
+use crate::utils::{print as p, registry, templates, template_customization_ai};
 use anyhow::Result;
 use clap::Subcommand;
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -30,8 +31,8 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Import a template from a directory or .zip archive into the local registry
-    Import {
+    /// Install a template package into the local registry
+    Install {
         /// Path to template directory or .zip package
         path: PathBuf,
         /// Template name (defaults to directory/archive stem)
@@ -110,8 +111,8 @@ pub enum TemplateCommands {
         /// Template name
         name: String,
     },
-    /// Install a template from a Git URL, local path, or marketplace registry name
-    Install {
+    /// Fetch and install a template from a Git URL, local path, or marketplace registry name
+    Fetch {
         /// Source: git URL (https://...), local filesystem path, or registry template name
         source: String,
         /// Override the installed template name (defaults to the template name or URL basename)
@@ -133,9 +134,54 @@ pub enum TemplateCommands {
         #[arg(long, short, conflicts_with = "name")]
         all: bool,
     },
+    /// Roll back the last tracked update for a template
+    Rollback {
+        /// Template name to roll back
+        name: String,
+    },
+    /// Run the built-in test suite for a template
+    Test {
+        /// Template name or path to a template directory
+        name: String,
+        /// Show verbose cargo output
+        #[arg(long)]
+        verbose: bool,
+    },
+    /// Generate Markdown documentation for a template from its registry metadata
+    Docs {
+        /// Template name to generate docs for
+        name: String,
+        /// Write the generated docs to this file (defaults to stdout)
+        #[arg(long)]
+        output: Option<std::path::PathBuf>,
+    },
+    /// Show security review status for a template (or all templates)
+    Audit {
+        /// Template name (omit to list the security status of all templates)
+        name: Option<String>,
+    },
+    /// Customize a template using AI based on requirements
+    Customize {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Requirements for customization
+        requirements: String,
+    },
+    /// View customization history for a template
+    CustomizeHistory {
+        /// Path to the template directory
+        path: PathBuf,
+    },
+    /// Rollback template to a previous customization state
+    CustomizeRollback {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Optional index to rollback to (0 is oldest, omit for previous)
+        index: Option<usize>,
+    },
 }
 
-pub fn handle(cmd: TemplateCommands) -> Result<()> {
+pub async fn handle(cmd: TemplateCommands) -> Result<()> {
     match cmd {
         TemplateCommands::Import {
             path,
@@ -146,16 +192,19 @@ pub fn handle(cmd: TemplateCommands) -> Result<()> {
             version,
             cli_version_min,
             cli_version_max,
-        } => import(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-        ),
+        } => {
+            import(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+            )
+            .await
+        }
         TemplateCommands::Publish {
             path,
             name,
@@ -169,43 +218,97 @@ pub fn handle(cmd: TemplateCommands) -> Result<()> {
             repository,
             homepage,
             documentation,
-        } => publish(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-            license,
-            repository,
-            homepage,
-            documentation,
-        ),
-        TemplateCommands::List => list(),
+        } => {
+            publish(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+                license,
+                repository,
+                homepage,
+                documentation,
+            )
+            .await
+        }
+        TemplateCommands::List => list().await,
         TemplateCommands::Search {
             query,
             tags,
             verified,
             min_quality,
             refresh,
-        } => search(query, tags, verified, min_quality, refresh),
-        TemplateCommands::Show { name } => show(name),
-        TemplateCommands::Remove { name, purge } => remove(name, purge),
+        } => search(query, tags, verified, min_quality, refresh).await,
+        TemplateCommands::Show { name } => show(name).await,
+        TemplateCommands::Remove { name, purge } => remove(name, purge).await,
         TemplateCommands::Init => init(),
         TemplateCommands::Info { name } => info(name),
-        TemplateCommands::Install {
+        TemplateCommands::Fetch {
             source,
             name,
             version,
             force,
-        } => install(source, name, version, force),
-        TemplateCommands::Update { name, all } => update(name, all),
+        } => install(source, name, version, force).await,
+        TemplateCommands::Update { name, all } => update(name, all).await,
+        TemplateCommands::Rollback { name } => rollback(name).await,
+        TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
+        TemplateCommands::Docs { name, output } => template_docs(name, output).await,
+        TemplateCommands::Audit { name } => template_audit(name).await,
+        TemplateCommands::Customize { path, requirements } => template_customize(path, requirements).await,
+        TemplateCommands::CustomizeHistory { path } => template_customize_history(path).await,
+        TemplateCommands::CustomizeRollback { path, index } => template_customize_rollback(path, index).await,
     }
 }
 
-fn import(
+async fn template_assist(
+    template: String,
+    project: PathBuf,
+    run_tests: bool,
+    json: bool,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let direct = PathBuf::from(&template);
+    let template_path = if direct.is_dir() {
+        direct
+    } else {
+        let entry = templates::get_template(&template).await.with_context(|| {
+            format!("Template '{}' was not found. Pass a directory or run `starforge template list`.", template)
+        })?;
+        entry.path.map(PathBuf::from).filter(|path| path.is_dir()).or_else(|| {
+            if let templates::TemplateSource::Local { path } = entry.source {
+                let path = PathBuf::from(path);
+                path.is_dir().then_some(path)
+            } else {
+                None
+            }
+        }).ok_or_else(|| anyhow::anyhow!(
+            "Template '{}' is not available locally. Install it first with `starforge template install {}`.",
+            template,
+            template
+        ))?
+    };
+    let mut report = template_integration::analyze(&template_path, &project)?;
+    if run_tests {
+        report.test_result = Some(template_integration::run_integration_tests(&project));
+    }
+    let rendered = if json {
+        serde_json::to_string_pretty(&report)?
+    } else {
+        report.to_markdown()
+    };
+    if let Some(path) = output {
+        std::fs::write(&path, rendered).with_context(|| format!("Failed to write {}", path.display()))?;
+        p::success(&format!("Integration report written to {}", path.display()));
+    } else {
+        println!("{rendered}");
+    }
+    Ok(())
+}
+async fn import(
     path: PathBuf,
     name: Option<String>,
     description: Option<String>,
@@ -228,13 +331,14 @@ fn import(
         None,
         None,
         None,
-    )?;
+    )
+    .await?;
     p::header("Template Import");
     p::info("Template package imported into the local registry.");
     Ok(())
 }
 
-fn publish(
+async fn publish(
     path: PathBuf,
     name: Option<String>,
     description: Option<String>,
@@ -287,8 +391,9 @@ fn publish(
         repository,
         homepage,
         documentation,
-    )?;
-    let template = templates::get_template(&name)?;
+    )
+    .await?;
+    let template = templates::get_template(&name).await?;
 
     p::header("Template Publish");
     p::success("Template registered successfully");
@@ -301,7 +406,7 @@ fn publish(
     if let Some(lic) = template.license.as_ref() {
         p::kv("License", lic);
     }
-    if let Some(repo) = template.repository.as_ref() {
+    if let Some(repo) = template.repository_url.as_ref() {
         p::kv("Repository", repo);
     }
     if let Some(path) = template.path.as_ref() {
@@ -311,10 +416,10 @@ fn publish(
     Ok(())
 }
 
-fn list() -> Result<()> {
+async fn list() -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
-    let registry = templates::load_registry()?;
+    let registry = templates::load_registry().await?;
     p::header("Template Registry");
     if registry.templates.is_empty() {
         p::info("No templates found. Publish one with: starforge template publish <path>");
@@ -355,7 +460,7 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-fn search(
+async fn search(
     query: String,
     tags: Option<String>,
     verified: bool,
@@ -372,18 +477,21 @@ fn search(
 
     let filters = templates::SearchFilters {
         tags: tag_list,
+        categories: Vec::new(),
         verified_only: verified,
+        featured_only: false,
+        hide_spam: false,
         min_quality,
     };
 
     // Load registry, optionally forcing a refresh of the remote copy.
     let results = if refresh {
         std::env::set_var("STARFORGE_TEMPLATE_REGISTRY_FORCE_REFRESH", "1");
-        let res = templates::search_templates_ranked(&query, &filters);
+        let res = templates::search_templates_ranked(&query, &filters).await;
         std::env::remove_var("STARFORGE_TEMPLATE_REGISTRY_FORCE_REFRESH");
         res?
     } else {
-        templates::search_templates_ranked(&query, &filters)?
+        templates::search_templates_ranked(&query, &filters).await?
     };
 
     let heading = if query.trim().is_empty() {
@@ -460,10 +568,10 @@ fn search(
     Ok(())
 }
 
-fn show(name: String) -> Result<()> {
+async fn show(name: String) -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
-    let template = templates::get_template(&name)?;
+    let template = templates::get_template(&name).await?;
     p::header(&format!("Template: {}", template.name));
     p::kv("Version", &template.version);
     p::kv("Description", &template.description);
@@ -477,7 +585,7 @@ fn show(name: String) -> Result<()> {
     if let Some(ref license) = template.license {
         p::kv("License", license);
     }
-    if let Some(ref repo) = template.repository {
+    if let Some(ref repo) = template.repository_url {
         p::kv("Repository", repo);
     }
     if let Some(ref hp) = template.homepage {
@@ -543,8 +651,8 @@ fn print_quality_signals(template: &templates::TemplateEntry) {
     }
 }
 
-fn remove(name: String, purge: bool) -> Result<()> {
-    templates::remove_template(&name, purge)?;
+async fn remove(name: String, purge: bool) -> Result<()> {
+    templates::remove_template(&name, purge).await?;
 
     if purge {
         p::success(&format!("Template '{}' and all local assets removed", name));
@@ -562,10 +670,45 @@ fn init() -> Result<()> {
     Ok(())
 }
 
-fn info(name: String) -> Result<()> {
+async fn optimize(path: PathBuf, name: Option<String>) -> Result<()> {
+    let analysis = template_performance::analyze_template_directory(&path, name.as_deref())?;
+
+    p::header(&format!("Template Performance Analysis: {}", analysis.template_name));
+    p::separator();
+    p::kv("Path", &analysis.path);
+    p::kv("Overall score", &format!("{}/100", analysis.overall_score));
+    p::kv("Estimated gas reduction", &format!("{}%", analysis.estimated_gas_reduction_percent));
+    p::kv("Estimated speedup", &format!("{}%", analysis.estimated_speedup_percent));
+    p::kv("Estimated memory savings", &format!("{}%", analysis.estimated_memory_savings_percent));
+    println!();
+    p::info("Optimization focus areas");
+    p::kv("Storage layout", &format!("{}/100", analysis.storage_layout_score));
+    p::kv("Function efficiency", &format!("{}/100", analysis.function_efficiency_score));
+    p::kv("Loop optimization", &format!("{}/100", analysis.loop_optimization_score));
+    p::kv("External call optimization", &format!("{}/100", analysis.external_call_score));
+    p::kv("Batch operations", &format!("{}/100", analysis.batch_operations_score));
+    println!();
+    p::info("Benchmark summary");
+    p::kv("Summary", &analysis.benchmark_summary);
+    println!();
+    if analysis.suggestions.is_empty() {
+        p::info("No optimization opportunities detected.");
+    } else {
+        p::info("Actionable suggestions");
+        for suggestion in analysis.suggestions {
+            println!("  • [{}] {}", suggestion.priority.to_uppercase(), suggestion.title);
+            println!("    {}", suggestion.detail);
+            println!("    Impact: {}", suggestion.estimated_impact);
+        }
+    }
+
+    Ok(())
+}
+
+async fn info(name: String) -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
-    let template = templates::get_template(&name)?;
+    let template = templates::get_template(&name).await?;
 
     p::header(&format!("Template Info: {}", template.name));
     p::separator();
@@ -662,12 +805,7 @@ fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-fn install(
-    source: String,
-    name: Option<String>,
-    version: Option<String>,
-    force: bool,
-) -> Result<()> {
+fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
     p::header("Template Install");
     p::kv("Source", &source);
     if let Some(ref n) = name {
@@ -679,7 +817,8 @@ fn install(
     println!();
 
     p::step(1, 2, "Resolving and fetching template...");
-    let entry = templates::install_template(&source, name.as_deref(), version.as_deref(), force)?;
+    let entry =
+        templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
 
     p::step(2, 2, "Registering in local registry...");
     println!();
@@ -690,6 +829,8 @@ fn install(
     if let Some(ref path) = entry.path {
         p::kv("Local path", path);
     }
+    // Record this install for community-learning / personalisation.
+    let _ = crate::utils::template_recommender::record_usage(&entry.name, "install");
     p::info(&format!(
         "Use it with: starforge template info {}",
         entry.name
@@ -697,11 +838,11 @@ fn install(
     Ok(())
 }
 
-fn update(name: Option<String>, all: bool) -> Result<()> {
+async fn update(name: Option<String>, all: bool) -> Result<()> {
     if all {
         p::header("Template Update — All");
         p::step(1, 1, "Updating all git-sourced templates...");
-        let results = templates::update_all_installed_templates()?;
+        let results = templates::update_all_installed_templates().await?;
 
         if results.is_empty() {
             p::info("No git-sourced templates are installed.");
@@ -711,7 +852,13 @@ fn update(name: Option<String>, all: bool) -> Result<()> {
         println!();
         for (tpl_name, result) in &results {
             match result {
-                Ok(()) => p::success(&format!("  {} updated", tpl_name)),
+                Ok(report) => {
+                    p::success(&format!("  {} updated", tpl_name));
+                    p::kv("Impact", &report.impact.severity);
+                    if report.impact.breaking_changes {
+                        p::warn(&format!("  {} has breaking changes", tpl_name));
+                    }
+                }
                 Err(e) => p::warn(&format!("  {} — {}", tpl_name, e)),
             }
         }
@@ -728,8 +875,306 @@ fn update(name: Option<String>, all: bool) -> Result<()> {
 
     p::header(&format!("Template Update: {}", name));
     p::step(1, 1, "Re-fetching from source...");
-    templates::update_installed_template(&name)?;
+    let report = templates::update_installed_template(&name).await?;
     println!();
     p::success(&format!("Template '{}' updated", name));
+    p::kv("Compatibility", &report.compatibility);
+    p::kv("Impact", &report.impact.summary);
+    for guidance in &report.migration_guidance {
+        p::info(guidance);
+    }
+    Ok(())
+}
+
+async fn rollback(name: String) -> Result<()> {
+    p::header(&format!("Template Rollback: {}", name));
+    p::step(1, 1, "Restoring the last tracked template state...");
+    let report = templates::rollback_installed_template(&name).await?;
+    println!();
+    p::success(&format!("Template '{}' rolled back", name));
+    p::kv("Backup", report.backup_path.as_deref().unwrap_or("n/a"));
+    p::kv("Compatibility", &report.compatibility);
+    Ok(())
+}
+
+// ─── template test ────────────────────────────────────────────────────────────
+
+async fn template_test(name: String, verbose: bool) -> Result<()> {
+    use std::process::Command;
+
+    p::header(&format!("Template Test: {}", name));
+
+    // Locate the template source directory — prefer builtin examples.
+    let builtin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("templates")
+        .join("examples")
+        .join(&name);
+
+    let template_dir = if builtin.exists() {
+        builtin
+    } else {
+        // Fall back to path stored in the registry.
+        let entry = templates::get_template(&name).await?;
+        match entry.path {
+            Some(ref p) => std::path::PathBuf::from(p),
+            None => anyhow::bail!(
+                "Template '{}' has no local path. Install it first with: starforge template install {}",
+                name, name
+            ),
+        }
+    };
+
+    p::kv("Template directory", &template_dir.display().to_string());
+    p::info("Running: cargo test");
+
+    let mut cmd = Command::new("cargo");
+    cmd.arg("test");
+    if verbose {
+        cmd.arg("--verbose");
+    }
+    cmd.current_dir(&template_dir);
+
+    let status = cmd.status()?;
+
+    if status.success() {
+        p::success("All tests passed");
+    } else {
+        anyhow::bail!("Tests failed for template '{}'", name);
+    }
+    Ok(())
+}
+
+// ─── template docs ────────────────────────────────────────────────────────────
+
+async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Result<()> {
+    let entry = templates::get_template(&name).await?;
+
+    let mut md = String::new();
+
+    // Title
+    md.push_str(&format!("# {} `{}`\n\n", entry.name, entry.version));
+    md.push_str(&format!("> {}\n\n", entry.description));
+
+    // Badges
+    if entry.verified {
+        md.push_str("![Verified](https://img.shields.io/badge/verified-✓-brightgreen) ");
+    }
+    md.push_str(&format!(
+        "![Maintenance](https://img.shields.io/badge/maintenance-{}-blue) ",
+        entry.maintenance.label().replace(' ', "%20")
+    ));
+    if let Some(ref lic) = entry.license {
+        md.push_str(&format!(
+            "![License](https://img.shields.io/badge/license-{}-cyan)\n\n",
+            lic
+        ));
+    } else {
+        md.push('\n');
+    }
+
+    // Metadata table
+    md.push_str("## Metadata\n\n");
+    md.push_str("| Field | Value |\n|---|---|\n");
+    md.push_str(&format!("| Author | {} |\n", entry.author));
+    md.push_str(&format!("| Version | {} |\n", entry.version));
+    md.push_str(&format!(
+        "| License | {} |\n",
+        entry.license.as_deref().unwrap_or("Not declared")
+    ));
+    md.push_str(&format!(
+        "| Tags | {} |\n",
+        if entry.tags.is_empty() {
+            "—".to_string()
+        } else {
+            entry.tags.join(", ")
+        }
+    ));
+    md.push_str(&format!("| Source | {} |\n", entry.source));
+    if let Some(ref repo) = entry.repository {
+        md.push_str(&format!("| Repository | {} |\n", repo));
+    }
+    if let Some(ref hp) = entry.homepage {
+        md.push_str(&format!("| Homepage | {} |\n", hp));
+    }
+    md.push('\n');
+
+    // Security review
+    md.push_str("## Security Review\n\n");
+    if let Some(ref sr) = entry.security_review {
+        md.push_str(&format!("**Status:** {}\n\n", sr.status));
+        if let (Some(ref auditor), Some(ref date)) = (&sr.auditor, &sr.audited_at) {
+            md.push_str(&format!("- **Auditor:** {}\n", auditor));
+            md.push_str(&format!("- **Audited at:** {}\n", date));
+        }
+        if let Some(findings) = sr.findings {
+            md.push_str(&format!("- **Findings:** {}\n", findings));
+        }
+        if let Some(score) = sr.score {
+            md.push_str(&format!("- **Score:** {}/100\n", score));
+        }
+    } else {
+        md.push_str("No security review data available.\n");
+    }
+    md.push('\n');
+
+    // Changelog
+    if !entry.changelog.is_empty() {
+        md.push_str("## Changelog\n\n");
+        for entry in &entry.changelog {
+            md.push_str(&format!(
+                "### {} — {}\n\n{}\n\n",
+                entry.version, entry.date, entry.notes
+            ));
+        }
+    }
+
+    // Usage
+    md.push_str("## Usage\n\n");
+    md.push_str("```bash\n");
+    md.push_str(&format!(
+        "starforge new contract my-project --template {}\n",
+        name
+    ));
+    md.push_str("```\n");
+
+    match output {
+        Some(path) => {
+            std::fs::write(&path, &md)?;
+            p::success(&format!("Documentation written to {}", path.display()));
+        }
+        None => {
+            p::header(&format!("Documentation for {}", name));
+            println!("{}", md);
+        }
+    }
+    Ok(())
+}
+
+// ─── template audit ───────────────────────────────────────────────────────────
+
+async fn template_audit(name: Option<String>) -> Result<()> {
+    let registry = templates::load_registry().await?;
+
+    let entries: Vec<&templates::TemplateEntry> = match &name {
+        Some(n) => registry.templates.iter().filter(|t| &t.name == n).collect(),
+        None => registry.templates.iter().collect(),
+    };
+
+    if entries.is_empty() {
+        if let Some(n) = &name {
+            anyhow::bail!("Template '{}' not found in registry", n);
+        } else {
+            p::info("No templates in registry.");
+            return Ok(());
+        }
+    }
+
+    p::header("Template Security Review Status");
+    println!(
+        "  {:<20} {:<10} {:<12} {:<10} {:<8}",
+        "NAME", "VERSION", "STATUS", "FINDINGS", "SCORE"
+    );
+    println!("  {}", "─".repeat(64));
+
+    for entry in entries {
+        let (status, findings, score) = match &entry.security_review {
+            Some(sr) => (
+                sr.status.as_str(),
+                sr.findings
+                    .map(|f| f.to_string())
+                    .unwrap_or_else(|| "—".to_string()),
+                sr.score
+                    .map(|s| format!("{}/100", s))
+                    .unwrap_or_else(|| "—".to_string()),
+            ),
+            None => ("not-reviewed", "—".to_string(), "—".to_string()),
+        };
+
+        let status_icon = match status {
+            "audited" => "✓ audited",
+            "pending" => "⧖ pending",
+            _ => "✗ not-reviewed",
+        };
+
+        println!(
+            "  {:<20} {:<10} {:<12} {:<10} {:<8}",
+            entry.name, entry.version, status_icon, findings, score
+        );
+    }
+
+    if name.is_none() {
+        println!();
+        let audited = registry
+            .templates
+            .iter()
+            .filter(|t| {
+                t.security_review
+                    .as_ref()
+                    .map(|sr| sr.status == "audited")
+                    .unwrap_or(false)
+            })
+            .count();
+        p::kv(
+            "Audited",
+            &format!("{}/{}", audited, registry.templates.len()),
+        );
+    }
+
+    Ok(())
+}
+
+async fn template_customize(path: PathBuf, requirements: String) -> Result<()> {
+    p::header("Template Customization (AI)");
+    p::kv("Template Path", &path.display().to_string());
+    p::kv("Requirements", &requirements);
+    println!();
+
+    p::step(1, 3, "Analyzing template structure...");
+    p::step(2, 3, "Generating AI customizations...");
+    let result = template_customization_ai::customize_template(&path, &requirements).await?;
+    p::step(3, 3, "Validating changes...");
+
+    println!();
+    if result.success {
+        p::success("Customization successful!");
+    } else {
+        p::warn("Customization completed with warnings!");
+    }
+
+    println!("\nChanges made:");
+    for change in &result.changes {
+        println!("  - {}", change);
+    }
+
+    println!("\nValidation report:");
+    println!("{}", result.validation_report);
+
+    Ok(())
+}
+
+async fn template_customize_history(path: PathBuf) -> Result<()> {
+    p::header("Template Customization History");
+    let history = template_customization_ai::get_customization_history(&path).await?;
+
+    if history.entries.is_empty() {
+        p::info("No customization history found for this template");
+        return Ok(());
+    }
+
+    for (i, entry) in history.entries.iter().enumerate() {
+        println!("\n--- Entry {} ---", i);
+        p::kv("Timestamp", &entry.timestamp);
+        p::kv("Requirements", &entry.requirements);
+        println!("Changes made:");
+        println!("{}", entry.changes_made);
+    }
+
+    Ok(())
+}
+
+async fn template_customize_rollback(path: PathBuf, index: Option<usize>) -> Result<()> {
+    p::header("Template Customization Rollback");
+    template_customization_ai::rollback_customization(&path, index).await?;
+    p::success("Rollback successful!");
     Ok(())
 }

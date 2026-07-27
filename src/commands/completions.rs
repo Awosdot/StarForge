@@ -14,7 +14,7 @@ pub enum CompletionShell {
     Fish,
 }
 
-pub fn handle(shell: CompletionShell) -> Result<()> {
+pub async fn handle(shell: CompletionShell) -> Result<()> {
     let shell = match shell {
         CompletionShell::Bash => Shell::Bash,
         CompletionShell::Zsh => Shell::Zsh,
@@ -144,7 +144,8 @@ enum Commands {
     #[command(subcommand)]
     Tutorial(crate::commands::tutorial::TutorialCommands),
     /// Performance benchmarking utilities
-    Benchmark(crate::commands::benchmark::BenchmarkArgs),
+    #[command(subcommand)]
+    Benchmark(crate::commands::benchmark::BenchmarkCommands),
     /// Contract testing utilities for Soroban wasm
     Test(crate::commands::test::TestArgs),
     /// Gas analysis and optimization helpers

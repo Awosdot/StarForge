@@ -1,6 +1,7 @@
 #![allow(clippy::items_after_test_module)]
 
 use crate::utils::crypto;
+use crate::utils::database;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
@@ -259,6 +260,52 @@ pub struct Config {
     pub plugin_trust: PluginTrustConfig,
     pub telemetry_enabled: Option<bool>,
     pub wallet_encryption: Option<crypto::KdfOptions>,
+    /// Optional per-install UUIDv4. Lazily created on first load.
+    /// Stable identifier used for deterministic feature-flag bucketing.
+    #[serde(default)]
+    pub install_id: Option<String>,
+    /// Feature flag system configuration.
+    #[serde(default)]
+    pub feature_flags: FeatureFlagsConfig,
+}
+
+/// Top-level knobs for the local feature-flag system.
+///
+/// Settings here affect **how** the system behaves (metrics retention, whether
+/// in-process telemetry is recorded at all). They do **not** override flag
+/// states — those live in the SQLite database.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct FeatureFlagsConfig {
+    /// Whether the CLI should record `exposure` (and `conversion` /
+    /// `rejection`) metric events locally. Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub metrics_enabled: bool,
+    /// How many days of local metric rows are kept before pruning.
+    /// Defaults to 30.
+    #[serde(default = "default_metrics_retention_days")]
+    pub metrics_retention_days: u32,
+    /// Default user attribute values that should be present when evaluating
+    /// flags without a richer context (e.g. during `info` rendering).
+    #[serde(default)]
+    pub default_attributes: std::collections::HashMap<String, String>,
+}
+
+impl Default for FeatureFlagsConfig {
+    fn default() -> Self {
+        Self {
+            metrics_enabled: true,
+            metrics_retention_days: 30,
+            default_attributes: std::collections::HashMap::new(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_metrics_retention_days() -> u32 {
+    30
 }
 
 fn default_version() -> String {
@@ -457,6 +504,8 @@ impl Default for Config {
             plugin_trust: PluginTrustConfig::default(),
             telemetry_enabled: Some(true),
             wallet_encryption: None,
+            install_id: None,
+            feature_flags: FeatureFlagsConfig::default(),
         }
     }
 }
@@ -560,24 +609,43 @@ pub fn config_path() -> PathBuf {
 }
 
 pub fn load() -> Result<Config> {
-    let path = config_path();
-    if !path.exists() {
-        return Ok(Config::default());
-    }
-    let contents = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read config at {:?}", path))?;
-    let mut config: Config =
-        toml::from_str(&contents).with_context(|| "Failed to parse config file")?;
+    let db = database::Database::open()?;
+    db.initialize()?;
 
-    // Migrate config if needed
+    let mut config = if db.has_config()? {
+        db.load_config()?
+    } else {
+        let path = config_path();
+        let cfg = if path.exists() {
+            let mut toml_cfg = parse_config_file()?;
+            toml_cfg = migrate_config(toml_cfg)?;
+            toml_cfg
+        } else {
+            Config::default()
+        };
+        db.save_config(&cfg)?;
+        cfg
+    };
+
     config = migrate_config(config)?;
 
-    // Guarantee built-in networks are always present
     ensure_default_networks(&mut config);
 
-    // Save migrated config
+    match config.install_id.as_deref() {
+        None => {
+            config.install_id = Some(crate::utils::feature_flags::load_or_create_install_id(&db)?);
+        }
+        Some(install_id) => {
+            // Make sure install_id is also persisted to config_kv. If we loaded
+            // from a TOML file (the legacy path) the column will be missing.
+            let _ = db.insert_config_kv("install_id", install_id);
+        }
+    }
+
     if config.version != CURRENT_CONFIG_VERSION {
         save(&config)?;
+    } else {
+        db.save_config(&config)?;
     }
 
     Ok(config)
@@ -1053,13 +1121,9 @@ pub fn ensure_default_networks(cfg: &mut Config) {
 }
 
 pub fn save(config: &Config) -> Result<()> {
-    let dir = config_dir();
-    if !dir.exists() {
-        fs::create_dir_all(&dir)
-            .with_context(|| format!("Failed to create config dir {:?}", dir))?;
-    }
-    let contents = toml::to_string_pretty(config).with_context(|| "Failed to serialize config")?;
-    fs::write(config_path(), contents).with_context(|| "Failed to write config file")?;
+    validate_config(config)?;
+    let db = database::Database::open()?;
+    db.save_config(config)?;
     Ok(())
 }
 

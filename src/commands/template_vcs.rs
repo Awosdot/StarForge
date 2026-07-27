@@ -1,4 +1,4 @@
-use crate::utils::{print as p, template_vcs};
+use crate::utils::{print as p, template_vcs, template_version_ai};
 use anyhow::Result;
 use clap::Subcommand;
 use std::path::PathBuf;
@@ -70,9 +70,44 @@ pub enum TemplateVcsCommands {
         /// Path to the template directory
         path: PathBuf,
     },
+    /// Analyze changes using AI
+    Analyze {
+        /// Path to the template directory
+        path: PathBuf,
+    },
+    /// Check compatibility between versions using AI
+    Compatibility {
+        /// Path to the template directory
+        path: PathBuf,
+        /// From version
+        from: String,
+        /// To version
+        to: String,
+    },
+    /// Suggest next version using AI
+    Suggest {
+        /// Path to the template directory
+        path: PathBuf,
+    },
+    /// Generate migration guide between versions using AI
+    Migrate {
+        /// Path to the template directory
+        path: PathBuf,
+        /// From version
+        from: String,
+        /// To version
+        to: String,
+    },
+    /// Rollback to a specific version
+    Rollback {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Version to rollback to
+        version: String,
+    },
 }
 
-pub fn handle(cmd: TemplateVcsCommands) -> Result<()> {
+pub async fn handle(cmd: TemplateVcsCommands) -> Result<()> {
     match cmd {
         TemplateVcsCommands::Init { path, name } => init(path, name),
         TemplateVcsCommands::Commit {
@@ -96,6 +131,11 @@ pub fn handle(cmd: TemplateVcsCommands) -> Result<()> {
         } => release(path, version, message, author),
         TemplateVcsCommands::Changelog { path } => changelog(path),
         TemplateVcsCommands::Status { path } => status(path),
+        TemplateVcsCommands::Analyze { path } => analyze(path).await,
+        TemplateVcsCommands::Compatibility { path, from, to } => compatibility(path, from, to).await,
+        TemplateVcsCommands::Suggest { path } => suggest(path).await,
+        TemplateVcsCommands::Migrate { path, from, to } => migrate(path, from, to).await,
+        TemplateVcsCommands::Rollback { path, version } => rollback(path, version).await,
     }
 }
 
@@ -254,5 +294,92 @@ fn status(path: PathBuf) -> Result<()> {
 
     println!();
     p::info("Use `starforge template-vcs commit` to record changes.");
+    Ok(())
+}
+
+async fn analyze(path: PathBuf) -> Result<()> {
+    p::header("Template Version Control — AI Change Analysis");
+    let analysis = template_version_ai::analyze_changes(&path).await?;
+
+    p::kv("Impact Level", &analysis.impact_level);
+    println!("\nChanges:");
+    for change in &analysis.changes {
+        println!("  - {}", change);
+    }
+
+    println!("\nBreaking Changes:");
+    if analysis.breaking_changes.is_empty() {
+        println!("  None");
+    } else {
+        for bc in &analysis.breaking_changes {
+            println!("  - {}", bc);
+        }
+    }
+
+    println!("\nSummary: {}", analysis.summary);
+    Ok(())
+}
+
+async fn compatibility(path: PathBuf, from: String, to: String) -> Result<()> {
+    p::header("Template Version Control — AI Compatibility Check");
+    let check = template_version_ai::check_compatibility(&path, &from, &to).await?;
+
+    p::kv("Compatible", if check.compatible { "Yes" } else { "No" });
+    println!("\nIssues:");
+    if check.issues.is_empty() {
+        println!("  None");
+    } else {
+        for issue in &check.issues {
+            println!("  - {}", issue);
+        }
+    }
+
+    println!("\nRecommendations:");
+    for rec in &check.recommendations {
+        println!("  - {}", rec);
+    }
+    Ok(())
+}
+
+async fn suggest(path: PathBuf) -> Result<()> {
+    p::header("Template Version Control — AI Update Suggestion");
+    let suggestion = template_version_ai::suggest_update(&path).await?;
+
+    p::kv("Suggested Version", &suggestion.suggested_version);
+    p::kv("Reason", &suggestion.reason);
+    println!("\nBenefits:");
+    for benefit in &suggestion.benefits {
+        println!("  - {}", benefit);
+    }
+    Ok(())
+}
+
+async fn migrate(path: PathBuf, from: String, to: String) -> Result<()> {
+    p::header("Template Version Control — AI Migration Guide");
+    let guide = template_version_ai::generate_migration_guide(&path, &from, &to).await?;
+
+    p::kv("From Version", &guide.from_version);
+    p::kv("To Version", &guide.to_version);
+    println!("\nSteps:");
+    for (i, step) in guide.steps.iter().enumerate() {
+        println!("  {}. {}", i + 1, step);
+    }
+
+    println!("\nWarnings:");
+    if guide.warnings.is_empty() {
+        println!("  None");
+    } else {
+        for warning in &guide.warnings {
+            println!("  - {}", warning);
+        }
+    }
+    Ok(())
+}
+
+async fn rollback(path: PathBuf, version: String) -> Result<()> {
+    p::header("Template Version Control — Rollback");
+    p::step(1, 1, &format!("Rolling back to version {}...", version));
+    template_version_ai::rollback_to_version(&path, &version).await?;
+    p::success(&format!("Successfully rolled back to version {}", version));
     Ok(())
 }

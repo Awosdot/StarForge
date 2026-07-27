@@ -25,6 +25,9 @@ pub struct PluginManifest {
     /// Optional maximum StarForge version (semver).
     #[serde(default)]
     pub starforge_version_max: Option<String>,
+    /// Capabilities this AI plugin requires.
+    #[serde(default)]
+    pub required_capabilities: Vec<String>,
 }
 
 impl PluginManifest {

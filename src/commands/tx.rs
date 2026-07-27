@@ -3,8 +3,9 @@ use clap::{Args, Subcommand};
 use colored::*;
 
 use crate::utils::confirmation;
+use crate::utils::hardware_wallet::HardwareWalletKind;
 use crate::utils::horizon::FeeStats;
-use crate::utils::{config, crypto, horizon, print as p, tx_batch}; // Import FeeStats
+use crate::utils::{config, horizon, print as p, tx_batch, wallet_signer};
 
 #[derive(Args)]
 pub struct TxArgs {
@@ -42,6 +43,12 @@ pub struct BatchArgs {
     /// Skip confirmation prompt
     #[arg(long, default_value = "false")]
     pub yes: bool,
+    /// Sign with a hardware wallet instead of a local secret key
+    #[arg(long, value_enum)]
+    pub hardware: Option<HardwareWalletKind>,
+    /// HD derivation path for hardware wallet signing
+    #[arg(long, default_value = crate::utils::hardware_wallet::STELLAR_HD_PATH)]
+    pub hd_path: String,
 }
 
 #[derive(Args)]
@@ -64,6 +71,12 @@ pub struct SendArgs {
     /// Skip confirmation prompt
     #[arg(long, default_value = "false")]
     pub yes: bool,
+    /// Sign with a hardware wallet instead of a local secret key
+    #[arg(long, value_enum)]
+    pub hardware: Option<HardwareWalletKind>,
+    /// HD derivation path for hardware wallet signing
+    #[arg(long, default_value = crate::utils::hardware_wallet::STELLAR_HD_PATH)]
+    pub hd_path: String,
 }
 
 #[derive(Args)]
@@ -93,16 +106,16 @@ pub struct HistoryArgs {
     pub details: bool,
 }
 
-pub fn handle(args: TxArgs) -> Result<()> {
+pub async fn handle(args: TxArgs) -> Result<()> {
     match args.command {
-        TxCommands::Fees { network } => handle_fees(network),
-        TxCommands::Send(args) => handle_send(args),
-        TxCommands::Batch(args) => handle_batch(args),
-        TxCommands::History(args) => handle_history(args),
+        TxCommands::Fees { network } => handle_fees(network).await,
+        TxCommands::Send(args) => handle_send(args).await,
+        TxCommands::Batch(args) => handle_batch(args).await,
+        TxCommands::History(args) => handle_history(args).await,
     }
 }
 
-fn handle_batch(args: BatchArgs) -> Result<()> {
+async fn handle_batch(args: BatchArgs) -> Result<()> {
     p::header("Batch Stellar Transaction");
 
     config::validate_wallet_name(&args.from)?;
@@ -123,8 +136,11 @@ fn handle_batch(args: BatchArgs) -> Result<()> {
             )
         })?;
 
-    if wallet.secret_key.is_none() {
-        anyhow::bail!("Wallet '{}' has no secret key stored", args.from);
+    if wallet.secret_key.is_none() && args.hardware.is_none() {
+        anyhow::bail!(
+            "Wallet '{}' has no secret key stored. Use --hardware ledger or --hardware trezor.",
+            args.from
+        );
     }
 
     let payment_ops: Vec<horizon::BatchPaymentOp> = doc
@@ -160,8 +176,9 @@ fn handle_batch(args: BatchArgs) -> Result<()> {
 
     println!();
     p::step(1, 2, "Fetching source account info…");
-    let source_account =
-        horizon::fetch_account(&wallet.public_key, &args.network).map_err(|e| {
+    let source_account = horizon::fetch_account(&wallet.public_key, &args.network)
+        .await
+        .map_err(|e| {
             anyhow::anyhow!(
                 "Source account not found on {}: {}\nFund it with: starforge wallet fund {}",
                 args.network,
@@ -239,21 +256,22 @@ fn handle_batch(args: BatchArgs) -> Result<()> {
 
     println!();
 
-    let mut secret_key = wallet.secret_key.as_ref().unwrap().clone();
-    if secret_key.contains(':') {
-        let pwd = crypto::prompt_password(
-            &format!("Enter password to decrypt wallet '{}'", wallet.name),
-            false,
-        )?;
-        secret_key = crypto::decrypt_secret(&pwd, &secret_key)?;
-    }
+    let signing_request = wallet_signer::SigningRequest::from_options(
+        Some(wallet),
+        args.hardware,
+        Some(&args.hd_path),
+        &args.network,
+        args.yes,
+        "batch transaction",
+    )?;
 
     p::info("Submitting batch transaction…");
-    let submit_result = horizon::submit_payment_transaction(
+    let submit_result = horizon::submit_payment_with_signing(
         &tx_result.transaction_xdr,
-        &secret_key,
+        &signing_request,
         &args.network,
-    )?;
+    )
+    .await?;
 
     println!();
     p::separator();
@@ -294,7 +312,7 @@ fn batch_operation_to_payment(op: &tx_batch::BatchOperation) -> Result<horizon::
     }
 }
 
-fn handle_send(args: SendArgs) -> Result<()> {
+async fn handle_send(args: SendArgs) -> Result<()> {
     p::header("Send Stellar Payment");
 
     config::validate_wallet_name(&args.from)?;
@@ -316,8 +334,11 @@ fn handle_send(args: SendArgs) -> Result<()> {
         })?;
 
     // Validate wallet has secret key
-    if wallet.secret_key.is_none() {
-        anyhow::bail!("Wallet '{}' has no secret key stored", args.from);
+    if wallet.secret_key.is_none() && args.hardware.is_none() {
+        anyhow::bail!(
+            "Wallet '{}' has no secret key stored. Use --hardware ledger or --hardware trezor.",
+            args.from
+        );
     }
 
     // Parse asset
@@ -342,8 +363,9 @@ fn handle_send(args: SendArgs) -> Result<()> {
     // Step 1: Fetch source account info
     println!();
     p::step(1, 3, "Fetching source account info…");
-    let source_account =
-        horizon::fetch_account(&wallet.public_key, &args.network).map_err(|e| {
+    let source_account = horizon::fetch_account(&wallet.public_key, &args.network)
+        .await
+        .map_err(|e| {
             anyhow::anyhow!(
                 "Source account not found on {}: {}\nFund it with: starforge wallet fund {}",
                 args.network,
@@ -375,7 +397,7 @@ fn handle_send(args: SendArgs) -> Result<()> {
 
     // Step 2: Validate destination account
     p::step(2, 3, "Validating destination account…");
-    match horizon::fetch_account(&args.to, &args.network) {
+    match horizon::fetch_account(&args.to, &args.network).await {
         Ok(_) => p::kv("Destination", "✓ Account exists"),
         Err(_) => {
             if asset_code.is_none() {
@@ -453,21 +475,22 @@ fn handle_send(args: SendArgs) -> Result<()> {
     // Submit transaction
     println!();
 
-    let mut secret_key = wallet.secret_key.as_ref().unwrap().clone();
-    if secret_key.contains(':') {
-        let pwd = crypto::prompt_password(
-            &format!("Enter password to decrypt wallet '{}'", wallet.name),
-            false,
-        )?;
-        secret_key = crypto::decrypt_secret(&pwd, &secret_key)?;
-    }
+    let signing_request = wallet_signer::SigningRequest::from_options(
+        Some(wallet),
+        args.hardware,
+        Some(&args.hd_path),
+        &args.network,
+        args.yes,
+        "payment transaction",
+    )?;
 
     p::info("Submitting transaction…");
-    let submit_result = horizon::submit_payment_transaction(
+    let submit_result = horizon::submit_payment_with_signing(
         &tx_result.transaction_xdr,
-        &secret_key,
+        &signing_request,
         &args.network,
-    )?;
+    )
+    .await?;
 
     println!();
     p::separator();
@@ -508,7 +531,7 @@ fn parse_asset(asset: &str) -> Result<(Option<String>, Option<String>)> {
     }
 }
 
-fn handle_history(args: HistoryArgs) -> Result<()> {
+async fn handle_history(args: HistoryArgs) -> Result<()> {
     let limit = args.limit.min(200);
 
     config::validate_public_key(&args.public_key)?;
@@ -569,7 +592,7 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
         },
     };
 
-    match horizon::fetch_transactions_filtered(&args.public_key, &network, filter) {
+    match horizon::fetch_transactions_filtered(&args.public_key, &network, filter).await {
         Err(e) => {
             println!("\n  {} {}\n", "✗".red().bold(), e.to_string().red());
         }
@@ -587,14 +610,14 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_fees(network_opt: Option<String>) -> Result<()> {
+async fn handle_fees(network_opt: Option<String>) -> Result<()> {
     // Determine the network, default to config or testnet
     let network = match network_opt {
         Some(net) => net,
         None => config::load()?.network,
     };
     config::validate_network(&network)?;
-    let stats: FeeStats = horizon::fetch_fee_stats(&network)?;
+    let stats: FeeStats = horizon::fetch_fee_stats(&network).await?;
     p::header("Recommended Fee Levels");
     p::kv("Network", &network);
     p::kv("Low Fee (stroops)", &stats.low_fee);
