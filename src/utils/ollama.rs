@@ -339,13 +339,109 @@ and rewrite it to minimise resource consumption while preserving behaviour.\n\n\
         )
     }
 
-    /// Prompt for translating text with high accuracy and cultural adaptation.
-    pub fn translation_prompt(text: &str, target_lang: &str) -> String {
+    /// Prompt for AI-driven performance profiling of a compiled Soroban contract.
+    ///
+    /// `profile_summary` is a JSON-serialised snapshot of the static analysis
+    /// produced by `contract_profiler::profile_contract_wasm`, giving the model
+    /// concrete numbers to reason about instead of raw byte code.
+    pub fn performance_profile_prompt(profile_summary: &str) -> String {
         format!(
-            "{}Translate the following text into {}, ensuring high accuracy (>90%) and appropriate cultural adaptation. \
-If the text contains CLI commands, error messages, or technical documentation, preserve the technical meaning perfectly.\n\n\
-Text to translate:\n{}",
-            SYSTEM_CONTEXT, target_lang, text
+            "{}\
+You have been given the following static performance profile of a compiled Soroban \
+smart contract (in JSON). The metrics were produced by StarForge's WASM analyser and \
+include estimated gas costs, instruction counts, memory usage, identified bottlenecks, \
+and a regression comparison against a previous version where available.\n\n\
+```json\n{}\n```\n\n\
+Please provide a detailed AI-driven performance analysis that covers:\n\
+1. **Bottleneck Identification** – explain each detected bottleneck in plain English, \
+   ranking them by impact on on-chain cost and latency.\n\
+2. **Optimization Suggestions** – give concrete, actionable Soroban/Rust code-level \
+   changes the developer should make to reduce gas usage, lower memory pressure, and \
+   improve execution time.\n\
+3. **Comparative Analysis** – if a regression comparison is present, explain what \
+   changed between the versions and whether the change is acceptable.\n\
+4. **Historical Performance Advice** – recommend how the developer should track \
+   performance over time (e.g. CI thresholds, baseline update cadence, key metrics \
+   to watch).\n\
+5. **Visual Report Guidance** – suggest the most important metrics and charts to \
+   include in a performance dashboard for this contract type.\n\n\
+Be specific and reference exact metric values from the profile. Keep the tone \
+practical — developers should be able to act on your advice immediately.",
+            SYSTEM_CONTEXT, profile_summary
+        )
+    }
+
+    /// Prompt for AI contract pattern recognition and anti-pattern detection.
+    ///
+    /// `contract_code` is the raw Rust source.
+    /// `pre_scan_json` is a JSON-serialised `PreScanResult` from the static
+    /// indicator scan, giving the model a head-start before full analysis.
+    /// `feedback_context` is an optional string injected from the user feedback
+    /// store to calibrate confidence on patterns the user has already rated.
+    pub fn pattern_recognition_prompt(
+        contract_code: &str,
+        pre_scan_json: &str,
+        feedback_context: &str,
+    ) -> String {
+        format!(
+            "{}\
+Analyse the following Soroban smart contract for design patterns and anti-patterns.\n\n\
+A static indicator scan has already been run and produced the following preliminary \
+matches (JSON). Use these as hints but do not treat them as definitive — the LLM \
+analysis should confirm, refine, or reject each match:\n\n\
+```json\n{}\n```\n{}\n\n\
+**Contract source:**\n```rust\n{}\n```\n\n\
+Provide a structured analysis with the following sections:\n\n\
+## Recognised Patterns\n\
+List every design pattern present. For each include:\n\
+- Pattern name and category (Token / Governance / DeFi / Access Control / Storage / General)\n\
+- Confidence level (High / Medium / Low) with a one-sentence justification\n\
+- Specific improvement suggestions tailored to this contract's implementation\n\n\
+## Anti-Patterns Detected\n\
+List every anti-pattern found. For each include:\n\
+- Anti-pattern name, severity (Critical / High / Medium / Low), and category\n\
+- Where in the code it appears (function name or line description)\n\
+- Concrete remediation steps with example code where helpful\n\n\
+## Pattern Documentation\n\
+For the two highest-confidence pattern matches, provide a short documentation \
+paragraph a developer could paste into the contract's README.\n\n\
+## Actionable Improvements\n\
+Rank the top 5 actionable improvements across all findings, ordered by impact.",
+            SYSTEM_CONTEXT, pre_scan_json, feedback_context, contract_code
+        )
+    }
+
+    /// Prompt asking the LLM to classify a contract into its primary pattern
+    /// category without full analysis — useful for the `library` subcommand
+    /// when browsing which patterns apply.
+    pub fn pattern_classify_prompt(contract_code: &str) -> String {
+        format!(
+            "{}Given the following Soroban contract, classify it into one or more of these \
+pattern categories: Token, Governance, DeFi, AccessControl, Storage, General.\n\n\
+For each matching category, give a one-line reason.\n\n\
+```rust\n{}\n```",
+            SYSTEM_CONTEXT, contract_code
+        )
+    }
+
+    /// Prompt for comparing two performance profiles and summarising the delta.
+    ///
+    /// `baseline_json` and `candidate_json` are both JSON-serialised
+    /// `ContractProfileReport` snapshots.
+    pub fn profile_comparison_prompt(baseline_json: &str, candidate_json: &str) -> String {
+        format!(
+            "{}\
+Compare the following two Soroban contract performance profiles and explain the \
+differences in plain English.\n\n\
+**Baseline profile:**\n```json\n{}\n```\n\n\
+**Candidate profile:**\n```json\n{}\n```\n\n\
+Cover:\n\
+1. Which metrics improved or regressed, and by how much.\n\
+2. Whether the overall change is acceptable for production deployment.\n\
+3. Root-cause hypotheses for any regressions (e.g. new storage writes, larger \
+   data structures, additional host-function calls).\n\
+4. Specific steps the developer should take before merging if regressions are found.",
+            SYSTEM_CONTEXT, baseline_json, candidate_json
         )
     }
 }
@@ -415,6 +511,47 @@ mod tests {
         let code = "pub fn heavy(env: Env) {}";
         let prompt = prompts::optimise_prompt(code);
         assert!(prompt.contains(code));
+    }
+
+    #[test]
+    fn performance_profile_prompt_includes_json_summary() {
+        let summary = r#"{"id":"profile-abc","optimization_score":72}"#;
+        let prompt = prompts::performance_profile_prompt(summary);
+        assert!(prompt.contains(summary));
+        assert!(prompt.to_lowercase().contains("bottleneck"));
+        assert!(prompt.to_lowercase().contains("optimization"));
+        assert!(prompt.contains(prompts::SYSTEM_CONTEXT));
+    }
+
+    #[test]
+    fn profile_comparison_prompt_includes_both_profiles() {
+        let baseline = r#"{"id":"profile-base"}"#;
+        let candidate = r#"{"id":"profile-cand"}"#;
+        let prompt = prompts::profile_comparison_prompt(baseline, candidate);
+        assert!(prompt.contains(baseline));
+        assert!(prompt.contains(candidate));
+        assert!(prompt.to_lowercase().contains("compare"));
+    }
+
+    #[test]
+    fn pattern_recognition_prompt_includes_all_inputs() {
+        let code = "fn transfer(env: Env) {}";
+        let scan = r#"{"matched_patterns":[]}"#;
+        let feedback = "pattern 'sep41' confirmed correct 3 times";
+        let prompt = prompts::pattern_recognition_prompt(code, scan, feedback);
+        assert!(prompt.contains(code));
+        assert!(prompt.contains(scan));
+        assert!(prompt.contains(feedback));
+        assert!(prompt.to_lowercase().contains("anti-pattern"));
+        assert!(prompt.contains(prompts::SYSTEM_CONTEXT));
+    }
+
+    #[test]
+    fn pattern_classify_prompt_includes_code() {
+        let code = "fn mint(env: Env) {}";
+        let prompt = prompts::pattern_classify_prompt(code);
+        assert!(prompt.contains(code));
+        assert!(prompt.to_lowercase().contains("categor"));
     }
 
     #[test]

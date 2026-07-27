@@ -47,9 +47,9 @@ enum Commands {
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
 
-    /// AI-powered deployment documentation generator (guides, runbooks, troubleshooting, API, architecture)
+    /// Local LLM assistant for Soroban contracts (audit, explain, test, optimise, profile)
     #[command(subcommand)]
-    AiDeployDocs(commands::ai_deploy_docs::AiDeployDocsCommands),
+    Ai(commands::ai::AiCommands),
 
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
@@ -294,7 +294,7 @@ async fn main() {
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
-        Commands::AiDeployDocs(_) => "ai-deploy-docs",
+        Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
@@ -360,7 +360,7 @@ async fn main() {
     let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
-        Commands::AiDeployDocs(cmd) => commands::ai_deploy_docs::handle(cmd).await,
+        Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
@@ -465,6 +465,10 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
             } else if msg.contains("model") || msg.contains("not found") {
                 hints.push("List available models: starforge ai models".into());
                 hints.push("Download a model: starforge ai pull codellama:7b".into());
+            } else if msg.contains("wasm") || msg.contains("profile") {
+                hints.push("Build your contract first: stellar contract build".into());
+                hints.push("Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into());
+                hints.push("Save a baseline first: starforge ai profile <wasm> --output baseline.json".into());
             }
         }
         "wallet" => {

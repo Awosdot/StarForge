@@ -61,6 +61,7 @@ pub mod optimizer;
 pub mod orchestration;
 pub mod performance;
 pub mod pipeline_builder;
+pub mod pattern_library;
 pub mod print;
 pub mod privacy;
 pub mod profiler;
