@@ -31,19 +31,22 @@ unsafe impl GlobalAlloc for MemoryProfiler {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);
         if !ptr.is_null() {
-            let size = layout.size();
-            ALLOCATED.fetch_add(size, Ordering::Relaxed);
-            let current = CURRENT.fetch_add(size, Ordering::Relaxed) + size;
-            PEAK.fetch_max(current, Ordering::Relaxed);
+            if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
+                alloc_tracker
+                    .allocations
+                    .push((layout.size(), ptr as usize));
+            }
         }
         ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         System.dealloc(ptr, layout);
-        let size = layout.size();
-        DEALLOCATED.fetch_add(size, Ordering::Relaxed);
-        CURRENT.fetch_sub(size, Ordering::Relaxed);
+        if let Some(alloc_tracker) = &mut ALLOC_TRACKER {
+            alloc_tracker
+                .allocations
+                .retain(|(size, addr)| ptr as usize != *addr);
+        }
     }
 }
 

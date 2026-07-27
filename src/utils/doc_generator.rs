@@ -423,7 +423,7 @@ fn extract_struct_fields(lines: &[&str], start: usize) -> Vec<ExtractedField> {
                 && field_part
                     .chars()
                     .next()
-                    .is_some_and(|c| c.is_alphabetic() || c == '_')
+                    .map_or(false, |c| c.is_alphabetic() || c == '_')
                 && field_part.chars().all(|c| c.is_alphanumeric() || c == '_')
             {
                 fields.push(ExtractedField {
@@ -480,7 +480,7 @@ fn extract_enum_variants(lines: &[&str], start: usize) -> Vec<ExtractedVariant> 
             && variant_name
                 .chars()
                 .next()
-                .is_some_and(|c| c.is_uppercase())
+                .map_or(false, |c| c.is_uppercase())
         {
             variants.push(ExtractedVariant {
                 name: variant_name,

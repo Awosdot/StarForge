@@ -557,15 +557,16 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
         let value_lower = value.to_lowercase();
 
         // Detect potential zero-value bugs
-        if (value == "0" || value == "0i128" || value == "0u128")
-            && (name_lower.contains("amount")
+        if value == "0" || value == "0i128" || value == "0u128" {
+            if name_lower.contains("amount")
                 || name_lower.contains("balance")
-                || name_lower.contains("fee"))
-        {
-            insights.push(format!(
-                "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
-                name
-            ));
+                || name_lower.contains("fee")
+            {
+                insights.push(format!(
+                    "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
+                    name
+                ));
+            }
         }
 
         // Detect max-value boundary conditions

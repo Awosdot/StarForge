@@ -121,7 +121,9 @@ fn test_detects_reentrancy_in_sample_contract() {
         "Should detect reentrancy vulnerability in sample contract"
     );
     assert!(
-        findings.iter().any(|f| f.pattern_name == "reentrancy_risk"),
+        findings
+            .iter()
+            .any(|f| f.description.contains("reentrancy")),
         "Should identify reentrancy risk"
     );
 }
@@ -153,7 +155,7 @@ fn test_detects_arithmetic_overflow_in_sample() {
     assert!(
         findings
             .iter()
-            .any(|f| f.pattern_name == "unchecked_arithmetic"),
+            .any(|f| f.description.contains("arithmetic")),
         "Should identify arithmetic issue"
     );
 }

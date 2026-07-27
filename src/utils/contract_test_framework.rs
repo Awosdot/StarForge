@@ -220,8 +220,10 @@ impl FrameworkTestSuite {
         let suite_start = Instant::now();
 
         // Setup fixture
-        let fixture_ctx: Option<FixtureContext> =
-            self.fixture.as_mut().and_then(|f| f.setup().ok().cloned());
+        let fixture_ctx: Option<FixtureContext> = self
+            .fixture
+            .as_mut()
+            .and_then(|f| f.setup().ok().map(|ctx| ctx.clone()));
 
         let mut results = Vec::new();
         for case in &self.cases {
@@ -238,7 +240,7 @@ impl FrameworkTestSuite {
                         seed.value.clone(),
                     );
                 }
-                for account in ctx.accounts.values() {
+                for (_, account) in &ctx.accounts {
                     env.auth
                         .auto_approve(MockAddress::new(account.address.clone()));
                 }

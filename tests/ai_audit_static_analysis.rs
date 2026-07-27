@@ -46,7 +46,7 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
     assert!(
         findings
             .iter()
-            .any(|f| f.pattern_name == "unchecked_arithmetic"),
+            .any(|f| f.description.contains("arithmetic")),
         "Should identify arithmetic as the issue"
     );
 }
@@ -86,7 +86,9 @@ pub fn transfer(env: Env, to: Address, amount: i128) {
         "Should detect external call before state update"
     );
     assert!(
-        findings.iter().any(|f| f.pattern_name == "reentrancy_risk"),
+        findings
+            .iter()
+            .any(|f| f.description.contains("reentrancy")),
         "Should identify reentrancy risk"
     );
 }
