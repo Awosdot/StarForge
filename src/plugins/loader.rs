@@ -37,8 +37,6 @@ pub enum PluginLoadError {
     },
     /// The `starforge-plugin.toml` manifest failed validation.
     ManifestIncompatible { path: String, detail: String },
-    /// The plugin panicked or crashed unexpectedly during active registration routines.
-    RegistrationRuntimePanic { path: String, detail: String },
 }
 
 impl PluginLoadError {
@@ -146,10 +144,11 @@ impl PluginManager {
         let path_display = path_ref.to_string_lossy().to_string();
 
         // ── Open the shared library ──────────────────────────────────────────
-        let library = Library::new(path_ref.as_os_str()).map_err(|e| PluginLoadError::InvalidLibrary {
-            path: path_display.clone(),
-            detail: e.to_string(),
-        })?;
+        let library =
+            Library::new(path_ref.as_os_str()).map_err(|e| PluginLoadError::InvalidLibrary {
+                path: path_display.clone(),
+                detail: e.to_string(),
+            })?;
         let library = Rc::new(library);
 
         // ── Locate the required export symbol ────────────────────────────────
@@ -182,7 +181,7 @@ impl PluginManager {
         }
 
         // ── Manifest compatibility (if present beside the library) ───────────
-        if let Ok(Some(mf)) = manifest::load_manifest_for_library(path_ref) {
+        if let Ok(Some(mf)) = manifest::load_manifest_for_library(Path::new(path_ref)) {
             mf.validate()
                 .map_err(|e| PluginLoadError::ManifestIncompatible {
                     path: path_display.clone(),
@@ -191,7 +190,7 @@ impl PluginManager {
         }
 
         let mut registrar = ProxyRegistrar::new();
-        
+
         // Protect the system execution loop from third-party registration panics
         let register_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             (decl.register)(&mut registrar);

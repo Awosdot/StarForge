@@ -201,6 +201,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
     });
 
     let url_owned = url.to_string();
+    let body_clone = body.clone();
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
     let text = rt.block_on(async move {
         let client = reqwest::Client::builder()
@@ -209,7 +210,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
         let res = client
             .post(&url_owned)
             .header("Content-Type", "application/json")
-            .json(&body)
+            .json(&body_clone)
             .send()
             .await
             .context("RPC request failed")?;
@@ -217,6 +218,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
     })?;
 
     let url = url.to_string();
+    let body_for_worker = body.clone();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let result = (|| {
@@ -228,12 +230,15 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
                 let response = crate::utils::http_client::get_client()
                     .post(&url)
                     .header("Content-Type", "application/json")
-                    .body(body)
+                    .json(&body)
                     .timeout(Duration::from_secs(30))
                     .send()
                     .await
                     .context("RPC request failed")?;
-                let text = response.text().await.context("Failed to read RPC response")?;
+                let text = response
+                    .text()
+                    .await
+                    .context("Failed to read RPC response")?;
                 Ok::<_, anyhow::Error>(text)
             })
         })();
@@ -340,8 +345,7 @@ impl TestnetClient {
             .map_err(|_| anyhow::anyhow!("Friendbot worker exited unexpectedly"))?
         {
             Ok(text) => {
-                let parsed: serde_json::Value =
-                    serde_json::from_str(&text).unwrap_or_default();
+                let parsed: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
                 Ok(FundbotResult {
                     address: address.to_string(),
                     success: true,
@@ -363,8 +367,11 @@ impl TestnetClient {
 
     /// Query the latest ledger sequence number.
     pub fn latest_ledger(&self) -> Result<u32> {
-        let result =
-            rpc_post(self.config.network.rpc_url(), "getLatestLedger", serde_json::json!(null))?;
+        let result = rpc_post(
+            self.config.network.rpc_url(),
+            "getLatestLedger",
+            serde_json::json!(null),
+        )?;
         result
             .get("sequence")
             .and_then(|v| v.as_u64())
@@ -386,11 +393,7 @@ impl TestnetClient {
                 "args": args,
             }
         });
-        rpc_post(
-            self.config.network.rpc_url(),
-            "simulateTransaction",
-            params,
-        )
+        rpc_post(self.config.network.rpc_url(), "simulateTransaction", params)
     }
 
     /// Query ledger entries by key XDR strings.
@@ -398,11 +401,7 @@ impl TestnetClient {
         let params = serde_json::json!({
             "keys": key_xdrs
         });
-        let result = rpc_post(
-            self.config.network.rpc_url(),
-            "getLedgerEntries",
-            params,
-        )?;
+        let result = rpc_post(self.config.network.rpc_url(), "getLedgerEntries", params)?;
 
         let entries = result
             .get("entries")
@@ -601,7 +600,9 @@ mod tests {
     #[test]
     fn network_rpc_urls() {
         assert!(SorobanNetwork::Testnet.rpc_url().starts_with("https://"));
-        assert!(SorobanNetwork::Local.rpc_url().starts_with("http://localhost"));
+        assert!(SorobanNetwork::Local
+            .rpc_url()
+            .starts_with("http://localhost"));
         assert!(SorobanNetwork::Testnet.supports_friendbot());
         assert!(!SorobanNetwork::Mainnet.supports_friendbot());
     }
