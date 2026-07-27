@@ -1,4 +1,4 @@
-use crate::utils::{print as p, template_vcs};
+use crate::utils::{print as p, template_vcs, template_version_ai};
 use anyhow::Result;
 use clap::Subcommand;
 use std::path::PathBuf;
@@ -70,46 +70,40 @@ pub enum TemplateVcsCommands {
         /// Path to the template directory
         path: PathBuf,
     },
-    /// Initialize a collaborative editing session for a template
-    Collaborate {
-        /// Path to the template directory
-        path: PathBuf,
-        /// Optional template display name
-        #[arg(long)]
-        name: Option<String>,
-        /// Participant identifiers to seed the session
-        #[arg(long)]
-        participant: Vec<String>,
-    },
-    /// Generate AI-assisted review suggestions for a template
-    Review {
-        /// Path to the template directory
-        path: PathBuf,
-        /// Optional focus area for the review
-        #[arg(long)]
-        focus: Option<String>,
-    },
-    /// Detect merge-conflict markers in a template tree
-    ResolveConflicts {
+    /// Analyze changes using AI
+    Analyze {
         /// Path to the template directory
         path: PathBuf,
     },
-    /// Share a knowledge note with the template team
-    ShareKnowledge {
+    /// Check compatibility between versions using AI
+    Compatibility {
         /// Path to the template directory
         path: PathBuf,
-        /// Knowledge title
-        title: String,
-        /// Knowledge content
-        content: String,
-        /// Author name
-        #[arg(long)]
-        author: Option<String>,
+        /// From version
+        from: String,
+        /// To version
+        to: String,
     },
-    /// Show collaboration analytics for a template
-    Analytics {
+    /// Suggest next version using AI
+    Suggest {
         /// Path to the template directory
         path: PathBuf,
+    },
+    /// Generate migration guide between versions using AI
+    Migrate {
+        /// Path to the template directory
+        path: PathBuf,
+        /// From version
+        from: String,
+        /// To version
+        to: String,
+    },
+    /// Rollback to a specific version
+    Rollback {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Version to rollback to
+        version: String,
     },
 }
 
@@ -137,20 +131,11 @@ pub async fn handle(cmd: TemplateVcsCommands) -> Result<()> {
         } => release(path, version, message, author),
         TemplateVcsCommands::Changelog { path } => changelog(path),
         TemplateVcsCommands::Status { path } => status(path),
-        TemplateVcsCommands::Collaborate {
-            path,
-            name,
-            participant,
-        } => collaborate(path, name, participant),
-        TemplateVcsCommands::Review { path, focus } => review(path, focus),
-        TemplateVcsCommands::ResolveConflicts { path } => resolve_conflicts(path),
-        TemplateVcsCommands::ShareKnowledge {
-            path,
-            title,
-            content,
-            author,
-        } => share_knowledge(path, title, content, author),
-        TemplateVcsCommands::Analytics { path } => analytics(path),
+        TemplateVcsCommands::Analyze { path } => analyze(path).await,
+        TemplateVcsCommands::Compatibility { path, from, to } => compatibility(path, from, to).await,
+        TemplateVcsCommands::Suggest { path } => suggest(path).await,
+        TemplateVcsCommands::Migrate { path, from, to } => migrate(path, from, to).await,
+        TemplateVcsCommands::Rollback { path, version } => rollback(path, version).await,
     }
 }
 
@@ -312,80 +297,89 @@ fn status(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn collaborate(path: PathBuf, name: Option<String>, participants: Vec<String>) -> Result<()> {
-    p::header("Template Collaboration — Session");
-    let template_name = name.unwrap_or_else(|| path.file_name().unwrap_or_default().to_string_lossy().to_string());
-    let session = template_vcs::init_collaboration(&path, &template_name, &participants)?;
-    p::success("Collaboration session created");
-    p::kv("Session ID", &session.id);
-    p::kv("Template", &template_name);
-    p::kv("Participants", &session.participants.join(", "));
-    Ok(())
-}
+async fn analyze(path: PathBuf) -> Result<()> {
+    p::header("Template Version Control — AI Change Analysis");
+    let analysis = template_version_ai::analyze_changes(&path).await?;
 
-fn review(path: PathBuf, focus: Option<String>) -> Result<()> {
-    p::header("Template Collaboration — AI Review");
-    let suggestions = template_vcs::generate_ai_review_suggestions(&path, focus.as_deref())?;
-
-    if suggestions.is_empty() {
-        p::info("No review suggestions generated.");
-        return Ok(());
+    p::kv("Impact Level", &analysis.impact_level);
+    println!("\nChanges:");
+    for change in &analysis.changes {
+        println!("  - {}", change);
     }
 
-    for suggestion in suggestions {
-        println!();
-        p::kv_accent("Suggestion", &suggestion.title);
-        p::kv("Severity", &suggestion.severity);
-        p::kv("Summary", &suggestion.summary);
-        if let Some(file) = suggestion.file_path {
-            p::kv("File", &file);
+    println!("\nBreaking Changes:");
+    if analysis.breaking_changes.is_empty() {
+        println!("  None");
+    } else {
+        for bc in &analysis.breaking_changes {
+            println!("  - {}", bc);
         }
     }
 
+    println!("\nSummary: {}", analysis.summary);
     Ok(())
 }
 
-fn resolve_conflicts(path: PathBuf) -> Result<()> {
-    p::header("Template Collaboration — Conflict Resolution");
-    let resolutions = template_vcs::resolve_template_conflicts(&path)?;
+async fn compatibility(path: PathBuf, from: String, to: String) -> Result<()> {
+    p::header("Template Version Control — AI Compatibility Check");
+    let check = template_version_ai::check_compatibility(&path, &from, &to).await?;
 
-    if resolutions.is_empty() {
-        p::info("No conflict markers found.");
-        return Ok(());
-    }
-
-    for resolution in resolutions {
-        println!();
-        p::kv_accent("File", &resolution.file_path);
-        p::kv("Resolved", if resolution.resolved { "Yes" } else { "No" });
-        p::kv("Recommendation", &resolution.recommendation);
-        if !resolution.conflicts.is_empty() {
-            p::kv("Conflict markers", &resolution.conflicts.join(" | "));
+    p::kv("Compatible", if check.compatible { "Yes" } else { "No" });
+    println!("\nIssues:");
+    if check.issues.is_empty() {
+        println!("  None");
+    } else {
+        for issue in &check.issues {
+            println!("  - {}", issue);
         }
     }
 
+    println!("\nRecommendations:");
+    for rec in &check.recommendations {
+        println!("  - {}", rec);
+    }
     Ok(())
 }
 
-fn share_knowledge(path: PathBuf, title: String, content: String, author: Option<String>) -> Result<()> {
-    p::header("Template Collaboration — Knowledge Sharing");
-    let author_name = author.unwrap_or_else(|| "anonymous".to_string());
-    let entry = template_vcs::share_knowledge(&path, &title, &content, &author_name)?;
-    p::success("Knowledge shared with the team");
-    p::kv("Entry ID", &entry.id);
-    p::kv("Title", &entry.title);
-    p::kv("Author", &entry.author);
+async fn suggest(path: PathBuf) -> Result<()> {
+    p::header("Template Version Control — AI Update Suggestion");
+    let suggestion = template_version_ai::suggest_update(&path).await?;
+
+    p::kv("Suggested Version", &suggestion.suggested_version);
+    p::kv("Reason", &suggestion.reason);
+    println!("\nBenefits:");
+    for benefit in &suggestion.benefits {
+        println!("  - {}", benefit);
+    }
     Ok(())
 }
 
-fn analytics(path: PathBuf) -> Result<()> {
-    p::header("Template Collaboration — Analytics");
-    let analytics = template_vcs::collect_team_analytics(&path)?;
-    p::kv("Template", &analytics.template_name);
-    p::kv("Participants", &analytics.participant_count.to_string());
-    p::kv("Contributions", &analytics.contribution_count.to_string());
-    p::kv("Review suggestions", &analytics.review_suggestion_count.to_string());
-    p::kv("Knowledge entries", &analytics.knowledge_entry_count.to_string());
-    p::kv("Last activity", &analytics.last_activity);
+async fn migrate(path: PathBuf, from: String, to: String) -> Result<()> {
+    p::header("Template Version Control — AI Migration Guide");
+    let guide = template_version_ai::generate_migration_guide(&path, &from, &to).await?;
+
+    p::kv("From Version", &guide.from_version);
+    p::kv("To Version", &guide.to_version);
+    println!("\nSteps:");
+    for (i, step) in guide.steps.iter().enumerate() {
+        println!("  {}. {}", i + 1, step);
+    }
+
+    println!("\nWarnings:");
+    if guide.warnings.is_empty() {
+        println!("  None");
+    } else {
+        for warning in &guide.warnings {
+            println!("  - {}", warning);
+        }
+    }
+    Ok(())
+}
+
+async fn rollback(path: PathBuf, version: String) -> Result<()> {
+    p::header("Template Version Control — Rollback");
+    p::step(1, 1, &format!("Rolling back to version {}...", version));
+    template_version_ai::rollback_to_version(&path, &version).await?;
+    p::success(&format!("Successfully rolled back to version {}", version));
     Ok(())
 }

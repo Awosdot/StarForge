@@ -1,4 +1,4 @@
-use crate::utils::{print as p, quality_analysis, registry, templates};
+use crate::utils::{print as p, registry, templates, template_customization_ai};
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
@@ -160,17 +160,24 @@ pub enum TemplateCommands {
         /// Template name (omit to list the security status of all templates)
         name: Option<String>,
     },
-    /// AI-assisted quality analysis: code quality, security, best practices,
-    /// documentation completeness, test coverage, and a weighted quality score
-    Quality {
-        /// Template name
-        name: String,
-        /// Output format: text or json
-        #[arg(long, default_value = "text")]
-        format: String,
-        /// Write the report to this file instead of stdout
-        #[arg(long)]
-        out: Option<PathBuf>,
+    /// Customize a template using AI based on requirements
+    Customize {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Requirements for customization
+        requirements: String,
+    },
+    /// View customization history for a template
+    CustomizeHistory {
+        /// Path to the template directory
+        path: PathBuf,
+    },
+    /// Rollback template to a previous customization state
+    CustomizeRollback {
+        /// Path to the template directory
+        path: PathBuf,
+        /// Optional index to rollback to (0 is oldest, omit for previous)
+        index: Option<usize>,
     },
 }
 
@@ -251,9 +258,9 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
-        TemplateCommands::Quality { name, format, out } => {
-            template_quality(name, format, out).await
-        }
+        TemplateCommands::Customize { path, requirements } => template_customize(path, requirements).await,
+        TemplateCommands::CustomizeHistory { path } => template_customize_history(path).await,
+        TemplateCommands::CustomizeRollback { path, index } => template_customize_rollback(path, index).await,
     }
 }
 
@@ -1116,141 +1123,58 @@ async fn template_audit(name: Option<String>) -> Result<()> {
     Ok(())
 }
 
-// ─── template quality ─────────────────────────────────────────────────────────
+async fn template_customize(path: PathBuf, requirements: String) -> Result<()> {
+    p::header("Template Customization (AI)");
+    p::kv("Template Path", &path.display().to_string());
+    p::kv("Requirements", &requirements);
+    println!();
 
-/// Locate a template's local source directory — prefer the built-in examples
-/// shipped with StarForge, falling back to whatever path the registry has
-/// recorded for an installed/published template.
-async fn resolve_template_dir(name: &str) -> Result<PathBuf> {
-    let builtin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("templates")
-        .join("examples")
-        .join(name);
+    p::step(1, 3, "Analyzing template structure...");
+    p::step(2, 3, "Generating AI customizations...");
+    let result = template_customization_ai::customize_template(&path, &requirements).await?;
+    p::step(3, 3, "Validating changes...");
 
-    if builtin.exists() {
-        return Ok(builtin);
+    println!();
+    if result.success {
+        p::success("Customization successful!");
+    } else {
+        p::warn("Customization completed with warnings!");
     }
 
-    let entry = templates::get_template(name).await?;
-    match entry.path {
-        Some(ref p) => Ok(PathBuf::from(p)),
-        None => anyhow::bail!(
-            "Template '{}' has no local path. Install it first with: starforge template install {}",
-            name,
-            name
-        ),
+    println!("\nChanges made:");
+    for change in &result.changes {
+        println!("  - {}", change);
     }
+
+    println!("\nValidation report:");
+    println!("{}", result.validation_report);
+
+    Ok(())
 }
 
-/// Read a template's primary contract source file (`src/lib.rs` or `src/main.rs`).
-fn read_template_source(template_dir: &std::path::Path) -> Result<(PathBuf, String)> {
-    let lib_path = template_dir.join("src/lib.rs");
-    let main_path = template_dir.join("src/main.rs");
+async fn template_customize_history(path: PathBuf) -> Result<()> {
+    p::header("Template Customization History");
+    let history = template_customization_ai::get_customization_history(&path).await?;
 
-    if lib_path.exists() {
-        let code = std::fs::read_to_string(&lib_path)?;
-        return Ok((lib_path, code));
-    }
-    if main_path.exists() {
-        let code = std::fs::read_to_string(&main_path)?;
-        return Ok((main_path, code));
+    if history.entries.is_empty() {
+        p::info("No customization history found for this template");
+        return Ok(());
     }
 
-    anyhow::bail!(
-        "No src/lib.rs or src/main.rs found in {}",
-        template_dir.display()
-    )
-}
-
-async fn template_quality(name: String, format: String, out: Option<PathBuf>) -> Result<()> {
-    let template_dir = resolve_template_dir(&name).await?;
-    let (source_path, code) = read_template_source(&template_dir)?;
-
-    let report = quality_analysis::analyze_source(&name, &code);
-
-    let output = match format.to_lowercase().as_str() {
-        "json" => serde_json::to_string_pretty(&report)?,
-        _ => {
-            print_quality_report(&report, &source_path);
-            String::new()
-        }
-    };
-
-    if !output.is_empty() {
-        if let Some(out_path) = out {
-            std::fs::write(&out_path, &output)?;
-            p::success(&format!("Report written to {}", out_path.display()));
-        } else {
-            println!("{}", output);
-        }
+    for (i, entry) in history.entries.iter().enumerate() {
+        println!("\n--- Entry {} ---", i);
+        p::kv("Timestamp", &entry.timestamp);
+        p::kv("Requirements", &entry.requirements);
+        println!("Changes made:");
+        println!("{}", entry.changes_made);
     }
 
     Ok(())
 }
 
-fn quality_score_color(score: u8) -> colored::ColoredString {
-    let label = format!("{}/100", score);
-    match score {
-        90..=100 => label.green().bold(),
-        70..=89 => label.green(),
-        50..=69 => label.yellow(),
-        25..=49 => label.red(),
-        _ => label.red().bold(),
-    }
-}
-
-fn print_quality_report(
-    report: &quality_analysis::TemplateQualityReport,
-    source_path: &std::path::Path,
-) {
-    p::header(&format!("AI Template Quality Analysis — {}", report.template_name));
-    p::separator();
-    p::kv("Source", &source_path.display().to_string());
-    p::kv(
-        "Overall Score",
-        &quality_score_color(report.overall_score).to_string(),
-    );
-    println!();
-
-    for category in &report.categories {
-        println!(
-            "  {} {} — {}/{}",
-            "→".cyan(),
-            category.name.bold(),
-            category.score,
-            category.max_score
-        );
-        for finding in &category.findings {
-            println!("      • {}", finding);
-        }
-    }
-
-    if !report.suggestions.is_empty() {
-        println!();
-        println!("{}", "Suggestions".bold());
-        println!("{}", "─".repeat(60));
-        for (i, suggestion) in report.suggestions.iter().enumerate() {
-            println!("  {}. {}", i + 1, suggestion);
-        }
-    }
-
-    println!();
-    p::separator();
-    p::kv("Functions", &report.code_metrics.total_functions.to_string());
-    p::kv(
-        "Public functions",
-        &report.code_metrics.public_functions.to_string(),
-    );
-    p::kv(
-        "Documentation",
-        &format!("{:.0}%", report.doc_metrics.completeness_pct),
-    );
-    p::kv(
-        "Test functions",
-        &report.test_metrics.test_function_count.to_string(),
-    );
-    p::kv(
-        "Vulnerabilities",
-        &report.vulnerabilities.len().to_string(),
-    );
+async fn template_customize_rollback(path: PathBuf, index: Option<usize>) -> Result<()> {
+    p::header("Template Customization Rollback");
+    template_customization_ai::rollback_customization(&path, index).await?;
+    p::success("Rollback successful!");
+    Ok(())
 }

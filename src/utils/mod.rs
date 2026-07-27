@@ -80,6 +80,8 @@ pub mod telemetry;
 pub mod template;
 pub mod template_integration;
 pub mod template_vcs;
+pub mod template_version_ai;
+pub mod template_customization_ai;
 pub mod templates;
 pub mod template_performance;
 pub mod test_automation;
