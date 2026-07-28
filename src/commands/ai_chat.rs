@@ -313,9 +313,15 @@ async fn generate_ai_response(prompt: &str, model: &str) -> Result<String> {
         num_ctx: Some(4096),
     };
 
-    let response = ollama::generate(model, prompt, Some(opts))
-        .await
-        .context("Failed to generate AI response")?;
+    let response = ollama::generate_cached(
+    model,
+    &prompt,
+    Some(opts),
+    Some(ai_cache::DEFAULT_CACHE_TTL_SECONDS),
+    "ask",
+)
+.await
+.context("LLM generation failed")?;
 
     Ok(response.response.trim().to_string())
 }
