@@ -117,3 +117,5 @@ pub mod ai_context;
 pub mod ai_rate_limiter;
 // AI Request Caching (#483)
 pub mod ai_cache;
+// AI Test Analytics (#570)
+pub mod ai_test_analytics;

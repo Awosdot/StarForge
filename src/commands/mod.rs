@@ -10,6 +10,7 @@ pub mod ai_property_test;
 pub mod ai_recommend;
 pub mod ai_search;
 pub mod ai_test_gen;
+pub mod ai_test_analytics_cmd;
 pub mod ai_tutorial_cmd;
 pub mod analytics;
 pub mod approval;
