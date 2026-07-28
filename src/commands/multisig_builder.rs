@@ -38,6 +38,7 @@ pub enum MultisigCommands {
         /// Proposal file path
         proposal: PathBuf,
         /// Signer wallet name
+        #[arg(long, short)]
         wallet: String,
     },
     /// View proposal details and signatures
@@ -68,6 +69,7 @@ pub enum MultisigCommands {
         /// Proposal file path
         proposal: PathBuf,
         /// Output file path
+        #[arg(long, short)]
         output: Option<PathBuf>,
     },
     /// Import proposal from JSON
@@ -75,6 +77,7 @@ pub enum MultisigCommands {
         /// JSON file path
         input: PathBuf,
         /// Output proposal file path
+        #[arg(long, short)]
         output: Option<PathBuf>,
     },
     /// Send signature request notifications
@@ -98,6 +101,7 @@ pub enum MultisigCommands {
         /// Template name
         template: String,
         /// Output file path
+        #[arg(long, short)]
         output: PathBuf,
     },
 }
@@ -161,7 +165,7 @@ fn build_interactive(output: Option<PathBuf>) -> Result<()> {
             .items(&labels)
             .default(0)
             .interact()?;
-        multisig::proposal_from_template(templates[idx].name)?
+        multisig::proposal_from_template(templates[idx].name, "testnet".to_string())?
     } else {
         let threshold: u32 = Input::with_theme(&theme)
             .with_prompt("Signature threshold (M-of-N)")
@@ -202,9 +206,8 @@ fn build_interactive(output: Option<PathBuf>) -> Result<()> {
         proposal.metadata.description = Some(description);
     }
 
-    let output_path = output.unwrap_or_else(|| {
-        PathBuf::from(format!("proposal_{}.json", uuid::Uuid::new_v4()))
-    });
+    let output_path =
+        output.unwrap_or_else(|| PathBuf::from(format!("proposal_{}.json", uuid::Uuid::new_v4())));
     save_proposal(&output_path, &proposal)?;
 
     p::success(&format!("Proposal saved: {}", output_path.display()));
@@ -245,7 +248,8 @@ fn run_interactive_loop(proposal_path: &std::path::Path) -> Result<()> {
                     .with_prompt("Notification channel (email/slack/discord/webhook)")
                     .default("email".into())
                     .interact_text()?;
-                let webhook = if channel == "slack" || channel == "discord" || channel == "webhook" {
+                let webhook = if channel == "slack" || channel == "discord" || channel == "webhook"
+                {
                     Some(
                         Input::with_theme(&theme)
                             .with_prompt("Webhook URL")
@@ -350,7 +354,11 @@ fn sign_proposal(proposal_path: &std::path::Path, wallet: &str) -> Result<()> {
 fn print_proposal_summary(proposal: &multisig::Proposal) {
     println!();
     println!("  ID:        {}", proposal.id);
-    println!("  Threshold: {}/{}", proposal.threshold, proposal.signers.len());
+    println!(
+        "  Threshold: {}/{}",
+        proposal.threshold,
+        proposal.signers.len()
+    );
     println!("  Network:   {}", proposal.network);
     println!("  Status:    {}", proposal.get_status());
     println!();
@@ -420,7 +428,7 @@ fn check_status(proposal_path: &std::path::Path) -> Result<()> {
     println!("{}", colored::Colorize::cyan("═══ SIGNATURE STATUS ═══"));
     println!("Progress: {}/{}", signed, proposal.threshold);
 
-    let (bar, percent) = multisig::render_progress_bar(signed, proposal.threshold);
+    let (bar, percent) = multisig::render_progress_blocks(signed, proposal.threshold);
     print!("  [");
     for ch in bar.chars() {
         if ch == '█' {
@@ -579,7 +587,7 @@ fn list_templates() -> Result<()> {
 fn from_template(template: &str, output: &std::path::Path) -> Result<()> {
     p::info(&format!("Creating proposal from template '{}'", template));
 
-    let proposal = multisig::proposal_from_template(template)?;
+    let proposal = multisig::proposal_from_template(template, "testnet".to_string())?;
     let signers: Vec<&str> = proposal.signers.iter().map(String::as_str).collect();
 
     save_proposal(output, &proposal)?;

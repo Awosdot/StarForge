@@ -4,10 +4,11 @@ use starforge::utils::deploy_orchestrator::{
 use std::io::Write;
 use tempfile::TempDir;
 
-fn use_temp_home() -> TempDir {
+fn use_temp_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+    let guard = home_lock();
     let home = TempDir::new().unwrap();
     std::env::set_var("HOME", home.path());
-    home
+    (home, guard)
 }
 
 fn write_minimal_wasm(path: &std::path::Path) {
@@ -105,4 +106,14 @@ fn detects_circular_dependencies() {
 
     let manifest = load_manifest(&manifest_path).unwrap();
     assert!(resolve_order(&manifest).is_err());
+}
+
+/// Serialises tests that replace the process-wide `HOME`.
+///
+/// `std::env::set_var` affects every thread in the binary while libtest runs
+/// these tests in parallel, so without this two tests race and one reads back
+/// paths under the other's temp home.
+fn home_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }

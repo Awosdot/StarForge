@@ -97,7 +97,8 @@ fn pattern_auth_required() -> DebugFinding {
             "Inspect the `caller` variable before the auth check.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/learn/smart-contract-internals/authorization".into(),
+            "https://developers.stellar.org/docs/learn/smart-contract-internals/authorization"
+                .into(),
         ],
     }
 }
@@ -162,7 +163,8 @@ fn pattern_storage_missing() -> DebugFinding {
             "Use `starforge inspect` to view live storage state.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/learn/smart-contract-internals/persisting-data".into(),
+            "https://developers.stellar.org/docs/learn/smart-contract-internals/persisting-data"
+                .into(),
         ],
     }
 }
@@ -193,9 +195,7 @@ fn pattern_insufficient_balance() -> DebugFinding {
             "Inspect the `balance` variable before the transfer call.".into(),
             "Log sender address and amount to confirm they are correct.".into(),
         ],
-        references: vec![
-            "https://developers.stellar.org/docs/tokens/token-interface".into(),
-        ],
+        references: vec!["https://developers.stellar.org/docs/tokens/token-interface".into()],
     }
 }
 
@@ -259,7 +259,8 @@ fn pattern_wasm_invalid() -> DebugFinding {
             "Run `xxd <file> | head` to verify the \\0asm magic header.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup".into(),
+            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup"
+                .into(),
         ],
     }
 }
@@ -292,7 +293,8 @@ fn pattern_contract_not_found() -> DebugFinding {
             "Use `starforge contract inspect <id>` to verify existence.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/data/rpc/api-reference/methods/getLedgerEntries".into(),
+            "https://developers.stellar.org/docs/data/rpc/api-reference/methods/getLedgerEntries"
+                .into(),
         ],
     }
 }
@@ -324,7 +326,8 @@ fn pattern_ttl_expired() -> DebugFinding {
             "Log TTL values after each extend_ttl call.".into(),
         ],
         references: vec![
-            "https://developers.stellar.org/docs/learn/smart-contract-internals/state-archival".into(),
+            "https://developers.stellar.org/docs/learn/smart-contract-internals/state-archival"
+                .into(),
         ],
     }
 }
@@ -397,49 +400,341 @@ fn pattern_type_mismatch() -> DebugFinding {
     }
 }
 
+// ── Deployment-specific error patterns (Issue #542) ──────────────────────────
+
+fn pattern_deployment_network_error() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY001".into(),
+        severity: Severity::High,
+        category: "Deployment / Network".into(),
+        title: "Deployment failed due to network connectivity".into(),
+        explanation: "The deployment transaction could not be submitted to the Stellar \
+            network or Soroban RPC endpoint. This typically indicates network connectivity \
+            issues, incorrect RPC URL, or the network being down."
+            .into(),
+        root_cause: "Common causes: no internet connection, incorrect network configuration, \
+            Stellar testnet/mainnet is experiencing downtime, or firewall blocking the RPC endpoint."
+            .into(),
+        fix_suggestion: "Verify network connectivity with `starforge network test`. \
+            Check the network configuration with `starforge network show`. \
+            Ensure the RPC endpoint URL is correct and accessible. \
+            For testnet, check https://status.stellar.org for service status."
+            .into(),
+        reproduction_steps: vec![
+            "Attempt to deploy with incorrect network configuration.".into(),
+            "Observe connection timeout or network error.".into(),
+            "Verify network settings and retry deployment.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Check network configuration in ~/.starforge/config.toml".into(),
+            "Test RPC endpoint connectivity with curl or starforge network test".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/networks".into(),
+        ],
+    }
+}
+
+fn pattern_deployment_wasm_size_exceeded() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY002".into(),
+        severity: Severity::Critical,
+        category: "Deployment / WASM".into(),
+        title: "WASM binary exceeds size limit".into(),
+        explanation: "The compiled WASM contract exceeds the Soroban size limit of 128KB. \
+            Contracts larger than this cannot be deployed to the network."
+            .into(),
+        root_cause: "The contract contains too much code, excessive dependencies, or \
+            was not optimized before deployment. Debug builds are significantly larger \
+            than release builds."
+            .into(),
+        fix_suggestion: "Build with `--release` flag: `cargo build --release --target wasm32-unknown-unknown`. \
+            Use starforge's built-in optimizer: `starforge deploy --optimize`. \
+            Remove unused dependencies from Cargo.toml. Consider splitting large contracts \
+            into multiple smaller contracts."
+            .into(),
+        reproduction_steps: vec![
+            "Build a large contract in debug mode.".into(),
+            "Attempt deployment without optimization.".into(),
+            "Observe size limit error.".into(),
+            "Apply optimization and retry.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Check WASM file size: ls -lh target/wasm32-unknown-unknown/release/*.wasm".into(),
+            "Run wasm-opt with --optimize flag for maximum size reduction.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/deploy-to-testnet".into(),
+        ],
+    }
+}
+
+fn pattern_deployment_insufficient_funds() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY003".into(),
+        severity: Severity::High,
+        category: "Deployment / Wallet".into(),
+        title: "Insufficient funds for deployment transaction".into(),
+        explanation: "The wallet account does not have enough XLM to pay for the deployment \
+            transaction fees. Soroban contract deployment requires XLM for transaction fees \
+            and resource costs."
+            .into(),
+        root_cause: "The source account balance is below the required amount for deployment fees. \
+            Deployment transactions typically cost 1000-5000 stroops (0.0001-0.0005 XLM) plus \
+            resource costs."
+            .into(),
+        fix_suggestion: "Fund the wallet account before deployment. For testnet, use friendbot: \
+            `starforge wallet fund --wallet <name>`. For mainnet, transfer XLM from another \
+            account. Check account balance with `starforge wallet show <name>`."
+            .into(),
+        reproduction_steps: vec![
+            "Attempt to deploy with an unfunded or low-balance account.".into(),
+            "Observe insufficient funds error from Horizon.".into(),
+            "Fund the account and retry deployment.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Check account balance before deployment.".into(),
+            "Verify base fee and resource costs in simulation output.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/learn/fundamentals/fees-resource-limits-metering"
+                .into(),
+        ],
+    }
+}
+
+fn pattern_deployment_transaction_failed() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY004".into(),
+        severity: Severity::Critical,
+        category: "Deployment / Transaction".into(),
+        title: "Deployment transaction failed on-chain".into(),
+        explanation: "The deployment transaction was submitted successfully but failed during \
+            execution on the Stellar network. This indicates the transaction was malformed, \
+            lacked proper authorization, or violated network constraints."
+            .into(),
+        root_cause: "Common causes: incorrect source account, missing signatures, sequence \
+            number mismatch, invalid operation parameters, or failed precondition checks."
+            .into(),
+        fix_suggestion: "Check the transaction result code in the error message. \
+            Verify the source account has the correct sequence number. \
+            Ensure the wallet is properly authorized to deploy. \
+            Use `starforge deploy --simulate` to test the transaction before submission. \
+            Check deployment history for recent failures: `starforge deployments history`."
+            .into(),
+        reproduction_steps: vec![
+            "Review the transaction result XDR for error details.".into(),
+            "Verify wallet authorization and account state.".into(),
+            "Simulate the deployment before execution.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Inspect transaction envelope and result XDR.".into(),
+            "Check source account sequence number matches network state.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/data/horizon/api-reference/errors/http-status-codes/standard".into(),
+        ],
+    }
+}
+
+fn pattern_deployment_wasm_hash_mismatch() -> DebugFinding {
+    DebugFinding {
+        id: "DEPLOY005".into(),
+        severity: Severity::Medium,
+        category: "Deployment / Verification".into(),
+        title: "Deployed WASM hash doesn't match expected hash".into(),
+        explanation: "The WASM hash of the deployed contract on-chain does not match the \
+            hash of the local WASM file. This suggests the wrong file was deployed, the file \
+            was modified after deployment, or the deployment was corrupted."
+            .into(),
+        root_cause: "Mismatch between local build artifacts and deployed bytecode. Possible \
+            causes: deploying a different WASM file than intended, stale build cache, or \
+            file corruption during deployment."
+            .into(),
+        fix_suggestion: "Rebuild the contract from source: `cargo clean && cargo build --release`. \
+            Verify the WASM hash before deployment: `sha256sum <wasm-file>`. \
+            Use `starforge deployments verify --id <deployment-id>` to check on-chain hash. \
+            Redeploy with the correct WASM file if verification fails."
+            .into(),
+        reproduction_steps: vec![
+            "Deploy a contract and note the deployment ID.".into(),
+            "Verify the deployment with starforge deployments verify.".into(),
+            "Compare expected vs actual WASM hash.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Compute local WASM hash: sha256sum target/wasm32-unknown-unknown/release/*.wasm".into(),
+            "Fetch on-chain WASM hash from contract metadata.".into(),
+        ],
+        references: vec![
+            "https://developers.stellar.org/docs/build/smart-contracts/getting-started/deploy-to-testnet#verification".into(),
+        ],
+    }
+}
+
 // ── Pattern registry ─────────────────────────────────────────────────────────
 
 fn all_patterns() -> Vec<ErrorPattern> {
     vec![
         ErrorPattern {
-            keywords: &["require_auth", "auth", "unauthorized", "not authorized", "auth failed"],
+            keywords: &[
+                "require_auth",
+                "auth",
+                "unauthorized",
+                "not authorized",
+                "auth failed",
+            ],
             finding: pattern_auth_required,
         },
         ErrorPattern {
-            keywords: &["overflow", "underflow", "attempt to add with overflow", "attempt to subtract with overflow", "attempt to multiply with overflow"],
+            keywords: &[
+                "overflow",
+                "underflow",
+                "attempt to add with overflow",
+                "attempt to subtract with overflow",
+                "attempt to multiply with overflow",
+            ],
             finding: pattern_overflow,
         },
         ErrorPattern {
-            keywords: &["not found", "missing key", "storage", "no entry", "key not found", "missing storage"],
+            keywords: &[
+                "not found",
+                "missing key",
+                "storage",
+                "no entry",
+                "key not found",
+                "missing storage",
+            ],
             finding: pattern_storage_missing,
         },
         ErrorPattern {
-            keywords: &["insufficient", "balance", "not enough", "insufficient funds", "insufficient balance"],
+            keywords: &[
+                "insufficient",
+                "balance",
+                "not enough",
+                "insufficient funds",
+                "insufficient balance",
+            ],
             finding: pattern_insufficient_balance,
         },
         ErrorPattern {
-            keywords: &["panic", "panicked", "unwrap", "called `option::unwrap` on a `none`", "called `result::unwrap` on an `err`"],
+            keywords: &[
+                "panic",
+                "panicked",
+                "unwrap",
+                "called `option::unwrap` on a `none`",
+                "called `result::unwrap` on an `err`",
+            ],
             finding: pattern_panic,
         },
         ErrorPattern {
-            keywords: &["invalid wasm", "wasm", "webassembly", "binary", "magic", "malformed"],
+            keywords: &[
+                "invalid wasm",
+                "wasm",
+                "webassembly",
+                "binary",
+                "magic",
+                "malformed",
+            ],
             finding: pattern_wasm_invalid,
         },
         ErrorPattern {
-            keywords: &["contract not found", "no contract", "does not exist", "ledger entry not found"],
+            keywords: &[
+                "contract not found",
+                "no contract",
+                "does not exist",
+                "ledger entry not found",
+            ],
             finding: pattern_contract_not_found,
         },
         ErrorPattern {
-            keywords: &["ttl", "expired", "archived", "state archival", "entry expired"],
+            keywords: &[
+                "ttl",
+                "expired",
+                "archived",
+                "state archival",
+                "entry expired",
+            ],
             finding: pattern_ttl_expired,
         },
         ErrorPattern {
-            keywords: &["test", "assert", "assertion", "expected", "left =", "right =", "#[test]", "failed"],
+            keywords: &[
+                "test",
+                "assert",
+                "assertion",
+                "expected",
+                "left =",
+                "right =",
+                "#[test]",
+                "failed",
+            ],
             finding: pattern_test_failure,
         },
         ErrorPattern {
-            keywords: &["type", "abi", "xdr", "conversion", "mismatch", "invalid argument", "wrong type"],
+            keywords: &[
+                "type",
+                "abi",
+                "xdr",
+                "conversion",
+                "mismatch",
+                "invalid argument",
+                "wrong type",
+            ],
             finding: pattern_type_mismatch,
+        },
+        // Deployment-specific patterns (Issue #542)
+        ErrorPattern {
+            keywords: &[
+                "network",
+                "connection",
+                "timeout",
+                "unreachable",
+                "rpc",
+                "horizon",
+                "failed to connect",
+            ],
+            finding: pattern_deployment_network_error,
+        },
+        ErrorPattern {
+            keywords: &[
+                "size",
+                "limit",
+                "too large",
+                "exceeds",
+                "128",
+                "kb",
+                "wasm size",
+            ],
+            finding: pattern_deployment_wasm_size_exceeded,
+        },
+        ErrorPattern {
+            keywords: &[
+                "insufficient funds",
+                "low balance",
+                "not enough xlm",
+                "underfunded",
+                "account balance",
+            ],
+            finding: pattern_deployment_insufficient_funds,
+        },
+        ErrorPattern {
+            keywords: &[
+                "transaction failed",
+                "tx failed",
+                "bad sequence",
+                "operation failed",
+                "result code",
+            ],
+            finding: pattern_deployment_transaction_failed,
+        },
+        ErrorPattern {
+            keywords: &[
+                "hash mismatch",
+                "wasm hash",
+                "verification failed",
+                "bytecode mismatch",
+                "checksum",
+            ],
+            finding: pattern_deployment_wasm_hash_mismatch,
         },
     ]
 }
@@ -456,11 +751,13 @@ pub fn parse_stack_trace(trace: &str) -> Vec<StackTraceFrame> {
         }
         // Try to parse lines like "  0: function_name at src/lib.rs:42"
         let (function, location) = if let Some(at_pos) = line.find(" at ") {
-            let func_part = line[..at_pos].trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
+            let func_part = line[..at_pos]
+                .trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
             let loc_part = &line[at_pos + 4..];
             (func_part.to_string(), Some(loc_part.to_string()))
         } else {
-            let func_part = line.trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
+            let func_part =
+                line.trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == ' ');
             (func_part.to_string(), None)
         };
 
@@ -487,7 +784,10 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
 
         // Detect potential zero-value bugs
         if value == "0" || value == "0i128" || value == "0u128" {
-            if name_lower.contains("amount") || name_lower.contains("balance") || name_lower.contains("fee") {
+            if name_lower.contains("amount")
+                || name_lower.contains("balance")
+                || name_lower.contains("fee")
+            {
                 insights.push(format!(
                     "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
                     name
@@ -507,18 +807,21 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
         }
 
         // Detect empty / null-like address
-        if name_lower.contains("address") || name_lower.contains("account") {
-            if value_lower.contains("none") || value == "\"\"" || value.is_empty() {
-                insights.push(format!(
-                    "✗  '{}' is empty or None — the contract will likely fail auth checks.",
-                    name
-                ));
-            }
+        if (name_lower.contains("address") || name_lower.contains("account"))
+            && (value_lower.contains("none") || value == "\"\"" || value.is_empty())
+        {
+            insights.push(format!(
+                "✗  '{}' is empty or None — the contract will likely fail auth checks.",
+                name
+            ));
         }
 
         // Detect very large collections
         if name_lower.contains("vec") || name_lower.contains("map") || name_lower.contains("list") {
-            if let Ok(n) = value.trim_matches(|c: char| !c.is_ascii_digit()).parse::<usize>() {
+            if let Ok(n) = value
+                .trim_matches(|c: char| !c.is_ascii_digit())
+                .parse::<usize>()
+            {
                 if n > 1000 {
                     insights.push(format!(
                         "ℹ  '{}' has {} elements — consider gas cost implications for large collections.",
@@ -564,18 +867,25 @@ fn build_overall_guidance(findings: &[DebugFinding], has_stack_trace: bool) -> S
             3. Check `starforge audit <path>` for static analysis findings."
             .to_string();
         if !has_stack_trace {
-            msg.push_str(
-                "\n4. Provide a stack trace with --stack-trace for deeper analysis.",
-            );
+            msg.push_str("\n4. Provide a stack trace with --stack-trace for deeper analysis.");
         }
         return msg;
     }
 
-    let critical = findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    let high = findings.iter().filter(|f| f.severity == Severity::High).count();
+    let critical = findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    let high = findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
 
     let priority = if critical > 0 {
-        format!("{} critical issue(s) require immediate attention.", critical)
+        format!(
+            "{} critical issue(s) require immediate attention.",
+            critical
+        )
     } else if high > 0 {
         format!("{} high-severity issue(s) detected.", high)
     } else {
@@ -603,8 +913,16 @@ pub fn analyse(
     let input_summary = format!(
         "Error: {}{}{}",
         &error_message[..error_message.len().min(120)],
-        if stack_trace.is_some() { " | Stack trace provided" } else { "" },
-        if variables.map(|v| !v.is_empty()).unwrap_or(false) { " | Variables provided" } else { "" },
+        if stack_trace.is_some() {
+            " | Stack trace provided"
+        } else {
+            ""
+        },
+        if variables.map(|v| !v.is_empty()).unwrap_or(false) {
+            " | Variables provided"
+        } else {
+            ""
+        },
     );
 
     // 1. Error pattern matching
@@ -647,9 +965,7 @@ pub fn analyse(
     });
 
     // 4. Variable state inspection
-    let variable_insights = variables
-        .map(inspect_variable_state)
-        .unwrap_or_default();
+    let variable_insights = variables.map(inspect_variable_state).unwrap_or_default();
 
     // 5. Collect all suggested breakpoints
     let suggested_breakpoints: Vec<String> = findings
@@ -691,7 +1007,12 @@ mod tests {
 
     #[test]
     fn detects_overflow_error() {
-        let report = analyse("attempt to add with overflow in balance calculation", None, None, None);
+        let report = analyse(
+            "attempt to add with overflow in balance calculation",
+            None,
+            None,
+            None,
+        );
         assert!(report.findings.iter().any(|f| f.id == "ARITH001"));
     }
 
@@ -714,7 +1035,11 @@ mod tests {
         let frames = parse_stack_trace(trace);
         assert_eq!(frames.len(), 2);
         assert!(frames[0].function.contains("contract::transfer"));
-        assert!(frames[0].location.as_deref().unwrap_or("").contains("src/lib.rs:42"));
+        assert!(frames[0]
+            .location
+            .as_deref()
+            .unwrap_or("")
+            .contains("src/lib.rs:42"));
     }
 
     #[test]

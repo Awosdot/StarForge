@@ -260,7 +260,11 @@ pub fn list_pipelines() -> Result<Vec<DeploymentPipeline>> {
     Ok(pipelines)
 }
 
-pub fn approve_stage(pipeline: &mut DeploymentPipeline, stage_id: &str, approver: &str) -> Result<()> {
+pub fn approve_stage(
+    pipeline: &mut DeploymentPipeline,
+    stage_id: &str,
+    approver: &str,
+) -> Result<()> {
     let stage = pipeline
         .stages
         .iter_mut()
@@ -293,7 +297,11 @@ pub fn approve_stage(pipeline: &mut DeploymentPipeline, stage_id: &str, approver
     Ok(())
 }
 
-pub fn reject_stage(pipeline: &mut DeploymentPipeline, stage_id: &str, approver: &str) -> Result<()> {
+pub fn reject_stage(
+    pipeline: &mut DeploymentPipeline,
+    stage_id: &str,
+    approver: &str,
+) -> Result<()> {
     let stage = pipeline
         .stages
         .iter_mut()
@@ -329,12 +337,12 @@ pub fn execute_pipeline(
     let mut rolled_back = Vec::new();
     let mut deploy_stage_ids = Vec::new();
 
-    for i in 0..pipeline.stages.len() {
-        pipeline.stages[i].status = StageStatus::Running;
-        pipeline.stages[i].error = None;
-
+    for index in 0..pipeline.stages.len() {
         let result = {
-            let stage = &mut pipeline.stages[i];
+            let stage = &mut pipeline.stages[index];
+            stage.status = StageStatus::Running;
+            stage.error = None;
+
             match stage.stage_type {
                 StageType::Build => execute_build_stage(stage, dry_run),
                 StageType::Test => execute_test_stage(stage, dry_run),
@@ -352,8 +360,19 @@ pub fn execute_pipeline(
 
         match result {
             Ok(msg) => {
-                if pipeline.stages[i].status == StageStatus::WaitingApproval {
-                    pipeline.stages[i].output = Some(msg);
+                let waiting_approval = {
+                    let stage = &mut pipeline.stages[index];
+                    if stage.status == StageStatus::WaitingApproval {
+                        stage.output = Some(msg);
+                        true
+                    } else {
+                        stage.status = StageStatus::Passed;
+                        stage.output = Some(msg);
+                        false
+                    }
+                };
+
+                if waiting_approval {
                     pipeline.status = PipelineStatus::PendingApproval;
                     pipeline.updated_at = Utc::now().to_rfc3339();
                     save_pipeline(pipeline)?;
@@ -365,20 +384,21 @@ pub fn execute_pipeline(
                         rolled_back,
                     });
                 }
-                pipeline.stages[i].status = StageStatus::Passed;
-                pipeline.stages[i].output = Some(msg);
                 completed += 1;
             }
             Err(e) => {
-                let on_failure = pipeline.stages[i].config.on_failure;
-                pipeline.stages[i].status = StageStatus::Failed;
-                pipeline.stages[i].error = Some(e.to_string());
+                let rollback_on_failure = {
+                    let stage = &mut pipeline.stages[index];
+                    stage.status = StageStatus::Failed;
+                    stage.error = Some(e.to_string());
+                    stage.config.on_failure
+                };
+
                 failed += 1;
                 pipeline.status = PipelineStatus::Failed;
                 pipeline.updated_at = Utc::now().to_rfc3339();
-                save_pipeline(pipeline)?;
 
-                if on_failure {
+                if rollback_on_failure {
                     for deploy_id in deploy_stage_ids.iter().rev() {
                         if let Some(deploy_stage) =
                             pipeline.stages.iter_mut().find(|s| &s.id == deploy_id)
@@ -391,6 +411,7 @@ pub fn execute_pipeline(
                     pipeline.status = PipelineStatus::RolledBack;
                 }
 
+                save_pipeline(pipeline)?;
                 return Ok(PipelineExecutionResult {
                     pipeline_id: pipeline.id.clone(),
                     dry_run,
@@ -514,7 +535,9 @@ fn execute_deploy_stage(stage: &mut PipelineStage, dry_run: bool) -> Result<Stri
     };
     Ok(format!(
         "Deployed '{}' to {} ({})",
-        contract_id, address, if dry_run { "dry-run" } else { "live" }
+        contract_id,
+        address,
+        if dry_run { "dry-run" } else { "live" }
     ))
 }
 
@@ -575,18 +598,9 @@ pub fn rollback_pipeline(pipeline: &mut DeploymentPipeline) -> Result<Vec<String
 
 pub fn list_templates() -> Vec<(&'static str, &'static str)> {
     vec![
-        (
-            "basic",
-            "Build → Test → Deploy (single contract)",
-        ),
-        (
-            "approved-deploy",
-            "Build → Test → Approval → Deploy",
-        ),
-        (
-            "ci-gate",
-            "Test → Approval → Deploy → Rollback on failure",
-        ),
+        ("basic", "Build → Test → Deploy (single contract)"),
+        ("approved-deploy", "Build → Test → Approval → Deploy"),
+        ("ci-gate", "Test → Approval → Deploy → Rollback on failure"),
         (
             "multi-contract",
             "Deploy token → Test → Approval → Deploy vault",
@@ -645,11 +659,7 @@ pub fn from_template(template: &str, name: &str, network: &str) -> Result<Deploy
                 StageType::Approval,
                 StageConfig {
                     required_approvals: Some(2),
-                    approvers: vec![
-                        "lead".into(),
-                        "security".into(),
-                        "ops".into(),
-                    ],
+                    approvers: vec!["lead".into(), "security".into(), "ops".into()],
                     ..Default::default()
                 },
             )?;
@@ -748,7 +758,10 @@ pub fn from_template(template: &str, name: &str, network: &str) -> Result<Deploy
 pub fn render_terminal_ui(pipeline: &DeploymentPipeline) -> String {
     let mut lines = vec![
         format!("Pipeline: {} ({})", pipeline.name, pipeline.id),
-        format!("Network: {} | Status: {:?}", pipeline.network, pipeline.status),
+        format!(
+            "Network: {} | Status: {:?}",
+            pipeline.network, pipeline.status
+        ),
         String::new(),
         "Stages:".into(),
     ];
@@ -805,7 +818,7 @@ pub fn render_html_ui(pipeline: &DeploymentPipeline) -> String {
                     .filter(|a| a.action == ApprovalAction::Approved)
                     .count();
                 format!(
-                    "<p class=\"meta\">Approvals: {}/{}</p><ul>{}</ul>",
+                    r#"<p class="meta">Approvals: {}/{}</p><ul>{}</ul>"#,
                     approved,
                     required,
                     stage
@@ -824,7 +837,7 @@ pub fn render_html_ui(pipeline: &DeploymentPipeline) -> String {
                 .as_ref()
                 .map(|t| {
                     format!(
-                        "<p class=\"meta\">Tests: {} executed, {} failed</p>",
+                        "<p class="meta">Tests: {} executed, {} failed</p>",
                         t.cases_executed, t.failures
                     )
                 })
@@ -917,10 +930,11 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn temp_home() -> TempDir {
+    fn temp_home() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
+        let guard = crate::utils::lock_home_env();
         let home = TempDir::new().unwrap();
         std::env::set_var("HOME", home.path());
-        home
+        (home, guard)
     }
 
     fn write_minimal_wasm(path: &Path) {

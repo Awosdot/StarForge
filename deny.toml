@@ -20,6 +20,14 @@ ignore = [
     "RUSTSEC-2026-0104",
     # number_prefix unmaintained; pulled in via indicatif. No safe upgrade.
     "RUSTSEC-2025-0119",
+    # derivative + paste unmaintained; both are build-time proc-macros reached
+    # through ark-ec / ark-ff under the soroban-sdk dev-dependency. Dev-only and
+    # not linked into the shipped binary; no upgrade path until soroban-sdk moves.
+    "RUSTSEC-2024-0388",
+    "RUSTSEC-2024-0436",
+    # rustls-pemfile unmaintained in 1.0.4; reqwest 0.11 requires it.
+    # Superseded in reqwest 0.12, which is a breaking change for this crate.
+    "RUSTSEC-2025-0134",
 ]
 
 [licenses]

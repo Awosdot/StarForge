@@ -1,5 +1,7 @@
+use crate::utils::prompt_manager::PromptManager;
 use anyhow::{anyhow, Context, Result};
 use clap::Subcommand;
+use dialoguer::Confirm;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -55,19 +57,23 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
                 "OPENAI_API_KEY environment variable is not set. Please set it to use the AI generator.",
             )?;
 
+            let manager = PromptManager::new()?;
+            let context = serde_json::json!({
+                "need_tests": true,
+                "user_prompt": prompt,
+            });
+            let (version_id, rendered_prompt) =
+                manager.get_rendered_prompt("contract_generator", context)?;
+
             let mut conversation_history = vec![
                 ChatMessage {
                     role: "system".to_string(),
-                    content: "You are an expert Soroban smart contract developer. \
-                    Write ONLY valid, compilable Rust code for Soroban. \
-                    Include `#![no_std]`, proper `#[contract]`, `#[contractimpl]`, `#[contracttype]` macros. \
-                    Include helpful comments and basic test scaffolding if appropriate. \
-                    Do NOT wrap your response in ```rust or ``` markdown blocks. Output only the raw code.".to_string(),
+                    content: rendered_prompt,
                 },
                 ChatMessage {
                     role: "user".to_string(),
                     content: prompt.clone(),
-                }
+                },
             ];
 
             loop {
@@ -100,7 +106,9 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
                     // Clean up potential markdown blocks if the LLM ignored instructions
                     let mut cleaned_code = code.trim();
                     if cleaned_code.starts_with("```rust") {
-                        cleaned_code = cleaned_code.strip_prefix("```rust\n").unwrap_or(cleaned_code);
+                        cleaned_code = cleaned_code
+                            .strip_prefix("```rust\n")
+                            .unwrap_or(cleaned_code);
                     } else if cleaned_code.starts_with("```") {
                         cleaned_code = cleaned_code.strip_prefix("```\n").unwrap_or(cleaned_code);
                     }
@@ -111,6 +119,16 @@ pub async fn handle(cmd: &GenerateCommands) -> Result<()> {
 
                     fs::write(out, cleaned_code).context("Failed to write the generated code")?;
                     println!("✅ Contract successfully saved to {}", out.display());
+
+                    if Confirm::with_theme(&ColorfulTheme::default())
+                        .with_prompt("Did this generated contract meet your expectations?")
+                        .interact()?
+                    {
+                        manager.record_feedback(version_id, true, Some(5))?;
+                    } else {
+                        manager.record_feedback(version_id, false, Some(1))?;
+                    }
+
                     break;
                 } else {
                     // Refine

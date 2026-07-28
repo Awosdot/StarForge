@@ -25,6 +25,8 @@
 
 use std::collections::BTreeSet;
 
+use crate::utils::contract_suggestions as cs;
+
 /// The category a [`Completion`] belongs to. Mirrors the feature list in the
 /// issue so the CLI can group and filter suggestions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +38,7 @@ pub enum CompletionKind {
     ExternalCall,
     Import,
     Boilerplate,
+    ContractSuggestion,
 }
 
 impl CompletionKind {
@@ -49,6 +52,7 @@ impl CompletionKind {
             CompletionKind::ExternalCall => "external-call",
             CompletionKind::Import => "import",
             CompletionKind::Boilerplate => "boilerplate",
+            CompletionKind::ContractSuggestion => "contract-suggestion",
         }
     }
 }
@@ -236,7 +240,10 @@ pub fn suggest(source: &str) -> Vec<Completion> {
 
     // 3. Just opened a `#[contractimpl]` / `impl` block → suggest a method stub.
     if last.contains("#[contractimpl]") || (last.starts_with("impl") && last.ends_with('{')) {
-        let name = ctx.contract_name.clone().unwrap_or_else(|| "Contract".into());
+        let name = ctx
+            .contract_name
+            .clone()
+            .unwrap_or_else(|| "Contract".into());
         out.push(Completion {
             label: "constructor method".into(),
             kind: CompletionKind::FunctionSignature,
@@ -268,7 +275,10 @@ pub fn suggest(source: &str) -> Vec<Completion> {
             });
         }
 
-        if last_lc.contains("client") || last_lc.contains("::new(&env") || last_lc.contains("token::") {
+        if last_lc.contains("client")
+            || last_lc.contains("::new(&env")
+            || last_lc.contains("token::")
+        {
             out.push(Completion {
                 label: "external contract call".into(),
                 kind: CompletionKind::ExternalCall,
@@ -309,12 +319,47 @@ pub fn suggest(source: &str) -> Vec<Completion> {
             kind: CompletionKind::Import,
             snippet: imports.suggested_use_line.clone(),
             confidence: 60,
-            detail: format!("Referenced but not imported: {}", imports.missing.join(", ")),
+            detail: format!(
+                "Referenced but not imported: {}",
+                imports.missing.join(", ")
+            ),
+        });
+    }
+
+    // 8. AI Contract Function Suggestions — context-aware suggestions
+    // based on contract type and best practices.
+    let contract_name = ctx.contract_name.as_deref().unwrap_or("Contract");
+    let contract_context = cs::ContractSuggestionEngine::analyze_context(source, contract_name);
+    let engine = cs::ContractSuggestionEngine::new();
+    let contract_suggestions = engine.suggest(&contract_context);
+
+    for suggestion in contract_suggestions.into_iter().take(5) {
+        // Convert FunctionSuggestion to Completion
+        let kind = match suggestion.category {
+            cs::SuggestionCategory::Initialization | cs::SuggestionCategory::Standard => {
+                CompletionKind::FunctionSignature
+            }
+            cs::SuggestionCategory::ErrorHandling => CompletionKind::ErrorHandling,
+            cs::SuggestionCategory::Storage => CompletionKind::StorageAccess,
+            cs::SuggestionCategory::Events => CompletionKind::Boilerplate,
+            _ => CompletionKind::ContractSuggestion,
+        };
+
+        out.push(Completion {
+            label: format!("{} ({})", suggestion.name, suggestion.category),
+            kind,
+            snippet: if suggestion.signature.is_empty() {
+                suggestion.implementation.clone()
+            } else {
+                suggestion.signature.clone()
+            },
+            confidence: suggestion.confidence,
+            detail: suggestion.description.clone(),
         });
     }
 
     // Rank by confidence (stable, highest first).
-    out.sort_by(|a, b| b.confidence.cmp(&a.confidence));
+    out.sort_by_key(|item| std::cmp::Reverse(item.confidence));
     out
 }
 
@@ -577,7 +622,11 @@ pub fn infer_expr_type(expr: &str) -> String {
         return "bool".into();
     }
     if (e.starts_with('"') && e.ends_with('"')) || e.starts_with("String::from_str") {
-        return if e.starts_with('"') { "&str".into() } else { "String".into() };
+        return if e.starts_with('"') {
+            "&str".into()
+        } else {
+            "String".into()
+        };
     }
     if e.starts_with('\'') && e.ends_with('\'') && e.len() >= 3 {
         return "char".into();
@@ -627,7 +676,11 @@ pub fn infer_expr_type(expr: &str) -> String {
     // `Type::new(...)` / `Type::default()` → Type.
     if let Some(pos) = e.find("::") {
         let head = &e[..pos];
-        if head.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+        if head
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
             && head.chars().all(|c| c.is_alphanumeric() || c == '_')
         {
             return head.to_string();
@@ -859,7 +912,8 @@ fn external_call_snippet() -> String {
 /// Return the default return expression for a return type `ret`.
 fn default_return_expr(ret: &str, has_env: bool) -> String {
     let r = ret.trim();
-    let base = if r.starts_with("Option<") {
+
+    if r.starts_with("Option<") {
         "None".to_string()
     } else if r.starts_with("Result<") {
         "Ok(Default::default())".to_string()
@@ -876,8 +930,7 @@ fn default_return_expr(ret: &str, has_env: bool) -> String {
             "()" => String::new(),
             _ => "Default::default()".to_string(),
         }
-    };
-    base
+    }
 }
 
 /// Find the first parameter that looks like an `Address` we should auth on.
@@ -887,7 +940,11 @@ fn first_address_param(params: &str) -> Option<String> {
         if let Some((name, ty)) = part.split_once(':') {
             let name = name.trim().trim_start_matches("mut ").trim();
             if ty.trim().starts_with("Address")
-                && (name == "caller" || name == "from" || name == "owner" || name == "admin" || name == "user")
+                && (name == "caller"
+                    || name == "from"
+                    || name == "owner"
+                    || name == "admin"
+                    || name == "user")
             {
                 return Some(name.to_string());
             }
@@ -1014,7 +1071,11 @@ fn sanitize_ident(name: &str) -> String {
 
 /// `symbol_short!` topics must be <= 9 chars. Lower-case and truncate.
 fn truncate_symbol(name: &str) -> String {
-    let lower: String = name.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+    let lower: String = name
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect();
     lower.chars().take(9).collect()
 }
 
@@ -1046,13 +1107,16 @@ mod tests {
         let src = "#[contract]\npub struct C;\n#[contractimpl]\nimpl C {\n    pub fn balance(env: Env, id: Address) -> i128\n";
         let s = suggest(src);
         assert!(s.iter().any(|c| c.kind == CompletionKind::FunctionSignature
-            && c.snippet.contains("Default::default()") || c.snippet.contains("0")));
+            && c.snippet.contains("Default::default()")
+            || c.snippet.contains("0")));
     }
 
     #[test]
     fn parse_signature_with_return() {
-        let sig = parse_fn_signature("    pub fn transfer(env: Env, to: Address, amount: i128) -> Result<(), Error> {")
-            .expect("should parse");
+        let sig = parse_fn_signature(
+            "    pub fn transfer(env: Env, to: Address, amount: i128) -> Result<(), Error> {",
+        )
+        .expect("should parse");
         assert_eq!(sig.name, "transfer");
         assert!(sig.params.contains("amount: i128"));
         assert_eq!(sig.ret.as_deref(), Some("Result<(), Error>"));
@@ -1096,8 +1160,14 @@ mod tests {
 
     #[test]
     fn boilerplate_kinds_parse() {
-        assert_eq!(BoilerplateKind::parse("fn"), Some(BoilerplateKind::Function));
-        assert_eq!(BoilerplateKind::parse("external"), Some(BoilerplateKind::ExternalCall));
+        assert_eq!(
+            BoilerplateKind::parse("fn"),
+            Some(BoilerplateKind::Function)
+        );
+        assert_eq!(
+            BoilerplateKind::parse("external"),
+            Some(BoilerplateKind::ExternalCall)
+        );
         assert_eq!(BoilerplateKind::parse("nope"), None);
     }
 
