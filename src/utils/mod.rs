@@ -114,3 +114,5 @@ pub mod ai_validation;
 pub mod ai_context;
 // AI Rate Limiting (#489)
 pub mod ai_rate_limiter;
+// AI Request Caching (#483)
+pub mod ai_cache;
