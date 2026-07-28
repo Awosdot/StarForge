@@ -741,4 +741,3 @@ fn handle_remediation(args: RemediationArgs) -> Result<()> {
     Dashboard,
 }
 
-}
