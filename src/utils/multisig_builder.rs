@@ -84,6 +84,129 @@ impl Proposal {
     }
 }
 
+// ── Proposal validation (#691) ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationError {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationReport {
+    pub valid: bool,
+    pub errors: Vec<ValidationError>,
+    pub warnings: Vec<String>,
+}
+
+/// Validate a `Proposal` for logical consistency.
+///
+/// Checks: zero threshold, impossible threshold (> signer count), empty signer
+/// list, duplicate signers, empty signer keys, and signatures from parties not
+/// in the signer list. Warnings cover degenerate but technically valid configs.
+pub fn validate_proposal(proposal: &Proposal) -> ValidationReport {
+    let mut errors: Vec<ValidationError> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    // ── 1. Zero threshold ─────────────────────────────────────────────────────
+    if proposal.threshold == 0 {
+        errors.push(ValidationError {
+            code: "ZERO_THRESHOLD".to_string(),
+            message: "Threshold must be at least 1.".to_string(),
+        });
+    }
+
+    // ── 2. No signers ─────────────────────────────────────────────────────────
+    if proposal.signers.is_empty() {
+        errors.push(ValidationError {
+            code: "NO_SIGNERS".to_string(),
+            message: "Proposal has no signers.".to_string(),
+        });
+    }
+
+    // ── 3. Impossible threshold ───────────────────────────────────────────────
+    if proposal.threshold > 0 && proposal.threshold as usize > proposal.signers.len() {
+        errors.push(ValidationError {
+            code: "IMPOSSIBLE_THRESHOLD".to_string(),
+            message: format!(
+                "Threshold ({}) exceeds the number of signers ({}). \
+                 The proposal can never be fulfilled.",
+                proposal.threshold,
+                proposal.signers.len()
+            ),
+        });
+    }
+
+    // ── 4. Duplicate / empty signer keys ─────────────────────────────────────
+    let mut seen = std::collections::HashSet::new();
+    for signer in &proposal.signers {
+        let normalized = signer.trim().to_lowercase();
+        if normalized.is_empty() {
+            errors.push(ValidationError {
+                code: "EMPTY_SIGNER".to_string(),
+                message: format!(
+                    "Signer key {:?} is empty or whitespace-only.",
+                    signer
+                ),
+            });
+        } else if !seen.insert(normalized) {
+            errors.push(ValidationError {
+                code: "DUPLICATE_SIGNER".to_string(),
+                message: format!("Duplicate signer detected: '{}'.", signer),
+            });
+        }
+    }
+
+    // ── 5. Unauthorized signatures ────────────────────────────────────────────
+    for sig in &proposal.signatures {
+        if !proposal.signers.iter().any(|s| s == &sig.signer) {
+            errors.push(ValidationError {
+                code: "UNAUTHORIZED_SIGNATURE".to_string(),
+                message: format!(
+                    "'{}' has signed but is not listed as an authorized signer.",
+                    sig.signer
+                ),
+            });
+        }
+    }
+
+    // ── 6. Warnings for unusual but valid configurations ──────────────────────
+    if proposal.signers.len() == 1 && proposal.threshold == 1 {
+        warnings.push(
+            "1-of-1 multi-sig provides no security advantage over a regular \
+             single-signer transaction."
+                .to_string(),
+        );
+    }
+    if proposal.signers.len() > 1
+        && proposal.threshold == proposal.signers.len() as u32
+    {
+        warnings.push(format!(
+            "{}-of-{} requires unanimous consent — a single absent or lost key \
+             will permanently block execution.",
+            proposal.threshold,
+            proposal.signers.len()
+        ));
+    }
+    if proposal.threshold > 0
+        && proposal.signers.len() > 1
+        && (proposal.threshold as f64 / proposal.signers.len() as f64) < 0.5
+    {
+        warnings.push(format!(
+            "Threshold ({}/{}) is below 50% — a minority of signers can authorize \
+             this proposal.",
+            proposal.threshold,
+            proposal.signers.len()
+        ));
+    }
+
+    ValidationReport {
+        valid: errors.is_empty(),
+        errors,
+        warnings,
+    }
+}
+
 pub fn generate_signature(wallet: &str) -> Result<String> {
     use hex;
     use sha2::{Digest, Sha256};

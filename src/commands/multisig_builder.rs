@@ -1,6 +1,7 @@
 use crate::utils::{multisig_builder as multisig, print as p};
 use anyhow::Result;
 use clap::Subcommand;
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Subcommand)]
@@ -72,6 +73,15 @@ pub enum MultisigCommands {
         /// Output file path
         output: PathBuf,
     },
+    /// Validate a proposal for impossible thresholds, duplicate signers, and
+    /// other logical errors before signing or submitting
+    Validate {
+        /// Proposal file path
+        proposal: PathBuf,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub async fn handle(cmd: MultisigCommands) -> Result<()> {
@@ -90,6 +100,7 @@ pub async fn handle(cmd: MultisigCommands) -> Result<()> {
         MultisigCommands::Import { input, output } => import_proposal(&input, output),
         MultisigCommands::Templates => list_templates(),
         MultisigCommands::FromTemplate { template, output } => from_template(&template, &output),
+        MultisigCommands::Validate { proposal, json } => validate_proposal(&proposal, json),
     }
 }
 
@@ -325,6 +336,66 @@ fn list_templates() -> Result<()> {
     println!();
     println!("Usage: starforge multisig from-template <template> --output <file>");
     println!();
+
+    Ok(())
+}
+
+fn validate_proposal(proposal_path: &std::path::Path, json: bool) -> Result<()> {
+    let contents = std::fs::read_to_string(proposal_path)?;
+    let proposal: multisig::Proposal = serde_json::from_str(&contents)?;
+
+    let report = multisig::validate_proposal(&proposal);
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    p::header("Multisig Proposal Validation");
+    p::kv("Proposal", &proposal.id);
+    p::kv("Network", &proposal.network);
+    p::kv(
+        "Threshold",
+        &format!("{}/{}", proposal.threshold, proposal.signers.len()),
+    );
+    println!();
+
+    if report.valid {
+        p::success("Proposal is valid — no structural errors found.");
+    } else {
+        println!("  {} {} error(s) detected:", "✗".red().bold(), report.errors.len());
+    }
+
+    if !report.errors.is_empty() {
+        println!();
+        println!("  {}", "Errors:".red().bold());
+        for e in &report.errors {
+            println!(
+                "    {} [{}] {}",
+                "•".red(),
+                e.code.yellow(),
+                e.message
+            );
+        }
+    }
+
+    if !report.warnings.is_empty() {
+        println!();
+        println!("  {}", "Warnings:".yellow().bold());
+        for w in &report.warnings {
+            println!("    {} {}", "⚠".yellow(), w);
+        }
+    }
+
+    println!();
+    p::separator();
+
+    if !report.valid {
+        anyhow::bail!(
+            "Validation failed with {} error(s). Fix the proposal before signing or submitting.",
+            report.errors.len()
+        );
+    }
 
     Ok(())
 }
