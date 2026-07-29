@@ -3,10 +3,12 @@
   "id": 1,
   "result": {
     "latestLedger": 12345,
+    "minResourceFee": "58181",
     "cost": {
       "cpuInsns": 150000,
       "memBytes": 2048
     },
+    "transactionData": "AAAAAAAAAAIAAAAHAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAAAHAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAAABAAAABwkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJABNxRAAAIAAAAAQAAAAAAAAA40U=",
     "results": [
       {
         "xdr": "AAAABQ==",
