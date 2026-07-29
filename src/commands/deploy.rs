@@ -5,7 +5,8 @@ use crate::utils::{
         self, last_successful, record_deployment, set_contract_id, set_duration, update_status,
         DeployRecord, DeployStatus,
     },
-    deployment_monitor, horizon, notifications, optimizer, print as p, soroban, wallet_signer,
+    deployment_monitor, horizon, notifications, optimizer, print as p, simulation_resources,
+    soroban, wallet_signer,
     wasm_hash::{compute_wasm_hash, BuildEnvironment},
 };
 
@@ -92,6 +93,54 @@ fn parse_contract_id_from_stdout(output: &str) -> Option<String> {
 
 fn is_wasm_above_size_limit(wasm_size_kb: f64) -> bool {
     wasm_size_kb > SOROBAN_WASM_LIMIT_KB
+}
+
+/// Print the CPU / memory / footprint accounting that simulation reported,
+/// plus the fee we recommend actually submitting.
+///
+/// Silently does nothing when the RPC server returned no resource accounting:
+/// the caller has already printed the fallback fee and any errors, and an
+/// invented footprint would be worse than none.
+fn report_simulation_resources(simulation: &soroban::SimulationResult, indent: &str) {
+    let Some(resources) = simulation.resources.as_ref() else {
+        return;
+    };
+
+    match resources.cpu_instructions {
+        Some(cpu) => p::kv(&format!("{}CPU instructions", indent), &cpu.to_string()),
+        None => p::kv(&format!("{}CPU instructions", indent), "not reported"),
+    }
+    match resources.memory_bytes {
+        Some(mem) => p::kv(&format!("{}Memory (bytes)", indent), &mem.to_string()),
+        None => p::kv(&format!("{}Memory (bytes)", indent), "not reported"),
+    }
+    if let Some(fp) = resources.footprint.as_ref() {
+        p::kv(
+            &format!("{}Footprint", indent),
+            &format!(
+                "{} read-only, {} read-write, {} B read, {} B written",
+                fp.read_only_entries, fp.read_write_entries, fp.read_bytes, fp.write_bytes
+            ),
+        );
+    }
+    if resources.requires_restore() {
+        p::warn(&format!(
+            "{}Archived ledger entries must be restored before this deploy can succeed",
+            indent
+        ));
+    }
+
+    if let Some(plan) = simulation.fee_plan(simulation_resources::DEFAULT_FEE_MARGIN_PERCENT) {
+        p::kv_accent(
+            &format!("{}Recommended fee", indent),
+            &format!(
+                "{} stroops ({:.7} XLM, includes a {}% margin)",
+                plan.recommended_fee_stroops,
+                plan.recommended_fee_xlm(),
+                plan.margin_percent
+            ),
+        );
+    }
 }
 
 /// Compute the Soroban WASM hash (SHA-256 over raw `.wasm` file bytes)
@@ -228,9 +277,14 @@ async fn run_dry_run(
         Ok(simulation) => {
             estimated_fee_stroops = Some(simulation.fee);
             p::kv(
-                "        Estimated fee",
-                &format!("{} stroops ({:.7} XLM)", simulation.fee, simulation.fee as f64 / 10_000_000.0),
+                "        Minimum resource fee",
+                &format!(
+                    "{} stroops ({:.7} XLM)",
+                    simulation.fee,
+                    simulation.fee as f64 / 10_000_000.0
+                ),
             );
+            report_simulation_resources(&simulation, "        ");
             if !simulation.errors.is_empty() {
                 for error in &simulation.errors {
                     warnings.push(format!("RPC simulation warning: {}", error));
@@ -476,7 +530,11 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         p::info("Simulating deploy transaction via Soroban RPC...");
         match soroban::simulate_deploy_transaction(&wasm_hash, &args.network, wallet).await {
             Ok(simulation) => {
-                p::kv("Estimated Fee", &format!("{} stroops", simulation.fee));
+                p::kv(
+                    "Minimum Resource Fee",
+                    &format!("{} stroops", simulation.fee),
+                );
+                report_simulation_resources(&simulation, "");
                 if !simulation.errors.is_empty() {
                     for error in &simulation.errors {
                         p::warn(&format!("Simulation error: {}", error));

@@ -114,6 +114,13 @@ File: [`tests/property_tests.rs`](tests/property_tests.rs)
 | Structural invariants | Validated keys satisfy structural constraints independently (cross-check) |
 | `KdfOptions` | All-None is `is_default()`; any Some value is not |
 
+Additional property suites live in their own files:
+
+| File | Property group | What it tests |
+|---|---|---|
+| [`tests/config_property_tests.rs`](tests/config_property_tests.rs) | Config round trips | TOML/JSON serialization preserves every value; merging is identity-on-empty, idempotent, and overlay-wins; malformed combinations (unknown network, duplicate wallet, non-HTTP endpoint, unknown overlay key) are rejected |
+| [`tests/wallet_import_property_tests.rs`](tests/wallet_import_property_tests.rs) | Wallet import/backup | The same invariants the wallet fuzz targets assert, run on stable in every `cargo test` sweep |
+
 ### Writing new properties
 
 Properties follow this pattern:
@@ -154,6 +161,47 @@ macro that receives raw bytes and should **never panic** regardless of input.
 | `fuzz_wasm_hash` | SHA-256 WASM hash; determinism and format checks |
 | `fuzz_encrypted_bundle_parse` | Encrypted bundle parser via validate_secret_key |
 | `fuzz_template_operations` | Structured template inputs via `arbitrary::Arbitrary` |
+| `fuzz_wallet_backup_parse` | Wallet backup documents: malformed JSON, truncated files, invalid StrKeys, oversized inputs, Unicode names |
+| `fuzz_wallet_import_envelope` | Encrypted backup envelopes: base64 fields, salt/nonce lengths, truncated ciphertext, KDF parameters, plaintext/encrypted classification |
+| `fuzz_wallet_backup_structured` | Near-valid backup documents built with `arbitrary::Arbitrary`, to reach the semantic checks the byte-level harness rarely hits |
+
+### Wallet import & backup harnesses
+
+`starforge wallet import --file` and `starforge backup restore` read files that
+came from outside the tool, so their parsers are a trust boundary. All three
+harnesses drive [`src/utils/wallet_import.rs`](src/utils/wallet_import.rs),
+which is deliberately free of prompting, disk access, and config writes.
+
+```bash
+# Byte-level: malformed JSON, truncated documents, byte soup.
+cargo fuzz run fuzz_wallet_backup_parse -- -dict=fuzz/dicts/wallet_backup.dict
+
+# Envelope: base64 fields, truncated ciphertext, bad KDF parameters.
+cargo fuzz run fuzz_wallet_import_envelope -- -dict=fuzz/dicts/wallet_backup.dict
+
+# Structured: near-valid documents that reach the semantic checks.
+cargo fuzz run fuzz_wallet_backup_structured
+```
+
+Seed corpora ship under `fuzz/corpus/fuzz_wallet_backup_parse/` and
+`fuzz/corpus/fuzz_wallet_import_envelope/`, covering a valid backup, a
+watch-only backup, an empty wallet list, an unsupported version, a truncated
+document, a name carrying a right-to-left override, 3/5/6-part envelopes, a
+truncated ciphertext, and a non-base64 envelope.
+
+The invariants asserted by the harnesses:
+
+- **Totality** — every input returns a `WalletImportError`; nothing panics.
+- **Size first** — the size limit is checked before the JSON parser runs, so an
+  oversized file cannot drive a large allocation.
+- **Accepted implies valid** — an accepted backup has version `1`, at least one
+  wallet, no duplicate names, no control characters in a name, and a 56-character
+  `G…` public key on every entry.
+- **Envelope shape** — an accepted envelope has a 16-byte salt, a 12-byte nonce,
+  a ciphertext of at least 16 bytes (one AES-GCM tag), and non-zero KDF
+  parameters.
+- **No misclassification** — a JSON document is never treated as an encrypted
+  bundle, which would prompt for a passphrase that does not exist.
 
 ### Running a target
 

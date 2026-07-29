@@ -1,4 +1,7 @@
 use crate::utils::config::{self, WalletEntry};
+use crate::utils::simulation_resources::{
+    self, ResourceFeePlan, SimulationResourceError, SimulationResources,
+};
 use crate::utils::wallet_signer::{self, SigningRequest};
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -27,10 +30,35 @@ static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SimulationResult {
     pub return_value: String,
+    /// Minimum resource fee (stroops) reported by simulation, falling back to
+    /// [`FALLBACK_FEE_STROOPS`] when the RPC server did not report one.
     pub fee: u64,
     pub events: Vec<String>,
     #[serde(default)]
     pub errors: Vec<String>,
+    /// Full resource accounting (CPU, memory, footprint, minimum resource fee)
+    /// when the response carried it. `None` on servers that do not implement
+    /// Soroban resource reporting, or when the payload could not be parsed —
+    /// in that case the reason is appended to `errors`.
+    #[serde(default)]
+    pub resources: Option<SimulationResources>,
+}
+
+impl SimulationResult {
+    /// Build a fee plan from the simulated resources.
+    ///
+    /// Returns `None` when the response carried no resource accounting, so
+    /// callers can fall back to their own estimate instead of reporting a
+    /// fabricated number.
+    pub fn fee_plan(&self, margin_percent: u32) -> Option<ResourceFeePlan> {
+        let resources = self.resources.as_ref()?;
+        simulation_resources::plan_fee(
+            resources,
+            margin_percent,
+            simulation_resources::DEFAULT_INCLUSION_FEE_STROOPS,
+        )
+        .ok()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -150,17 +178,8 @@ pub async fn simulate_transaction(
         .await
         .context("Simulation request failed")?;
 
-    // Parse the simulation result
-    let return_value = decode_return_value(&result)?;
-    let fee = extract_fee(&result)?;
-    let events = extract_events(&result)?;
-
-    Ok(SimulationResult {
-        return_value,
-        fee,
-        events,
-        errors: extract_simulation_errors(&result),
-    })
+    // Parse the simulation result (resources, fee, events, errors).
+    build_simulation_result(&result)
 }
 
 pub async fn simulate_deploy_transaction(
@@ -182,12 +201,7 @@ pub async fn simulate_deploy_transaction(
         .await
         .context("Deploy simulation request failed")?;
 
-    Ok(SimulationResult {
-        return_value: decode_return_value(&result)?,
-        fee: extract_fee(&result)?,
-        events: extract_events(&result)?,
-        errors: extract_simulation_errors(&result),
-    })
+    build_simulation_result(&result)
 }
 
 pub async fn submit_transaction(
@@ -533,14 +547,56 @@ fn decode_return_value(result: &serde_json::Value) -> Result<String> {
     }
 }
 
-fn extract_fee(result: &serde_json::Value) -> Result<u64> {
-    // Extract fee from simulation result
-    if let Some(cost) = result.get("cost") {
-        if let Some(fee) = cost.get("cpuInsns") {
-            return Ok(fee.as_u64().unwrap_or(100000)); // Default fee
+/// Fee used when the RPC server reports no resource accounting at all.
+///
+/// Only a last resort: a real `minResourceFee` from simulation always wins.
+pub const FALLBACK_FEE_STROOPS: u64 = 100_000;
+
+/// Parse the resource accounting out of a `simulateTransaction` response.
+///
+/// The parse failure is deliberately not fatal: a fee estimate is still more
+/// useful than aborting, so the caller surfaces the reason through
+/// `SimulationResult::errors` and falls back to [`FALLBACK_FEE_STROOPS`].
+fn extract_resources(
+    result: &serde_json::Value,
+) -> std::result::Result<SimulationResources, SimulationResourceError> {
+    simulation_resources::parse_simulation_resources(result)
+}
+
+/// Minimum resource fee in stroops for this simulation.
+///
+/// Prefers the `minResourceFee` the RPC server reported. Previous releases
+/// mistakenly reported `cost.cpuInsns` (an instruction count, not a fee) here.
+fn extract_fee(resources: Option<&SimulationResources>) -> u64 {
+    resources
+        .map(|r| r.min_resource_fee_stroops)
+        .unwrap_or(FALLBACK_FEE_STROOPS)
+}
+
+/// Assemble a [`SimulationResult`] from a raw RPC response.
+fn build_simulation_result(result: &serde_json::Value) -> Result<SimulationResult> {
+    let mut errors = extract_simulation_errors(result);
+
+    let resources = match extract_resources(result) {
+        Ok(resources) => Some(resources),
+        Err(e) => {
+            // A host-level simulation failure is already reported through
+            // `errors`; only add parse problems that are not duplicates.
+            let message = format!("resource accounting unavailable: {}", e);
+            if !errors.iter().any(|existing| existing.contains(&message)) {
+                errors.push(message);
+            }
+            None
         }
-    }
-    Ok(100000) // Default fee in stroops
+    };
+
+    Ok(SimulationResult {
+        return_value: decode_return_value(result)?,
+        fee: extract_fee(resources.as_ref()),
+        events: extract_events(result)?,
+        errors,
+        resources,
+    })
 }
 
 fn extract_events(result: &serde_json::Value) -> Result<Vec<String>> {
@@ -955,8 +1011,11 @@ mod tests {
         let return_value = decode_return_value(&result).unwrap();
         assert_eq!(return_value, "success_value");
 
-        let fee = extract_fee(&result).unwrap();
-        assert_eq!(fee, 150000);
+        // The fee is the RPC's `minResourceFee`, not the CPU instruction count.
+        let resources = extract_resources(&result).unwrap();
+        assert_eq!(extract_fee(Some(&resources)), 58_181);
+        assert_eq!(resources.cpu_instructions, Some(150_000));
+        assert_eq!(resources.memory_bytes, Some(2_048));
 
         let events = extract_events(&result).unwrap();
         assert_eq!(events.len(), 2);
@@ -965,6 +1024,62 @@ mod tests {
 
         let errors = extract_simulation_errors(&result);
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn simulation_result_reports_resources_and_fee_plan() {
+        let fixture = read_fixture("simulate_success.json");
+        let response: SorobanRpcResponse<serde_json::Value> =
+            serde_json::from_str(&fixture).expect("failed to deserialize simulate_success.json");
+        let result = response.result.expect("missing result in response");
+
+        let simulation = build_simulation_result(&result).unwrap();
+
+        assert_eq!(simulation.fee, 58_181);
+        let resources = simulation.resources.as_ref().expect("resources parsed");
+        assert_eq!(resources.cpu_instructions, Some(150_000));
+        assert_eq!(resources.memory_bytes, Some(2_048));
+
+        let footprint = resources.footprint.as_ref().expect("footprint decoded");
+        assert_eq!(footprint.read_only_entries, 2);
+        assert_eq!(footprint.read_write_entries, 1);
+        assert_eq!(footprint.read_bytes, 8_192);
+        assert_eq!(footprint.write_bytes, 1_024);
+
+        let plan = simulation.fee_plan(20).expect("fee plan");
+        assert_eq!(plan.min_resource_fee_stroops, 58_181);
+        assert!(plan.recommended_fee_stroops > 58_181);
+    }
+
+    #[test]
+    fn simulation_without_resource_accounting_falls_back_to_default_fee() {
+        // A response from a non-Soroban endpoint: no minResourceFee, no
+        // transactionData. The fee must fall back rather than be invented.
+        let result = serde_json::json!({ "returnValue": "ok", "events": [] });
+        let simulation = build_simulation_result(&result).unwrap();
+
+        assert_eq!(simulation.fee, FALLBACK_FEE_STROOPS);
+        assert!(simulation.resources.is_none());
+        assert!(simulation
+            .errors
+            .iter()
+            .any(|e| e.contains("resource accounting unavailable")));
+    }
+
+    #[test]
+    fn simulation_surfaces_host_errors_without_resources() {
+        let result = serde_json::json!({
+            "error": "HostError: Error(Budget, ExceededLimit)",
+            "events": [],
+        });
+        let simulation = build_simulation_result(&result).unwrap();
+
+        assert!(simulation.resources.is_none());
+        assert!(simulation.fee_plan(20).is_none());
+        assert!(simulation
+            .errors
+            .iter()
+            .any(|e| e.contains("ExceededLimit")));
     }
 
     #[test]
