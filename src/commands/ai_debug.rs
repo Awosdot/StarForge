@@ -34,6 +34,8 @@ pub enum AiDebugCommands {
     Feedback(FeedbackArgs),
     /// Show which fixes have historically been rated helpful, to prioritise common errors
     Learned(LearnedArgs),
+    /// Predict bugs, suggest breakpoints, and visualize source execution paths
+    Source(SourceArgs),
 }
 
 // ── Analyse sub-command ───────────────────────────────────────────────────────
@@ -127,6 +129,21 @@ pub struct TestArgs {
     pub error: Option<String>,
 }
 
+#[derive(Args)]
+pub struct SourceArgs {
+    /// Entry function used to build the execution path
+    pub entry: String,
+    /// Project directory to analyze
+    #[arg(long, default_value = ".")]
+    pub dir: PathBuf,
+    /// Maximum internal call depth
+    #[arg(long, default_value_t = 6)]
+    pub depth: usize,
+    /// Output the complete report as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
 // ── Top-level handler ─────────────────────────────────────────────────────────
 
 pub async fn handle(cmd: AiDebugCommands) -> Result<()> {
@@ -140,7 +157,50 @@ pub async fn handle(cmd: AiDebugCommands) -> Result<()> {
         AiDebugCommands::Test(args) => handle_test(args).await,
         AiDebugCommands::Feedback(args) => handle_feedback(args).await,
         AiDebugCommands::Learned(args) => handle_learned(args).await,
+        AiDebugCommands::Source(args) => handle_source(args),
     }
+}
+
+fn handle_source(args: SourceArgs) -> Result<()> {
+    let report =
+        crate::utils::ai_debug_enhancement::analyze_project(&args.dir, &args.entry, args.depth)?;
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    p::header("AI Source Debugging");
+    println!(
+        "{}",
+        crate::utils::ai_debug_enhancement::render_execution_path(&report)
+    );
+    println!("  {}", "Suggested Breakpoints".cyan().bold());
+    for breakpoint in &report.breakpoints {
+        println!(
+            "  {}:{} {} ({:.0}% confidence)",
+            breakpoint.file.display(),
+            breakpoint.line,
+            breakpoint.reason,
+            breakpoint.confidence * 100.0
+        );
+        println!("    inspect: {}", breakpoint.inspect.join(", "));
+    }
+    println!("\n  {}", "Bug Predictions".yellow().bold());
+    for prediction in &report.predictions {
+        println!(
+            "  [{}] {}:{} {}",
+            prediction.category,
+            prediction.file.display(),
+            prediction.line,
+            prediction.evidence
+        );
+        println!("    root cause: {}", prediction.root_cause);
+        println!("    fix: {}", prediction.fix);
+    }
+    for guidance in &report.guidance {
+        println!("\n  {}", guidance);
+    }
+    Ok(())
 }
 
 // ── analyse handler ───────────────────────────────────────────────────────────
