@@ -252,7 +252,7 @@ async fn handle_generate(args: GenerateArgs) -> Result<()> {
     p::header("AI Test Generation");
 
     let source_code = ata::read_source_file(&args.path)?;
-    let contract_name = args.name.unwrap_or_else(|| {
+    let contract_name = args.name.clone().unwrap_or_else(|| {
         args.path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -703,7 +703,7 @@ fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
     p::header("Contract Analysis for Testing");
 
     let source_code = ata::read_source_file(&args.path)?;
-    let contract_name = args.name.unwrap_or_else(|| {
+    let contract_name = args.name.clone().unwrap_or_else(|| {
         args.path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -809,7 +809,7 @@ async fn handle_optimize(args: OptimizeArgs) -> Result<()> {
         let prompt = ata::build_optimization_prompt(&ata::TestOptimizationRequest {
             test_code: test_code.clone(),
             contract_code: source_code.clone(),
-            optimization_goals: goals,
+            optimization_goals: goals.clone(),
         });
 
         if ollama::is_ollama_running().await {

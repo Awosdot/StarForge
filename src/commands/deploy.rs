@@ -495,7 +495,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             wasm_size_kb,
             wallet,
             &args.network,
-        );
+        ).await;
     }
 
     if args.simulate {

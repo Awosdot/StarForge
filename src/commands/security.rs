@@ -583,7 +583,7 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
                 )
             })
             .collect();
-        let created = track_findings("audit", &tracking_findings)?;
+        let created = crate::utils::security::track_findings("audit", &tracking_findings)?;
         if !created.is_empty() {
             p::info(&format!(
                 "Created {} remediation tracking item(s)",
@@ -593,7 +593,7 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
     }
 
     if let Some(path) = &args.ci_workflow_out {
-        let workflow = generate_github_actions_workflow(&args.path, min_score.unwrap_or(80.0));
+        let workflow = crate::utils::security::generate_github_actions_workflow(&args.path, min_score.unwrap_or(80.0));
         fs::write(path, workflow)?;
         p::kv("CI workflow", &path.display().to_string());
     }
@@ -609,7 +609,7 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
             }
         }
         "html" => {
-            let html = format_html_report(&result);
+            let html = crate::utils::security::format_html_report(&result);
             if let Some(out) = &args.out {
                 fs::write(out, &html)?;
                 p::kv("Report saved", &out.display().to_string());

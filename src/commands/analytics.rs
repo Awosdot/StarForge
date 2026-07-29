@@ -1184,9 +1184,9 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
     p::kv(
         "Next deployment success",
         if pred.next_deployment_likely_success {
-            "Likely ✓".green().to_string()
+            (&"Likely ✓".green().to_string()).to_string()
         } else {
-            "At risk ✗".red().to_string()
+            (&"At risk ✗".red().to_string()).to_string()
         },
     );
     p::kv(

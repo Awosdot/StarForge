@@ -424,7 +424,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
     if optimization_requested || args.parallel {
         let wasm_bytes = std::fs::read(&args.wasm)?;
         let wasm_hash = hex::encode(sha2::Sha256::digest(&wasm_bytes));
-        let mut optimizer = test_optimizer::TestOptimizer::new()?;
+        let mut optimizer = crate::utils::test_optimizer::TestOptimizer::new()?;
 
         // Build test name list
         let source_tests = if let Some(source) = &args.source {
@@ -496,10 +496,10 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                         }
                     }
 
-                    let timings: Vec<test_optimizer::TestCaseTiming> = report
+                    let timings: Vec<crate::utils::test_optimizer::TestCaseTiming> = report
                         .results
                         .iter()
-                        .map(|r| test_optimizer::TestCaseTiming {
+                        .map(|r| crate::utils::test_optimizer::TestCaseTiming {
                             name: r.test_name.clone(),
                             duration_ms: r.duration_ms,
                             passed: matches!(r.status, test_automation::TestStatus::Passed),
@@ -575,7 +575,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             }
             results
                 .iter()
-                .map(|r| test_optimizer::TestCaseTiming {
+                .map(|r| crate::utils::test_optimizer::TestCaseTiming {
                     name: r.name.clone(),
                     duration_ms: r.duration_ms,
                     passed: r.passed,
@@ -593,7 +593,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             }
             results
                 .iter()
-                .map(|r| test_optimizer::TestCaseTiming {
+                .map(|r| crate::utils::test_optimizer::TestCaseTiming {
                     name: r.name.clone(),
                     duration_ms: r.duration_ms,
                     passed: r.passed,
@@ -667,13 +667,13 @@ pub async fn handle(args: TestArgs) -> Result<()> {
 
             // Export report
             if let Some(out_path) = &args.optimize_out {
-                test_optimizer::export_optimization_report(&opt_report, out_path)?;
+                crate::utils::test_optimizer::export_optimization_report(&opt_report, out_path)?;
                 p::kv("Optimization report", &out_path.display().to_string());
             }
 
             if args.optimize_html {
                 let html_path = PathBuf::from("ai_test_optimization_report.html");
-                let html = test_optimizer::render_optimization_html_report(&opt_report);
+                let html = crate::utils::test_optimizer::render_optimization_html_report(&opt_report);
                 std::fs::write(&html_path, html)?;
                 p::kv("HTML report", &html_path.display().to_string());
             }

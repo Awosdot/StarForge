@@ -196,7 +196,7 @@ impl AIContextManager {
         project_path: &Path,
         additional_context: Option<&str>,
     ) -> Result<String> {
-        let mut items = self.collect_context(project_path).await?;
+        let items = self.collect_context(project_path).await?;
         let mut total_tokens: u32 = 0;
         let mut context_parts = Vec::new();
 

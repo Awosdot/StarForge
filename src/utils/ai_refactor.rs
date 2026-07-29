@@ -344,22 +344,22 @@ const SYSTEM_CONTEXT: &str = "You are an expert Soroban smart contract developer
 pub async fn handle(cmd: RefactorCommands) -> Result<()> {
     match cmd {
         RefactorCommands::ExtractFunction { file, name, model, output } => {
-            handle_refactor(file, &model, &name.as_deref().unwrap_or("extracted"), TaskType::ExtractFunction, output).await
+            handle_refactor(&file, &model, &name.as_deref().unwrap_or("extracted"), TaskType::ExtractFunction, output).await
         }
         RefactorCommands::RenameVariables { file, old, new, model, output } => {
-            handle_refactor(file, &model, &format!("{old}->{new}"), TaskType::RenameVariables, output).await
+            handle_refactor(&file, &model, &format!("{old}->{new}"), TaskType::RenameVariables, output).await
         }
         RefactorCommands::Simplify { file, model, output } => {
-            handle_refactor(file, &model, "simplify", TaskType::Simplify, output).await
+            handle_refactor(&file, &model, "simplify", TaskType::Simplify, output).await
         }
         RefactorCommands::ImproveStructure { file, model, output } => {
-            handle_refactor(file, &model, "improve-structure", TaskType::ImproveStructure, output).await
+            handle_refactor(&file, &model, "improve-structure", TaskType::ImproveStructure, output).await
         }
         RefactorCommands::AddDocs { file, model, output } => {
-            handle_refactor(file, &model, "add-docs", TaskType::AddDocs, output).await
+            handle_refactor(&file, &model, "add-docs", TaskType::AddDocs, output).await
         }
         RefactorCommands::Optimize { file, model, output } => {
-            handle_refactor(file, &model, "optimize", TaskType::Optimize, output).await
+            handle_refactor(&file, &model, "optimize", TaskType::Optimize, output).await
         }
         RefactorCommands::Diff { session } => handle_diff(session),
         RefactorCommands::Rollback { session } => handle_rollback(session),

@@ -63,7 +63,7 @@ pub struct HelpArgs {
 /// Handle the help subcommand.
 pub async fn handle(args: HelpArgs) -> Result<()> {
     if args.settings {
-        return handle_settings(&args);
+        return handle_settings(&args).await;
     }
     if args.why {
         return handle_why(&args).await;
@@ -181,20 +181,22 @@ async fn handle_command(cmd: &str, args: &HelpArgs) -> Result<()> {
     p::kv("History entries", &history_entries.len().to_string());
     if args.verbose {
         // Surface category settings so users can see what they're filtering.
+        let en_str = enabled.join(", ");
         p::kv(
             "Enabled categories",
             if enabled.is_empty() {
                 "(all)"
             } else {
-                enabled.join(", ").as_str()
+                &en_str
             },
         );
+        let dis_str = disabled.join(", ");
         p::kv(
             "Disabled categories",
             if disabled.is_empty() {
                 "(none)"
             } else {
-                disabled.join(", ").as_str()
+                &dis_str
             },
         );
     }

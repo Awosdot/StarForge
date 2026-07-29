@@ -87,7 +87,7 @@ pub async fn suggest_update(template_path: &Path) -> Result<UpdateSuggestion> {
     let latest = versions
         .versions
         .iter()
-        .max_by(|a, b| Version::parse(&a.version).cmp(&Version::parse(&b.version)))
+        .max_by(|a, b| Version::parse(&a.version).into_iter().cmp(&Version::parse(&b.version)))
         .context("No versions found")?;
 
     let diff = get_template_diff(template_path)?;
@@ -191,7 +191,7 @@ fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-fn find_version(versions: &TemplateChangelog, version: &str) -> Result<&TemplateVersion> {
+fn find_version<'a>(versions: &'a TemplateChangelog, version: &str) -> Result<&'a TemplateVersion> {
     versions
         .versions
         .iter()

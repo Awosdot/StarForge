@@ -791,7 +791,7 @@ fn handle_all(args: AllArgs) -> Result<()> {
 
     for (filename, content) in files {
         let path = args.out_dir.join(filename);
-        write_file(&path, content)?;
+        write_file(&path, &content)?;
         println!("  {} {}", "✓".green(), path.display());
     }
 

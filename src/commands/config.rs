@@ -1,3 +1,4 @@
+use crate::utils::database;
 use crate::utils::{config, print as p};
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -116,10 +117,10 @@ fn handle_db(cmd: DbCommands) -> Result<()> {
 
 fn db_init() -> Result<()> {
     p::header("Database Initialization");
-    let path = database::db_path();
+    let path = crate::utils::database::db_path();
     p::kv("Database path", &path.display().to_string());
 
-    let db = database::Database::open()?;
+    let db = crate::utils::database::Database::open()?;
     db.initialize()?;
 
     p::success("SQLite database initialized successfully.");
@@ -131,10 +132,10 @@ fn db_init() -> Result<()> {
 fn db_migrate() -> Result<()> {
     p::header("TOML → SQLite Migration");
 
-    let db = database::Database::open()?;
+    let db = crate::utils::database::Database::open()?;
     db.initialize()?;
 
-    let report = database::migrate_from_toml(&db)?;
+    let report = crate::utils::database::migrate_from_toml(&db)?;
 
     p::separator();
     p::kv("Wallets migrated", &report.wallets_migrated.to_string());
@@ -155,7 +156,7 @@ fn db_query(sql: &str) -> Result<()> {
         anyhow::bail!("Only SELECT queries are allowed via `config db query` for safety.");
     }
 
-    let db = database::Database::open()?;
+    let db = crate::utils::database::Database::open()?;
     let result = db.execute_query(sql)?;
 
     if result.rows.is_empty() {
@@ -206,7 +207,7 @@ fn db_query(sql: &str) -> Result<()> {
 fn db_backup(dest: &str) -> Result<()> {
     p::header("Database Backup");
     let dest_path = std::path::Path::new(dest);
-    let db = database::Database::open()?;
+    let db = crate::utils::database::Database::open()?;
     db.backup(dest_path)?;
     p::kv("Backup saved", dest);
     p::success("Database backup complete.");
@@ -216,7 +217,7 @@ fn db_backup(dest: &str) -> Result<()> {
 fn db_restore(src: &str) -> Result<()> {
     p::header("Database Restore");
     let src_path = std::path::Path::new(src);
-    database::restore_database(src_path)?;
+    crate::utils::database::restore_database(src_path)?;
     p::kv("Restored from", src);
     p::success("Database restore complete.");
     Ok(())
@@ -225,8 +226,8 @@ fn db_restore(src: &str) -> Result<()> {
 fn db_export(out: Option<&str>) -> Result<()> {
     p::header("Database → TOML Export");
 
-    let db = database::Database::open()?;
-    let toml_str = database::export_to_toml(&db)?;
+    let db = crate::utils::database::Database::open()?;
+    let toml_str = crate::utils::database::export_to_toml(&db)?;
 
     if let Some(path) = out {
         std::fs::write(path, &toml_str)?;
@@ -241,7 +242,7 @@ fn db_export(out: Option<&str>) -> Result<()> {
 fn db_status() -> Result<()> {
     p::header("Database Status");
 
-    let path = database::db_path();
+    let path = crate::utils::database::db_path();
     p::kv("Path", &path.display().to_string());
     p::kv(
         "Exists",
@@ -256,7 +257,7 @@ fn db_status() -> Result<()> {
         return Ok(());
     }
 
-    let db = database::Database::open()?;
+    let db = crate::utils::database::Database::open()?;
     let stats = db.stats()?;
 
     p::separator();
@@ -273,7 +274,7 @@ fn db_status() -> Result<()> {
 fn db_check() -> Result<()> {
     p::header("Database Integrity Check");
 
-    let db = database::Database::open()?;
+    let db = crate::utils::database::Database::open()?;
     let results = db.integrity_check()?;
 
     for line in &results {

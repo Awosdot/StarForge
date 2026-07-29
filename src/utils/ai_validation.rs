@@ -226,7 +226,7 @@ impl AIResponseValidator {
     }
 
     fn check_soroban_compatibility(&self, response: &str) -> LayerResult {
-        let mut warnings = Vec::new();
+        let mut warnings: Vec<String> = Vec::new();
 
         if response.contains("#[no_mangle]") && !response.contains("extern") {
             warnings.push("#[no_mangle] without extern may not be Soroban-compatible".into());

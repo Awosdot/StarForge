@@ -338,7 +338,7 @@ impl TutorialManager {
         for topic in learning_path {
             for tutorial in tutorials.values() {
                 if tutorial.topic == topic && !progress.completed_tutorials.contains(&tutorial.id) {
-                    if tutorial.difficulty as i32 <= skill_level as i32 + 1 {
+                    if tutorial.difficulty.clone() as i32 <= skill_level.clone() as i32 + 1 {
                         recommended.push(tutorial.clone());
                     }
                 }
@@ -346,7 +346,7 @@ impl TutorialManager {
         }
 
         // Sort by difficulty
-        recommended.sort_by_key(|t| t.difficulty as i32);
+        recommended.sort_by_key(|t| t.difficulty.clone() as i32);
         Ok(recommended)
     }
 

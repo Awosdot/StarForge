@@ -275,7 +275,7 @@ pub async fn handle(cmd: ContractCommands) -> Result<()> {
         ContractCommands::GenerateBindings(args) => handle_generate_bindings(args),
         ContractCommands::CallGraph(args) => handle_call_graph(args),
         ContractCommands::Deps(args) => handle_deps(args),
-        ContractCommands::Version(args) => handle_version(args),
+        ContractCommands::Version(args) => handle_version(args).await,
     }
 }
 
