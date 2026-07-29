@@ -84,6 +84,8 @@ pub mod security_scanner;
 pub mod social;
 pub mod soroban;
 pub mod state_diff;
+pub mod state_transition;
+pub mod migration_testing;
 pub mod stream;
 pub mod telemetry;
 pub mod template;
