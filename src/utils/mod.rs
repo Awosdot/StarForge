@@ -39,6 +39,7 @@ pub mod wallet_signer;
 pub mod history;
 pub mod horizon;
 pub mod http_client;
+pub mod latency_budget;
 pub mod logging;
 pub mod migration_ai;
 pub mod mnemonic;
