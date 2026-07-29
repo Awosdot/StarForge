@@ -1,6 +1,13 @@
 use crate::utils::deploy_history::{
     get_record, last_successful, load_history, set_verified, update_status, DeployStatus,
 };
+use crate::utils::deployment_monitor;
+use crate::utils::deployment_monitoring_service::{
+    render_monitoring_dashboard, DeploymentAlertEngine, DeploymentHealthChecker, DeploymentTracker,
+};
+use crate::utils::deployment_verify::{
+    generate_ci_snippet, load_report, save_report, DeploymentVerifier,
+};
 use crate::utils::print as p;
 use crate::utils::{config, horizon};
 use anyhow::Result;
@@ -20,6 +27,12 @@ pub enum DeploymentsCommands {
     Dashboard(DashboardArgs),
     /// Approve a pending deployment
     Approve(ApproveArgs),
+    /// Show a saved deployment verification report
+    Report(ReportArgs),
+    /// Generate CI snippet for automated deployment verification
+    Ci(CiArgs),
+    /// Run deployment monitoring service, real-time status updates, health checks, and alerting
+    Monitor(MonitorArgs),
 }
 
 #[derive(Args)]
@@ -62,6 +75,35 @@ pub struct VerifyArgs {
     /// Save verification result to history
     #[arg(long)]
     pub save: bool,
+    /// Save detailed verification report to disk
+    #[arg(long)]
+    pub report: bool,
+    /// Output report as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args)]
+pub struct ReportArgs {
+    /// Deployment ID to show report for
+    #[arg(long)]
+    pub id: String,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args)]
+pub struct CiArgs {
+    /// Deployment ID to embed in CI snippet
+    #[arg(long)]
+    pub id: String,
+    /// Network context
+    #[arg(long, default_value = "testnet")]
+    pub network: String,
+    /// CI platform
+    #[arg(long, default_value = "github", value_parser = ["github", "gitlab"])]
+    pub platform: String,
 }
 
 #[derive(Args)]
@@ -72,6 +114,28 @@ pub struct DashboardArgs {
     /// Number of recent deployments to show per network
     #[arg(long, default_value = "5")]
     pub recent: usize,
+}
+
+#[derive(Args)]
+pub struct MonitorArgs {
+    /// Network to analyze
+    #[arg(long, default_value = "testnet")]
+    pub network: String,
+    /// Optional contract ID to scope the analysis
+    #[arg(long)]
+    pub contract: Option<String>,
+    /// Optional wallet name to scope the health check
+    #[arg(long)]
+    pub wallet: Option<String>,
+    /// Render live monitoring dashboard with real-time status and health check matrix
+    #[arg(long)]
+    pub dashboard: bool,
+    /// Enable health check verification
+    #[arg(long)]
+    pub health_check: bool,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args)]
@@ -91,6 +155,9 @@ pub async fn handle(cmd: DeploymentsCommands) -> Result<()> {
         DeploymentsCommands::Verify(args) => handle_verify(args).await,
         DeploymentsCommands::Dashboard(args) => handle_dashboard(args),
         DeploymentsCommands::Approve(args) => handle_approve(args),
+        DeploymentsCommands::Report(args) => handle_report(args),
+        DeploymentsCommands::Ci(args) => handle_ci(args),
+        DeploymentsCommands::Monitor(args) => handle_monitor(args),
     }
 }
 
@@ -148,7 +215,7 @@ fn handle_history(args: HistoryArgs) -> Result<()> {
 
         println!(
             "  {:<10}  {:<10}  {:<10}  {:<12}  {:<16}  {}",
-            &rec.id[..8.min(rec.id.len())].cyan(),
+            rec.id[..8.min(rec.id.len())].cyan(),
             rec.network.as_str(),
             status_colored,
             rec.wallet.chars().take(10).collect::<String>(),
@@ -220,8 +287,17 @@ fn handle_rollback(args: RollbackArgs) -> Result<()> {
         .as_deref()
         .unwrap_or("CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
 
+    // Record the rollback in history: appends a rollback record linked to the
+    // target and marks any later successful deployment on this network as
+    // rolled-back, so `deployments history`/`dashboard` reflect the revert.
+    let rollback_id = crate::utils::deploy_history::record_rollback(&record, &wallet.name)?;
+
     p::separator();
-    p::success("Rollback command (run this to revert on-chain):");
+    p::success("Rollback recorded in deployment history.");
+    p::kv("Rollback record", &rollback_id[..8.min(rollback_id.len())]);
+    p::kv("Reverted to", &record.id[..8.min(record.id.len())]);
+    println!();
+    p::info("Run this to revert the contract on-chain:");
     println!();
     println!(
         "  {}",
@@ -230,12 +306,6 @@ fn handle_rollback(args: RollbackArgs) -> Result<()> {
             contract_id, wallet.public_key, args.network, record.wasm_hash
         )
         .cyan()
-    );
-    println!();
-    p::info("After running the above command, record the rollback:");
-    println!(
-        "  {}",
-        "# starforge deployments history (the rolled-back entry will be marked)".dimmed()
     );
     p::separator();
     Ok(())
@@ -250,66 +320,217 @@ async fn handle_verify(args: VerifyArgs) -> Result<()> {
     p::kv("Deployment ID", &record.id);
     p::kv("Network", &record.network);
     p::kv("WASM hash", &record.wasm_hash);
-
-    let contract_id = match &record.contract_id {
-        Some(id) => id.clone(),
-        None => {
-            p::warn("No contract ID recorded for this deployment — cannot verify on-chain.");
-            p::info("Contract ID is recorded when `--execute` is used with `starforge deploy`.");
-            return Ok(());
-        }
-    };
-
-    p::kv("Contract ID", &contract_id);
+    if let Some(ref cid) = record.contract_id {
+        p::kv("Contract ID", cid);
+    }
     println!();
 
-    let mut checks_passed = 0u32;
-    let checks_total = 2u32;
+    let wasm_path = PathBuf::from(&record.wasm_path);
+    let verifier = DeploymentVerifier::new(record.clone()).with_wasm_file(&wasm_path)?;
+    let mut report = verifier.verify_all().await?;
 
-    // Check 1: account/wallet is active
-    p::kv("[1/2] Wallet", &record.wallet);
+    // Wallet activity check
     let cfg = config::load()?;
     if let Some(wallet) = cfg.wallets.iter().find(|w| w.name == record.wallet) {
         match horizon::fetch_account(&wallet.public_key, &record.network).await {
             Ok(_) => {
-                checks_passed += 1;
-                p::success("      Wallet account is active on-chain");
+                report
+                    .checks
+                    .push(crate::utils::deployment_verify::VerificationCheck {
+                        name: "wallet_active".to_string(),
+                        category: "functionality".to_string(),
+                        status: crate::utils::deployment_verify::CheckStatus::Passed,
+                        detail: format!("Wallet '{}' is active on-chain", record.wallet),
+                    });
             }
-            Err(e) => p::warn(&format!("      Could not verify wallet: {}", e)),
+            Err(e) => {
+                report
+                    .checks
+                    .push(crate::utils::deployment_verify::VerificationCheck {
+                        name: "wallet_active".to_string(),
+                        category: "functionality".to_string(),
+                        status: crate::utils::deployment_verify::CheckStatus::Warning,
+                        detail: format!("Could not verify wallet: {}", e),
+                    });
+            }
         }
-    } else {
-        p::warn("      Wallet not found in local config");
     }
 
-    // Check 2: contract ID exists on-chain (basic horizon check)
-    p::kv("[2/2] Contract", &contract_id);
-    p::info("      On-chain contract verification requires stellar CLI");
-    println!(
-        "      {}",
-        format!(
-            "stellar contract inspect --id {} --network {}",
-            contract_id, record.network
-        )
-        .cyan()
-    );
-    checks_passed += 1;
+    report.passed = report
+        .checks
+        .iter()
+        .all(|c| c.status != crate::utils::deployment_verify::CheckStatus::Failed);
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        for check in &report.checks {
+            let icon = match check.status {
+                crate::utils::deployment_verify::CheckStatus::Passed => "✓".green(),
+                crate::utils::deployment_verify::CheckStatus::Failed => "✗".red(),
+                crate::utils::deployment_verify::CheckStatus::Warning => "!".yellow(),
+                crate::utils::deployment_verify::CheckStatus::Skipped => "–".dimmed(),
+            };
+            println!(
+                "  {} [{}] {} — {}",
+                icon, check.category, check.name, check.detail
+            );
+        }
+        println!();
+        let passed_count = report
+            .checks
+            .iter()
+            .filter(|c| c.status == crate::utils::deployment_verify::CheckStatus::Passed)
+            .count();
+        p::kv(
+            "Checks passed",
+            &format!("{}/{}", passed_count, report.checks.len()),
+        );
+    }
+
+    if args.report || args.save {
+        let path = save_report(&report)?;
+        if !args.json {
+            p::success(&format!("Verification report saved to {}", path.display()));
+        }
+    }
+
+    if args.save {
+        set_verified(&record.id, report.passed)?;
+    }
+
+    if report.passed {
+        if !args.json {
+            p::success("Deployment verification complete");
+        }
+    } else if !args.json {
+        p::warn("Some verification checks failed");
+    }
+    Ok(())
+}
+
+fn handle_report(args: ReportArgs) -> Result<()> {
+    p::header("Deployment Verification Report");
+    let report = load_report(&args.id)?;
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    p::kv("Deployment ID", &report.deployment_id);
+    p::kv("Network", &report.network);
+    p::kv("Timestamp", &report.timestamp);
+    p::kv("Passed", &report.passed.to_string());
+    p::kv("Expected WASM hash", &report.wasm_hash_expected);
+    if let Some(ref hash) = report.wasm_hash_onchain {
+        p::kv("On-chain WASM hash", hash);
+    }
+    println!();
+    for check in &report.checks {
+        println!("  [{}] {} — {}", check.category, check.name, check.status);
+    }
+    Ok(())
+}
+
+fn handle_monitor(args: MonitorArgs) -> Result<()> {
+    p::header("Deployment Monitoring Service");
+    config::validate_network(&args.network)?;
+
+    let report = deployment_monitor::analyze_deployments(&args.network, args.contract.as_deref())?;
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    if args.dashboard || args.health_check {
+        let tracker = DeploymentTracker::new();
+
+        // Populate tracker with history for visual status
+        let records = load_history().unwrap_or_default();
+        for (idx, r) in records.iter().enumerate().take(5) {
+            let tr_id = format!("dep-{}", &r.id[..8.min(r.id.len())]);
+            tracker.start_tracking(&tr_id, &r.network, &r.wallet);
+            if r.status == DeployStatus::Success {
+                tracker.mark_completed(&tr_id, r.contract_id.as_deref().unwrap_or("C000"), None, r.duration_ms.unwrap_or(1000));
+            } else if r.status == DeployStatus::Failed {
+                tracker.mark_failed(&tr_id, "Deployment failed during invocation");
+            }
+        }
+
+        let tracks = tracker.get_active_tracks();
+        let health_checks = DeploymentHealthChecker::check_network_health(
+            &args.network,
+            args.contract.as_deref(),
+            args.wallet.as_deref(),
+        );
+        let service_alerts = DeploymentAlertEngine::generate_alerts(&tracks, &health_checks);
+
+        let dashboard_view = render_monitoring_dashboard(&tracks, &health_checks, &service_alerts, &args.network);
+        println!("{}", dashboard_view);
+        return Ok(());
+    }
+
+    p::separator();
+    p::kv("Network", &report.network);
+    p::kv("Deployments", &report.total_deployments.to_string());
+    p::kv("Success rate", &format!("{:.1}%", report.success_rate));
+    p::kv("Error rate", &format!("{:.1}%", report.error_rate));
+    p::kv("Avg duration", &format!("{:.0} ms", report.avg_duration_ms));
+    p::kv("Tracked wallets", &report.unique_wallets.to_string());
+    p::kv("Tracked contracts", &report.unique_contracts.to_string());
+    println!();
+
+    p::info("Alerts");
+    for alert in &report.alerts {
+        println!(
+            "  [{}] {} — {}",
+            alert.severity.to_uppercase(),
+            alert.title,
+            alert.detail
+        );
+        println!("    → {}", alert.recommendation);
+    }
 
     println!();
-    p::kv(
-        "Checks passed",
-        &format!("{}/{}", checks_passed, checks_total),
-    );
-
-    let passed = checks_passed == checks_total;
-    if args.save {
-        set_verified(&record.id, passed)?;
-        p::success("Verification result saved to history");
+    p::info("Predictions");
+    for prediction in &report.predictions {
+        println!(
+            "  [{}] {} — {}",
+            prediction.confidence,
+            prediction.title,
+            prediction.detail
+        );
+        println!("    → {}", prediction.recommended_action);
     }
 
-    if passed {
-        p::success("Deployment verification complete");
-    } else {
-        p::warn("Some verification checks could not be completed");
+    println!();
+    p::info("Recent trend indicators");
+    for trend in &report.history {
+        println!("  {}: {:.0} ms ({})", trend.label, trend.value, trend.direction);
+    }
+
+    p::separator();
+    Ok(())
+}
+
+fn handle_ci(args: CiArgs) -> Result<()> {
+    p::header("Deployment Verification CI");
+    let snippet = generate_ci_snippet(&args.id, &args.network);
+    match args.platform.as_str() {
+        "github" => {
+            println!("Add to .github/workflows/deploy-verify.yml:\n");
+            println!("{}", snippet);
+        }
+        "gitlab" => {
+            println!("Add to .gitlab-ci.yml:\n");
+            println!(
+                "verify_deployment:\n  script:\n    - starforge deployments verify --id {} --save --report\n",
+                args.id
+            );
+        }
+        _ => println!("{}", snippet),
     }
     Ok(())
 }
@@ -389,7 +610,7 @@ fn handle_dashboard(args: DashboardArgs) -> Result<()> {
             println!(
                 "    {} {} | {} | {}",
                 status_colored,
-                &rec.id[..8.min(rec.id.len())].dimmed(),
+                rec.id[..8.min(rec.id.len())].dimmed(),
                 rec.timestamp.get(..16).unwrap_or(&rec.timestamp).dimmed(),
                 rec.contract_id
                     .as_deref()

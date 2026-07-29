@@ -3,6 +3,8 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import dotenv from "dotenv";
+
+// Import API routes for the remote template registry
 import authRoutes from "./routes/auth";
 import templateRoutes from "./routes/templates";
 import reviewRoutes from "./routes/reviews";
@@ -52,10 +54,13 @@ app.use((req, res) => {
 // Error handler
 app.use(errorHandler);
 
-// Start server
-app.listen(PORT, () => {
-  logger.info(`StarForge Registry API running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
-});
+// Start server (skipped when this module is imported by the test suite,
+// so multiple test files can require `app` without fighting over the port)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    logger.info(`StarForge Registry API running on port ${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+  });
+}
 
 export default app;

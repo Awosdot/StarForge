@@ -1,4 +1,4 @@
-use crate::utils::{config, database, print as p};
+use crate::utils::{config, print as p};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
@@ -6,16 +6,13 @@ use clap::{Args, Subcommand};
 pub enum ConfigCommands {
     /// Show current global configuration
     Show,
-    /// Set a scalar configuration value
+    /// Set a configuration key/value pair
     Set {
-        /// Configuration key, e.g. telemetry.enabled or network
+        /// Configuration key to update (e.g. telemetry.enabled)
         key: String,
-        /// New value
+        /// New value for the configuration key
         value: String,
     },
-    /// Manage trusted plugin source allowlist
-    #[command(subcommand)]
-    PluginTrust(PluginTrustCommands),
     /// Set global wallet encryption parameters (Argon2id)
     SetEncryption {
         /// Argon2 memory cost in KiB (e.g. 65536)
@@ -33,7 +30,7 @@ pub enum ConfigCommands {
     },
     /// Validate configuration and check network connectivity
     Doctor,
-    /// SQLite database management (init, migrate, query, backup, export)
+    /// SQLite database management (init, migrate, query, backup, restore, export)
     #[command(subcommand)]
     Db(DbCommands),
 }
@@ -53,6 +50,11 @@ pub enum DbCommands {
     Backup {
         /// Destination file path
         dest: String,
+    },
+    /// Restore the database from a backup file
+    Restore {
+        /// Source backup file path
+        src: String,
     },
     /// Export database contents back to TOML format
     Export {
@@ -87,8 +89,7 @@ pub enum PluginTrustCommands {
 pub async fn handle(cmd: ConfigCommands) -> Result<()> {
     match cmd {
         ConfigCommands::Show => show(),
-        ConfigCommands::Set { key, value } => set_value(&key, &value),
-        ConfigCommands::PluginTrust(cmd) => plugin_trust(cmd),
+        ConfigCommands::Set { key, value } => set(&key, &value),
         ConfigCommands::SetEncryption {
             mem,
             iterations,
@@ -106,6 +107,7 @@ fn handle_db(cmd: DbCommands) -> Result<()> {
         DbCommands::Migrate => db_migrate(),
         DbCommands::Query { sql } => db_query(&sql),
         DbCommands::Backup { dest } => db_backup(&dest),
+        DbCommands::Restore { src } => db_restore(&src),
         DbCommands::Export { out } => db_export(out.as_deref()),
         DbCommands::Status => db_status(),
         DbCommands::Check => db_check(),
@@ -141,7 +143,8 @@ fn db_migrate() -> Result<()> {
         "Config keys migrated",
         &report.config_keys_migrated.to_string(),
     );
-    p::success("Migration complete. TOML config still available for read/write.");
+    p::success("Migration complete. SQLite is now the active configuration store.");
+    p::info("TOML remains available through explicit import/export commands.");
     p::info("Run `starforge config db status` to verify the database contents.");
     Ok(())
 }
@@ -210,6 +213,15 @@ fn db_backup(dest: &str) -> Result<()> {
     Ok(())
 }
 
+fn db_restore(src: &str) -> Result<()> {
+    p::header("Database Restore");
+    let src_path = std::path::Path::new(src);
+    database::restore_database(src_path)?;
+    p::kv("Restored from", src);
+    p::success("Database restore complete.");
+    Ok(())
+}
+
 fn db_export(out: Option<&str>) -> Result<()> {
     p::header("Database → TOML Export");
 
@@ -252,6 +264,7 @@ fn db_status() -> Result<()> {
     p::kv("Wallets", &stats.wallets.to_string());
     p::kv("Networks", &stats.networks.to_string());
     p::kv("Config entries", &stats.config_entries.to_string());
+    p::kv("Events", &stats.events.to_string());
     p::kv("Database size", &format!("{} bytes", stats.db_size_bytes));
     p::separator();
     Ok(())
@@ -278,22 +291,23 @@ fn show() -> Result<()> {
     p::header("StarForge Configuration");
     p::separator();
 
-    p::kv("Config file", &config::config_path().display().to_string());
+    p::kv(
+        "Config database",
+        &database::db_path().display().to_string(),
+    );
     p::kv("Active network", &cfg.network);
     p::kv(
-        "telemetry.enabled",
-        &cfg.telemetry_enabled.unwrap_or(false).to_string(),
+        "Telemetry",
+        if cfg.telemetry_enabled.unwrap_or(true) {
+            "enabled"
+        } else {
+            "disabled"
+        },
     );
-
-    println!();
-    p::header("Plugin Trust");
-    if cfg.plugin_trust.trusted_sources.is_empty() {
-        p::warn("No trusted remote plugin sources configured.");
-    } else {
-        for source in &cfg.plugin_trust.trusted_sources {
-            p::kv("trusted source", source);
-        }
-    }
+    p::kv(
+        "telemetry.enabled",
+        &cfg.telemetry_enabled.unwrap_or(true).to_string(),
+    );
 
     println!();
     p::header("Wallet Encryption (Argon2id)");
@@ -432,4 +446,28 @@ fn set_encryption(
     p::success("Global wallet encryption parameters updated.");
     show()?;
     Ok(())
+}
+
+fn set(key: &str, value: &str) -> Result<()> {
+    let mut cfg = config::load()?;
+
+    let normalized = key.to_lowercase();
+    let enabled = match value.to_lowercase().as_str() {
+        "true" | "1" | "on" | "yes" => true,
+        "false" | "0" | "off" | "no" => false,
+        _ => anyhow::bail!("Invalid boolean value '{}'. Use true or false.", value),
+    };
+
+    match normalized.as_str() {
+        "telemetry" | "telemetry.enabled" => {
+            cfg.telemetry_enabled = Some(enabled);
+            config::save(&cfg)?;
+            p::success(&format!("'{}' set to '{}'.", key, enabled));
+            Ok(())
+        }
+        _ => anyhow::bail!(
+            "Unsupported config key '{}'. Supported keys: telemetry.enabled",
+            key
+        ),
+    }
 }

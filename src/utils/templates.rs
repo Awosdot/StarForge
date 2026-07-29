@@ -1,4 +1,6 @@
+use crate::utils::http_client;
 use anyhow::{Context, Result};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -113,11 +115,48 @@ pub struct TemplateEntry {
     pub license: Option<String>,
     /// URL of the template's source repository (e.g. GitHub link).
     #[serde(default)]
-    pub repository: Option<String>,
+    pub repository_url: Option<String>,
+    /// Optional homepage for the template project.
     #[serde(default)]
     pub homepage: Option<String>,
+    /// Optional documentation URL for the template.
     #[serde(default)]
     pub documentation: Option<String>,
+    /// Categories that describe the template's purpose or domain.
+    #[serde(default)]
+    pub categories: Vec<String>,
+    /// Whether this template has been selected as featured by curators.
+    #[serde(default)]
+    pub featured: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TemplateUpdateImpact {
+    pub severity: String,
+    pub breaking_changes: bool,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TemplateUpdateReport {
+    pub template_name: String,
+    pub previous_version: Option<String>,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub compatibility: String,
+    pub impact: TemplateUpdateImpact,
+    pub migration_guidance: Vec<String>,
+    pub rollback_steps: Vec<String>,
+    pub backup_path: Option<String>,
+    pub tracked_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct TemplateUpdateState {
+    template_name: String,
+    backup_path: Option<String>,
+    previous_version: Option<String>,
+    last_report: Option<TemplateUpdateReport>,
 }
 
 /// Outcome of a template-vs-CLI compatibility check.
@@ -254,6 +293,157 @@ pub fn assert_template_compatible(entry: &TemplateEntry) -> Result<()> {
     }
 }
 
+fn infer_template_version_from_dir(path: &Path) -> Option<String> {
+    let cargo_toml = path.join("Cargo.toml");
+    if cargo_toml.exists() {
+        if let Ok(content) = fs::read_to_string(&cargo_toml) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if let Some((_, value)) = trimmed.split_once("version") {
+                    let value = value.trim().trim_matches('"');
+                    if !value.is_empty() {
+                        return Some(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let package_json = path.join("package.json");
+    if package_json.exists() {
+        if let Ok(content) = fs::read_to_string(&package_json) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if let Some((_, value)) = trimmed.split_once("\"version\"") {
+                    let value = value.trim().trim_matches(':').trim().trim_matches('"');
+                    if !value.is_empty() {
+                        return Some(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn build_update_report(
+    template_name: &str,
+    previous_version: Option<&str>,
+    latest_version: &str,
+    entry: &TemplateEntry,
+) -> Result<TemplateUpdateReport> {
+    let update_available = previous_version != Some(latest_version);
+    let compatibility = match check_template_compatibility(entry) {
+        CompatibilityStatus::Compatible => "Compatible with the current StarForge CLI".to_string(),
+        CompatibilityStatus::TooOld { required_min, running } => {
+            format!("Requires StarForge >= {} but the running CLI is {}", required_min, running)
+        }
+        CompatibilityStatus::TooNew { required_max, running } => {
+            format!("Requires StarForge <= {} but the running CLI is {}", required_max, running)
+        }
+        CompatibilityStatus::MalformedMetadata { reason } => {
+            format!("Version metadata is malformed: {}", reason)
+        }
+    };
+
+    let mut migration_guidance = Vec::new();
+    let mut severity = "low".to_string();
+    let mut breaking_changes = false;
+    let mut impact_summary = "No material changes are expected for this template update.".to_string();
+
+    if update_available {
+        impact_summary = format!(
+            "The template is moving from {} to {}.",
+            previous_version.unwrap_or("an unknown version"),
+            latest_version
+        );
+
+        if let Some(latest) = entry.changelog.first() {
+            let notes = latest.notes.clone();
+            if notes.to_lowercase().contains("breaking")
+                || notes.to_lowercase().contains("migration")
+                || notes.to_lowercase().contains("removed")
+                || notes.to_lowercase().contains("deprecated")
+            {
+                breaking_changes = true;
+                severity = "high".to_string();
+                impact_summary.push_str(" The release notes mention breaking or migration-sensitive changes.");
+            }
+        }
+
+        if previous_version.is_some() && latest_version.contains('.') {
+            let current_parts: Vec<&str> = previous_version.unwrap_or_default().split('.').collect();
+            let latest_parts: Vec<&str> = latest_version.split('.').collect();
+            if current_parts.first() != latest_parts.first() {
+                severity = "high".to_string();
+                impact_summary.push_str(" The version jump appears to be a major release.");
+                breaking_changes = true;
+            } else if current_parts.get(1) != latest_parts.get(1) {
+                severity = "medium".to_string();
+                impact_summary.push_str(" The update introduces a feature or compatibility change.");
+            }
+        }
+
+        migration_guidance.push("Review the release notes and regenerate any custom project scaffolding before shipping changes.".to_string());
+        migration_guidance.push("Re-run your template smoke test after the update to confirm everything still works.".to_string());
+        if breaking_changes {
+            migration_guidance.push("Treat this as a breaking update and plan a migration or rollback path before applying it broadly.".to_string());
+        }
+    }
+
+    if !compatibility.contains("Compatible") {
+        migration_guidance.push(format!("Compatibility note: {}", compatibility));
+    }
+
+    let rollback_steps = vec![
+        "The update process keeps a backup copy of the previous template contents.".to_string(),
+        format!("Use `starforge template rollback {}` to restore the previous template state if needed.", template_name),
+    ];
+
+    Ok(TemplateUpdateReport {
+        template_name: template_name.to_string(),
+        previous_version: previous_version.map(str::to_string),
+        latest_version: latest_version.to_string(),
+        update_available,
+        compatibility,
+        impact: TemplateUpdateImpact {
+            severity: severity.clone(),
+            breaking_changes,
+            summary: impact_summary,
+        },
+        migration_guidance,
+        rollback_steps,
+        backup_path: None,
+        tracked_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string(),
+    })
+}
+
+fn write_update_state(template_path: &Path, state: &TemplateUpdateState) -> Result<()> {
+    let state_file = template_path.join(".starforge-update-state.json");
+    let contents = serde_json::to_string_pretty(state)?;
+    fs::write(&state_file, contents)
+        .with_context(|| format!("Failed to persist update state to {}", state_file.display()))?;
+    Ok(())
+}
+
+fn read_update_state(template_path: &Path) -> Result<Option<TemplateUpdateState>> {
+    let state_file = template_path.join(".starforge-update-state.json");
+    if !state_file.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(&state_file)
+        .with_context(|| format!("Failed to read update state from {}", state_file.display()))?;
+    let state = serde_json::from_str(&contents)
+        .with_context(|| format!("Failed to parse update state from {}", state_file.display()))?;
+    Ok(Some(state))
+}
+
 impl TemplateEntry {
     /// Compute a 0-100 quality/trust score from the available signals.
     ///
@@ -312,8 +502,73 @@ impl TemplateEntry {
         if self.downloads >= 1000 {
             badges.push("[POPULAR]".to_string());
         }
+        if self.featured {
+            badges.push("[FEATURED]".to_string());
+        }
+        if self.is_trending() {
+            badges.push("[TRENDING]".to_string());
+        }
+        if self.is_spam_suspected() {
+            badges.push("[SUSPECT]".to_string());
+        }
 
         badges
+    }
+
+    /// Estimate whether the template is likely a low-quality or spammy submission.
+    pub fn is_spam_suspected(&self) -> bool {
+        if self.verified {
+            return false;
+        }
+
+        let low_confidence = self.description.len() < 50 || self.tags.is_empty();
+        let poor_quality = self.quality_score() < 30;
+        let deprecated = self.maintenance == MaintenanceStatus::Deprecated;
+
+        poor_quality && (low_confidence || deprecated)
+    }
+
+    /// Return whether the template has recently shown activity or popularity.
+    pub fn is_trending(&self) -> bool {
+        if self.downloads >= 500 {
+            return true;
+        }
+        self.updated_recently()
+    }
+
+    pub fn updated_recently(&self) -> bool {
+        if self.updated_at.trim().is_empty() {
+            return false;
+        }
+
+        if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(&self.updated_at) {
+            let age =
+                chrono::Utc::now().signed_duration_since(timestamp.with_timezone(&chrono::Utc));
+            age.num_days() <= 30
+        } else {
+            false
+        }
+    }
+
+    /// A broad health score reflecting quality, maintenance, trending, and
+    /// featured status.
+    pub fn health_score(&self) -> u8 {
+        let mut score = self.quality_score() as i32;
+
+        if self.is_trending() {
+            score += 5;
+        }
+        if self.featured {
+            score += 5;
+        }
+        if self.is_spam_suspected() {
+            score -= 15;
+        }
+        if self.maintenance == MaintenanceStatus::Deprecated {
+            score -= 10;
+        }
+
+        score.clamp(0, 100) as u8
     }
 }
 
@@ -514,8 +769,8 @@ pub fn fetch_template_cached(entry: &TemplateEntry, force_refresh: bool) -> Resu
 /// caching it if necessary.
 ///
 /// Returns `None` when the template name is not found in the registry.
-pub fn template_source_content(name: &str, force_refresh: bool) -> Result<Option<String>> {
-    let registry = load_registry()?;
+pub async fn template_source_content(name: &str, force_refresh: bool) -> Result<Option<String>> {
+    let registry = load_registry().await?;
     let entry = match registry.templates.into_iter().find(|t| t.name == name) {
         Some(e) => e,
         None => return Ok(None),
@@ -532,7 +787,7 @@ pub fn template_source_content(name: &str, force_refresh: bool) -> Result<Option
     }
 }
 
-pub fn load_registry() -> Result<TemplateRegistry> {
+pub async fn load_registry() -> Result<TemplateRegistry> {
     // Determine remote registry URL, falling back to the default global index.
     let remote_url = std::env::var("STARFORGE_TEMPLATE_REGISTRY_URL")
         .ok()
@@ -566,7 +821,7 @@ pub fn load_registry() -> Result<TemplateRegistry> {
     }
 
     // Either forced refresh or cache is missing/old – attempt to fetch remote.
-    match fetch_and_cache_remote(&remote_url) {
+    match fetch_and_cache_remote(&remote_url).await {
         Ok(registry) => Ok(registry),
         Err(_fetch_err) => {
             // If the remote fetch failed but a cached registry exists, fall back to it.
@@ -601,10 +856,11 @@ pub fn save_registry(registry: &TemplateRegistry) -> Result<()> {
 }
 
 /// Fetches a remote JSON template registry, caches it locally, and returns the parsed registry.
-fn fetch_and_cache_remote(url: &str) -> Result<TemplateRegistry> {
-    // Use `ureq` to perform a simple GET request.
-    let response = ureq::get(url)
-        .call()
+async fn fetch_and_cache_remote(url: &str) -> Result<TemplateRegistry> {
+    let response = http_client::get_client()
+        .get(url)
+        .send()
+        .await
         .with_context(|| format!("Failed to fetch remote template registry from {}", url))?;
     if response.status() != 200 {
         anyhow::bail!(
@@ -613,7 +869,8 @@ fn fetch_and_cache_remote(url: &str) -> Result<TemplateRegistry> {
         );
     }
     let json_str = response
-        .into_string()
+        .text()
+        .await
         .with_context(|| "Failed to read response body as string")?;
     // Parse the JSON into our TemplateRegistry struct.
     let registry: TemplateRegistry = serde_json::from_str(&json_str)
@@ -638,8 +895,14 @@ fn fetch_and_cache_remote(url: &str) -> Result<TemplateRegistry> {
 pub struct SearchFilters {
     /// Templates must carry all of these tags (case-insensitive).
     pub tags: Vec<String>,
+    /// Templates must carry all of these categories.
+    pub categories: Vec<String>,
     /// Only include templates flagged as verified.
     pub verified_only: bool,
+    /// Only include only featured templates.
+    pub featured_only: bool,
+    /// Hide templates that are likely low-quality or spammy.
+    pub hide_spam: bool,
     /// Only include templates whose quality score is at least this value.
     pub min_quality: u8,
 }
@@ -704,8 +967,11 @@ fn relevance_for(entry: &TemplateEntry, query_lower: &str) -> (u32, Vec<String>)
 /// (verification, documentation, usage, maintenance), then by raw downloads.
 /// An empty query lists every template that satisfies the filters, ranked by
 /// quality alone.
-pub fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<Vec<SearchResult>> {
-    let registry = load_registry()?;
+pub async fn search_templates_ranked(
+    query: &str,
+    filters: &SearchFilters,
+) -> Result<Vec<SearchResult>> {
+    let registry = load_registry().await?;
     let query_lower = query.trim().to_lowercase();
 
     let mut results: Vec<SearchResult> = registry
@@ -720,7 +986,20 @@ pub fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<V
             if !has_all_tags {
                 return None;
             }
+            let has_all_categories = filters
+                .categories
+                .iter()
+                .all(|fc| entry.categories.iter().any(|c| c.eq_ignore_ascii_case(fc)));
+            if !has_all_categories {
+                return None;
+            }
             if filters.verified_only && !entry.verified {
+                return None;
+            }
+            if filters.featured_only && !entry.featured {
+                return None;
+            }
+            if filters.hide_spam && entry.is_spam_suspected() {
                 return None;
             }
             if entry.quality_score() < filters.min_quality {
@@ -741,13 +1020,12 @@ pub fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<V
         })
         .collect();
 
-    // Rank by relevance, then quality, then downloads. This keeps the most
-    // pertinent matches at the top while still favouring trusted, well-
-    // documented and well-maintained templates.
+    // Rank by relevance, then quality, then trending, then downloads.
     results.sort_by(|a, b| {
         b.relevance
             .cmp(&a.relevance)
             .then_with(|| b.entry.quality_score().cmp(&a.entry.quality_score()))
+            .then_with(|| b.entry.is_trending().cmp(&a.entry.is_trending()))
             .then_with(|| b.entry.downloads.cmp(&a.entry.downloads))
     });
 
@@ -755,50 +1033,130 @@ pub fn search_templates_ranked(query: &str, filters: &SearchFilters) -> Result<V
 }
 
 /// Backwards-compatible search returning just the ranked template entries.
-pub fn search_templates(query: &str, tags: Option<&[String]>) -> Result<Vec<TemplateEntry>> {
+pub async fn search_templates(query: &str, tags: Option<&[String]>) -> Result<Vec<TemplateEntry>> {
     let filters = SearchFilters {
         tags: tags.map(|t| t.to_vec()).unwrap_or_default(),
         ..Default::default()
     };
-    Ok(search_templates_ranked(query, &filters)?
+    Ok(search_templates_ranked(query, &filters)
+        .await?
         .into_iter()
         .map(|r| r.entry)
         .collect())
 }
 
-pub fn get_template(name: &str) -> Result<TemplateEntry> {
-    let registry = load_registry()?;
-    registry
-        .templates
+pub async fn get_template(name: &str) -> Result<TemplateEntry> {
+    let mut versions = get_templates_by_name(name).await?;
+    versions
         .into_iter()
-        .find(|t| t.name == name)
+        .next()
         .ok_or_else(|| anyhow::anyhow!("Template '{}' not found in registry", name))
 }
 
-pub fn get_template_by_name_and_version(
-    name: &str,
-    version: Option<&str>,
-) -> Result<TemplateEntry> {
-    let registry = load_registry()?;
-    let mut matching: Vec<_> = registry
+pub async fn get_templates_by_name(name: &str) -> Result<Vec<TemplateEntry>> {
+    let mut registry = load_registry().await?;
+    let mut matching: Vec<TemplateEntry> = registry
         .templates
         .into_iter()
         .filter(|t| t.name == name)
         .collect();
+    matching.sort_by(|a, b| {
+        let a_ver = semver::Version::parse(&a.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+        let b_ver = semver::Version::parse(&b.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+        b_ver.cmp(&a_ver)
+    });
+    Ok(matching)
+}
 
-    if matching.is_empty() {
-        return Err(anyhow::anyhow!("Template '{}' not found", name));
+/// Render a Markdown documentation page for a template from its registry
+/// metadata. Used by `starforge template docs <name>` to keep per-template
+/// documentation consistent and auto-generated rather than hand-written.
+pub fn generate_template_docs(entry: &TemplateEntry) -> String {
+    let mut md = String::new();
+
+    md.push_str(&format!("# {}\n\n", entry.name));
+    if !entry.description.is_empty() {
+        md.push_str(&format!("{}\n\n", entry.description));
     }
 
+    let badges = entry.trust_indicators();
+    if !badges.is_empty() {
+        md.push_str(&format!("{}\n\n", badges.join(" ")));
+    }
+
+    md.push_str("## Overview\n\n");
+    md.push_str(&format!("- **Version:** {}\n", entry.version));
+    md.push_str(&format!(
+        "- **Quality score:** {}/100\n",
+        entry.quality_score()
+    ));
+    md.push_str(&format!(
+        "- **Verified:** {}\n",
+        if entry.verified { "yes" } else { "no" }
+    ));
+    md.push_str(&format!(
+        "- **Maintenance:** {}\n",
+        entry.maintenance.label()
+    ));
+    if !entry.author.is_empty() {
+        md.push_str(&format!("- **Author:** {}\n", entry.author));
+    }
+    if let Some(license) = &entry.license {
+        md.push_str(&format!("- **License:** {}\n", license));
+    }
+    if !entry.tags.is_empty() {
+        md.push_str(&format!("- **Tags:** {}\n", entry.tags.join(", ")));
+    }
+
+    // CLI compatibility, mirroring the bounds used by `check_version_range`.
+    let compat = match (&entry.cli_version_min, &entry.cli_version_max) {
+        (Some(min), Some(max)) => format!(">= {} and <= {}", min, max),
+        (Some(min), None) => format!(">= {}", min),
+        (None, Some(max)) => format!("<= {}", max),
+        (None, None) => "any version".to_string(),
+    };
+    md.push_str(&format!("- **Requires StarForge CLI:** {}\n", compat));
+    md.push('\n');
+
+    md.push_str("## Install\n\n");
+    md.push_str("```bash\n");
+    md.push_str(&format!("starforge template install {}\n", entry.name));
+    md.push_str("```\n\n");
+
+    let links: Vec<(&str, &Option<String>)> = vec![
+        ("Repository", &entry.repository),
+        ("Homepage", &entry.homepage),
+        ("Documentation", &entry.documentation),
+    ];
+    let present: Vec<String> = links
+        .into_iter()
+        .filter_map(|(label, url)| url.as_ref().map(|u| format!("- [{}]({})", label, u)))
+        .collect();
+    if !present.is_empty() {
+        md.push_str("## Links\n\n");
+        md.push_str(&present.join("\n"));
+        md.push('\n');
+    }
+
+    md
+}
+
+pub async fn get_template_by_name_and_version(
+    name: &str,
+    version: Option<&str>,
+) -> Result<TemplateEntry> {
+    let versions = get_templates_by_name(name).await?;
+
     if let Some(v) = version {
-        matching.sort_by(|a, b| semver_cmp(&b.version, &a.version));
-        matching
+        versions
             .into_iter()
             .find(|t| t.version == v)
             .ok_or_else(|| anyhow::anyhow!("Template '{}@{}' not found", name, v))
     } else {
-        matching.sort_by(|a, b| semver_cmp(&b.version, &a.version));
-        Ok(matching.into_iter().next().unwrap())
+        versions
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", name))
     }
 }
 
@@ -813,15 +1171,16 @@ fn semver_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     parse_version(a).cmp(&parse_version(b))
 }
 
-pub fn add_template(entry: TemplateEntry) -> Result<()> {
-    let mut registry = load_registry()?;
+pub async fn add_template(entry: TemplateEntry) -> Result<()> {
+    let mut registry = load_registry().await?;
 
-    // Check if template already exists
-    if let Some(existing) = registry.templates.iter_mut().find(|t| t.name == entry.name) {
-        // Update existing template
+    if let Some(existing) = registry
+        .templates
+        .iter_mut()
+        .find(|t| t.name == entry.name && t.version == entry.version)
+    {
         *existing = entry;
     } else {
-        // Add new template
         registry.templates.push(entry);
     }
 
@@ -831,8 +1190,8 @@ pub fn add_template(entry: TemplateEntry) -> Result<()> {
 
 /// Remove a template from the registry.
 /// If `purge` is true, also deletes any cached/downloaded assets.
-pub fn remove_template(name: &str, purge: bool) -> Result<()> {
-    let mut registry = load_registry()?;
+pub async fn remove_template(name: &str, purge: bool) -> Result<()> {
+    let mut registry = load_registry().await?;
     let before = registry.templates.len();
 
     registry.templates.retain(|t| t.name != name);
@@ -882,8 +1241,8 @@ fn purge_template_assets(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn update_template(name: &str) -> Result<()> {
-    let entry = get_template(name)?;
+pub async fn update_template(name: &str) -> Result<()> {
+    let entry = get_template(name).await?;
 
     match &entry.source {
         TemplateSource::Git { url, branch } => {
@@ -997,7 +1356,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn publish_template(
+pub async fn publish_template(
     template_path: &Path,
     name: String,
     description: String,
@@ -1019,11 +1378,12 @@ pub fn publish_template(
         None,
         None,
     )
+    .await
 }
 
 /// Like `publish_template` but also records optional CLI version constraints.
 /// Install a template from a directory or `.zip` archive into the local registry.
-pub fn install_template_package(
+pub async fn install_template_package(
     package_path: &Path,
     name: String,
     description: String,
@@ -1047,9 +1407,10 @@ pub fn install_template_package(
         None,
         None,
     )
+    .await
 }
 
-pub fn publish_template_versioned(
+pub async fn publish_template_versioned(
     template_path: &Path,
     name: String,
     description: String,
@@ -1071,20 +1432,42 @@ pub fn publish_template_versioned(
 
     validate_template_structure(&source_root, &name, &description, &author, &version)?;
 
-    let dest = template_storage_dir()?.join(&name);
+    let storage_root = template_storage_dir()?.join(&name);
+    let dest = storage_root.join(&version);
+
+    let mut registry = load_registry().await?;
+    let same_version_exists = registry
+        .templates
+        .iter()
+        .any(|t| t.name == name && t.version == version);
 
     if dest.exists() {
-        anyhow::bail!(
-            "Template '{}' already exists. Remove it first or use a different name.",
-            name
-        );
+        if same_version_exists {
+            fs::remove_dir_all(&dest).with_context(|| {
+                format!("Failed to remove existing template version directory {}", dest.display())
+            })?;
+        } else {
+            anyhow::bail!(
+                "Template '{}' version '{}' already exists. Remove the old version or choose a new version.",
+                name,
+                version
+            );
+        }
     }
 
     copy_dir_recursive(&source_root, &dest)?;
 
+    let created_at = Utc::now().to_rfc3339();
+    let mut changelog: Vec<ChangelogEntry> = Vec::new();
+    changelog.push(ChangelogEntry {
+        version: version.clone(),
+        date: Utc::now().format("%Y-%m-%d").to_string(),
+        notes: "Initial release".to_string(),
+    });
+
     let entry = TemplateEntry {
         name: name.clone(),
-        version,
+        version: version.clone(),
         description,
         author,
         tags,
@@ -1094,23 +1477,26 @@ pub fn publish_template_versioned(
         path: Some(dest.to_string_lossy().to_string()),
         downloads: 0,
         verified: false,
-        created_at: String::new(),
-        updated_at: String::new(),
+        created_at: created_at.clone(),
+        updated_at: created_at,
         cli_version_min,
         cli_version_max,
         documented: source_root.join("README.md").exists(),
         maintenance: MaintenanceStatus::Active,
         license,
-        repository,
+        repository_url: repository,
         homepage,
         documentation,
+        categories: Vec::new(),
+        featured: false,
     };
 
-    add_template(entry)?;
+    add_template(entry).await?;
 
     Ok(())
 }
 
+/// Validate template metadata and structure without CLI version constraints.
 pub fn validate_template_structure(
     path: &Path,
     name: &str,
@@ -1261,7 +1647,7 @@ pub fn validate_template_structure_with_constraints(
 /// 1. Starts with `https://`, `http://`, `git://`, or ends with `.git` → git URL
 /// 2. Path exists on disk, or starts with `/`, `./`, or `../` → local path
 /// 3. Anything else → treated as a registry template name (marketplace lookup)
-pub fn install_template(
+pub async fn install_template(
     source: &str,
     name_override: Option<&str>,
     version: Option<&str>,
@@ -1272,7 +1658,7 @@ pub fn install_template(
         || source.starts_with("git://")
         || source.ends_with(".git")
     {
-        return install_from_git_url(source, name_override, force);
+        return install_from_git_url(source, name_override, force).await;
     }
 
     let path = Path::new(source);
@@ -1281,13 +1667,13 @@ pub fn install_template(
         || source.starts_with("./")
         || source.starts_with("../")
     {
-        return install_from_local_path(path, name_override, force);
+        return install_from_local_path(path, name_override, force).await;
     }
 
-    install_from_registry(source, version, force)
+    install_from_registry(source, version, force).await
 }
 
-fn install_from_git_url(
+async fn install_from_git_url(
     url: &str,
     name_override: Option<&str>,
     force: bool,
@@ -1301,7 +1687,7 @@ fn install_from_git_url(
             .to_string()
     });
 
-    let mut registry = load_registry()?;
+    let mut registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1341,9 +1727,11 @@ fn install_from_git_url(
         documented: dest.join("README.md").exists(),
         maintenance: MaintenanceStatus::Unknown,
         license: None,
-        repository: Some(url.to_string()),
+        repository_url: Some(url.to_string()),
         homepage: None,
         documentation: None,
+        categories: Vec::new(),
+        featured: false,
     };
 
     registry.templates.retain(|t| t.name != name);
@@ -1353,7 +1741,7 @@ fn install_from_git_url(
     Ok(entry)
 }
 
-fn install_from_local_path(
+async fn install_from_local_path(
     path: &Path,
     name_override: Option<&str>,
     force: bool,
@@ -1369,7 +1757,7 @@ fn install_from_local_path(
             .to_string()
     });
 
-    let mut registry = load_registry()?;
+    let mut registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1408,9 +1796,11 @@ fn install_from_local_path(
         documented: dest.join("README.md").exists(),
         maintenance: MaintenanceStatus::Unknown,
         license: None,
-        repository: None,
+        repository_url: None,
         homepage: None,
         documentation: None,
+        categories: Vec::new(),
+        featured: false,
     };
 
     registry.templates.retain(|t| t.name != name);
@@ -1420,8 +1810,12 @@ fn install_from_local_path(
     Ok(entry)
 }
 
-fn install_from_registry(name: &str, version: Option<&str>, force: bool) -> Result<TemplateEntry> {
-    let entry = get_template_by_name_and_version(name, version)?;
+async fn install_from_registry(
+    name: &str,
+    version: Option<&str>,
+    force: bool,
+) -> Result<TemplateEntry> {
+    let entry = get_template_by_name_and_version(name, version).await?;
     assert_template_compatible(&entry)?;
 
     let dest = template_storage_dir()?.join(&entry.name);
@@ -1449,8 +1843,8 @@ fn install_from_registry(name: &str, version: Option<&str>, force: bool) -> Resu
 
 /// Re-fetch a git-sourced template into its local storage directory, updating
 /// it in place. Only git-sourced templates support this operation.
-pub fn update_installed_template(name: &str) -> Result<()> {
-    let entry = get_template(name)?;
+pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateReport> {
+    let entry = get_template(name).await?;
 
     match &entry.source {
         TemplateSource::Git { url, branch } => {
@@ -1460,6 +1854,29 @@ pub fn update_installed_template(name: &str) -> Result<()> {
                 template_storage_dir()?.join(name)
             };
 
+            let previous_version = infer_template_version_from_dir(&dest).or_else(|| Some(entry.version.clone()));
+            let mut report = build_update_report(
+                name,
+                previous_version.as_deref(),
+                &entry.version,
+                &entry,
+            )?;
+
+            if dest.exists() {
+                let backup_root = template_storage_dir()?.join(".backups").join(name);
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let backup_dir = backup_root.join(format!("{}_{}", timestamp, previous_version.as_deref().unwrap_or("unknown")));
+                if backup_dir.exists() {
+                    fs::remove_dir_all(&backup_dir)?;
+                }
+                fs::create_dir_all(&backup_dir)?;
+                copy_dir_recursive(&dest, &backup_dir)?;
+                report.backup_path = Some(backup_dir.to_string_lossy().to_string());
+            }
+
             if dest.exists() {
                 fs::remove_dir_all(&dest).with_context(|| {
                     format!("Failed to remove existing template at {}", dest.display())
@@ -1468,14 +1885,24 @@ pub fn update_installed_template(name: &str) -> Result<()> {
 
             fetch_git_template(url, branch.as_deref(), &dest)?;
 
-            let mut registry = load_registry()?;
+            let mut registry = load_registry().await?;
             if let Some(t) = registry.templates.iter_mut().find(|t| t.name == name) {
                 t.path = Some(dest.to_string_lossy().to_string());
                 t.updated_at = String::new();
             }
             save_registry(&registry)?;
 
-            Ok(())
+            let state = TemplateUpdateState {
+                template_name: name.to_string(),
+                backup_path: report.backup_path.clone(),
+                previous_version: previous_version.clone(),
+                last_report: Some(report.clone()),
+            };
+            if dest.exists() {
+                write_update_state(&dest, &state)?;
+            }
+
+            Ok(report)
         }
         other => anyhow::bail!(
             "Template '{}' uses source '{}' which does not support updates. \
@@ -1487,8 +1914,8 @@ pub fn update_installed_template(name: &str) -> Result<()> {
 }
 
 /// Update all git-sourced templates. Returns a list of (name, result) pairs.
-pub fn update_all_installed_templates() -> Result<Vec<(String, Result<()>)>> {
-    let registry = load_registry()?;
+pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<TemplateUpdateReport>)>> {
+    let registry = load_registry().await?;
     let git_names: Vec<String> = registry
         .templates
         .iter()
@@ -1496,13 +1923,60 @@ pub fn update_all_installed_templates() -> Result<Vec<(String, Result<()>)>> {
         .map(|t| t.name.clone())
         .collect();
 
-    Ok(git_names
-        .into_iter()
-        .map(|name| {
-            let result = update_installed_template(&name);
-            (name, result)
-        })
-        .collect())
+    let mut results = Vec::new();
+    for name in git_names {
+        let result = update_installed_template(&name).await;
+        results.push((name, result));
+    }
+    Ok(results)
+}
+
+pub async fn rollback_installed_template(name: &str) -> Result<TemplateUpdateReport> {
+    let entry = get_template(name).await?;
+    let dest = if let Some(ref p) = entry.path {
+        PathBuf::from(p)
+    } else {
+        template_storage_dir()?.join(name)
+    };
+
+    let state = read_update_state(&dest)?
+        .ok_or_else(|| anyhow::anyhow!("No recorded update state exists for template '{}'", name))?;
+    let backup_path = state.backup_path.as_deref().ok_or_else(|| {
+        anyhow::anyhow!("No backup is available for template '{}'", name)
+    })?;
+
+    if dest.exists() {
+        fs::remove_dir_all(&dest).with_context(|| {
+            format!("Failed to remove template directory before rollback: {}", dest.display())
+        })?;
+    }
+
+    copy_dir_recursive(Path::new(backup_path), &dest).with_context(|| {
+        format!("Failed to restore template from backup at {}", backup_path)
+    })?;
+
+    let mut report = state.last_report.unwrap_or_else(|| TemplateUpdateReport {
+        template_name: name.to_string(),
+        previous_version: state.previous_version.clone(),
+        latest_version: entry.version.clone(),
+        update_available: true,
+        compatibility: "Rollback restored the previous template contents".to_string(),
+        impact: TemplateUpdateImpact {
+            severity: "low".to_string(),
+            breaking_changes: false,
+            summary: "Rollback restored the previous template state.".to_string(),
+        },
+        migration_guidance: vec!["Rollback completed successfully.".to_string()],
+        rollback_steps: vec![],
+        backup_path: state.backup_path.clone(),
+        tracked_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string(),
+    });
+    report.backup_path = state.backup_path.clone();
+    Ok(report)
 }
 
 #[cfg(test)]
@@ -1530,10 +2004,50 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
+            categories: Vec::new(),
+            featured: false,
         }
+    }
+
+    #[test]
+    fn generate_template_docs_includes_key_metadata() {
+        let mut entry = make_entry("erc20-token");
+        entry.description = "A fungible token implementing the ERC-20 interface.".to_string();
+        entry.version = "2.1.0".to_string();
+        entry.verified = true;
+        entry.documented = true;
+        entry.maintenance = MaintenanceStatus::Active;
+        entry.author = "Stellar Community".to_string();
+        entry.license = Some("MIT".to_string());
+        entry.tags = vec!["token".to_string(), "erc20".to_string()];
+        entry.cli_version_min = Some("0.1.0".to_string());
+        entry.repository = Some("https://github.com/example/erc20".to_string());
+
+        let md = generate_template_docs(&entry);
+
+        assert!(md.starts_with("# erc20-token\n"));
+        assert!(md.contains("A fungible token implementing the ERC-20 interface."));
+        assert!(md.contains("- **Version:** 2.1.0"));
+        assert!(md.contains("- **License:** MIT"));
+        assert!(md.contains("- **Tags:** token, erc20"));
+        assert!(md.contains("- **Requires StarForge CLI:** >= 0.1.0"));
+        assert!(md.contains("[VERIFIED]"));
+        assert!(md.contains("starforge template install erc20-token"));
+        assert!(md.contains("[Repository](https://github.com/example/erc20)"));
+        // Quality score is rendered (verified + documented + active => high).
+        assert!(md.contains("Quality score:"));
+    }
+
+    #[test]
+    fn generate_template_docs_omits_absent_optional_sections() {
+        let entry = make_entry("bare");
+        let md = generate_template_docs(&entry);
+        // No links declared => no Links section; no version bound => "any version".
+        assert!(!md.contains("## Links"));
+        assert!(md.contains("- **Requires StarForge CLI:** any version"));
     }
 
     use std::fs;
@@ -1738,6 +2252,70 @@ mod tests {
     }
 
     #[test]
+    fn test_publish_template_versioned_stores_by_version() {
+        let tmp = tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::env::set_var("HOME", home.as_os_str());
+        let registry_dir = home.join(".starforge").join("templates");
+        fs::create_dir_all(&registry_dir).unwrap();
+        fs::write(
+            registry_dir.join("registry.json"),
+            "{\"version\": \"1\", \"templates\": []}",
+        )
+        .unwrap();
+
+        let tpl_dir = tmp.path().join("template");
+        make_valid_template(&tpl_dir);
+
+        futures::executor::block_on(async {
+            publish_template_versioned(
+                &tpl_dir,
+                "my-template".to_string(),
+                "A test template".to_string(),
+                "Alice".to_string(),
+                vec!["defi".to_string()],
+                "1.0.0".to_string(),
+                Some("0.1.0".to_string()),
+                Some("1.0.0".to_string()),
+                Some("MIT".to_string()),
+                Some("https://example.com".to_string()),
+                Some("https://docs.example.com".to_string()),
+                Some("https://homepage.example.com".to_string()),
+            )
+            .await
+            .unwrap();
+
+            let storage = home.join(".starforge").join("templates").join("storage");
+            assert!(storage.join("my-template").join("1.0.0").exists());
+
+            publish_template_versioned(
+                &tpl_dir,
+                "my-template".to_string(),
+                "A test template".to_string(),
+                "Alice".to_string(),
+                vec!["defi".to_string()],
+                "1.1.0".to_string(),
+                Some("0.1.0".to_string()),
+                Some("1.0.0".to_string()),
+                Some("MIT".to_string()),
+                Some("https://example.com".to_string()),
+                Some("https://docs.example.com".to_string()),
+                Some("https://homepage.example.com".to_string()),
+            )
+            .await
+            .unwrap();
+
+            let latest = get_template("my-template").await.unwrap();
+            assert_eq!(latest.version, "1.1.0");
+
+            let older = get_template_by_name_and_version("my-template", Some("1.0.0"))
+                .await
+                .unwrap();
+            assert_eq!(older.version, "1.0.0");
+        });
+    }
+
+    #[test]
     fn test_search_templates() {
         let mut registry = TemplateRegistry::default();
         registry.templates.push(TemplateEntry {
@@ -1760,9 +2338,11 @@ mod tests {
             documented: true,
             maintenance: MaintenanceStatus::Active,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
+            categories: Vec::new(),
+            featured: false,
         });
 
         // Test name search
@@ -1809,9 +2389,11 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
+            categories: Vec::new(),
+            featured: false,
         };
 
         let dest = tmp.path().join(&entry.name);
@@ -1860,9 +2442,11 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
-            repository: None,
+            repository_url: None,
             homepage: None,
             documentation: None,
+            categories: Vec::new(),
+            featured: false,
         }
     }
 
@@ -1905,10 +2489,10 @@ mod tests {
         entry.downloads = 1500;
 
         let badges = entry.trust_indicators();
-        assert!(badges.iter().any(|b| b.contains("VERIFIED")));
-        assert!(badges.iter().any(|b| b.contains("DOCS")));
-        assert!(badges.iter().any(|b| b.contains("DEPRECATED")));
-        assert!(badges.iter().any(|b| b.contains("POPULAR")));
+        assert!(badges.iter().any(|b| b.contains("[VERIFIED]")));
+        assert!(badges.iter().any(|b| b.contains("[DOCS]")));
+        assert!(badges.iter().any(|b| b.contains("[DEPRECATED]")));
+        assert!(badges.iter().any(|b| b.contains("[POPULAR]")));
     }
 
     #[test]

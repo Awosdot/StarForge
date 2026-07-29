@@ -1,9 +1,10 @@
 use crate::utils::print as p;
 use crate::utils::security::{
-    apply_hardening, default_rules, evaluate_event, format_report, generate_hardening_report,
-    run_audit, run_checklist, run_pentest, track_findings, validate_security, write_report,
-    AnomalyDetector, AuditConfig, HardeningOptions, IncidentResponse, IncidentStore,
-    RemediationStatus, ThreatFeed,
+    apply_hardening, default_rules, evaluate_event, format_compliance_report,
+    format_data_protection_report, format_report, generate_hardening_report, run_audit,
+    run_checklist, validate_security, write_report, AnomalyDetector, AuditConfig,
+    ComplianceEngine, ComplianceStandard, DataProtectionEngine, HardeningOptions,
+    IncidentResponse, IncidentStore, ThreatDetectionEngine, ThreatFeed,
 };
 use crate::utils::stream::{EventStreamFilters, SorobanEventStream};
 use crate::utils::{config, notifications, soroban};
@@ -33,10 +34,12 @@ pub enum SecurityCommands {
     Incident(IncidentArgs),
     /// Run full security audit with external tools (Slither, Mythril) and built-in analysis
     Audit(AuditArgs),
-    /// Run simulated penetration test cases against contract source
-    Pentest(PentestArgs),
-    /// Track remediation of findings from audit/pentest/checklist runs
-    Remediation(RemediationArgs),
+    /// AI-powered threat detection and analysis
+    ThreatDetect(ThreatDetectArgs),
+    /// AI-powered compliance monitoring and reporting
+    Compliance(ComplianceArgs),
+    /// AI-powered data protection and encryption checks
+    DataProtection(DataProtectionArgs),
 }
 
 #[derive(Args)]
@@ -49,6 +52,9 @@ pub struct AuditArgs {
     /// Run Mythril if installed
     #[arg(long, default_value = "true")]
     pub mythril: bool,
+    /// Scan with built-in static analysis only; skip all external tools
+    #[arg(long)]
+    pub offline: bool,
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     pub format: String,
@@ -58,6 +64,15 @@ pub struct AuditArgs {
     /// CI mode: exit non-zero if score is below threshold (0-100)
     #[arg(long)]
     pub min_score: Option<f64>,
+    /// CI mode: default minimum score to 80 and fail on unmet threshold
+    #[arg(long, default_value_t = false)]
+    pub ci: bool,
+    /// Write a GitHub Actions workflow that runs this audit
+    #[arg(long)]
+    pub ci_workflow_out: Option<PathBuf>,
+    /// Track findings in the remediation tracker
+    #[arg(long, default_value_t = false)]
+    pub track: bool,
 }
 
 #[derive(Args)]
@@ -110,6 +125,42 @@ pub enum IncidentCommands {
         #[arg(long)]
         id: String,
     },
+    Show {
+        #[arg(long)]
+        id: String,
+    },
+    CollectEvidence {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        evidence_type: String,
+        #[arg(long)]
+        description: String,
+        #[arg(long)]
+        data: String,
+    },
+    Notify {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        recipient: String,
+        #[arg(long)]
+        channel: String,
+        #[arg(long)]
+        message: String,
+    },
+    Analyze {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        root_cause: String,
+        #[arg(long)]
+        lessons: Vec<String>,
+    },
+    Summary {
+        #[arg(long)]
+        id: String,
+    },
 }
 
 #[derive(Args)]
@@ -119,57 +170,68 @@ pub struct IncidentArgs {
 }
 
 #[derive(Args)]
-pub struct PentestArgs {
+pub struct ThreatDetectArgs {
     /// Path to Soroban contract source (.rs)
     pub path: PathBuf,
+    /// Contract ID to monitor
+    #[arg(long)]
+    pub contract: String,
+    /// Event type to analyze
+    #[arg(long)]
+    pub event_type: String,
+    /// Event value/data to analyze
+    #[arg(long)]
+    pub event_value: String,
+    /// Caller address
+    #[arg(long, default_value = "unknown")]
+    pub caller: String,
+    /// Numeric value associated with event (optional)
+    #[arg(long)]
+    pub value: Option<f64>,
     /// Output format: text or json
     #[arg(long, default_value = "text")]
     pub format: String,
-    /// Automatically create remediation tracking items for exploited cases
-    #[arg(long, default_value_t = true)]
-    pub track: bool,
-}
-
-#[derive(Subcommand)]
-pub enum RemediationCommands {
-    /// List tracked remediation items
-    List {
-        #[arg(long)]
-        status: Option<String>,
-    },
-    /// Assign a remediation item to someone
-    Assign {
-        id: String,
-        #[arg(long)]
-        to: String,
-    },
-    /// Update the status of a remediation item
-    Status {
-        id: String,
-        /// New status: open, in-progress, resolved, verified, wont-fix
-        status: String,
-    },
-    /// Add a note to a remediation item
-    Note { id: String, note: String },
 }
 
 #[derive(Args)]
-pub struct RemediationArgs {
-    #[command(subcommand)]
-    pub command: RemediationCommands,
+pub struct ComplianceArgs {
+    /// Path to Soroban contract source (.rs)
+    pub path: PathBuf,
+    /// Compliance standards to check (gdpr, soc2, hipaa, iso27001)
+    #[arg(long)]
+    pub standards: Vec<String>,
+    /// Save report to file
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
 }
 
-pub async fn handle(cmd: SecurityCommands) -> Result<()> {
+#[derive(Args)]
+pub struct DataProtectionArgs {
+    /// Path to Soroban contract source (.rs)
+    pub path: PathBuf,
+    /// Save report to file
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+    /// Output format: text or json
+    #[arg(long, default_value = "text")]
+    pub format: String,
+}
+
+pub fn handle(cmd: SecurityCommands) -> Result<()> {
     match cmd {
         SecurityCommands::Harden(args) => handle_harden(args),
         SecurityCommands::Checklist(args) => handle_checklist(args),
         SecurityCommands::Validate(args) => handle_validate(args),
         SecurityCommands::Report(args) => handle_report(args),
-        SecurityCommands::Monitor(args) => handle_monitor(args),
+        SecurityCommands::Monitor(args) => handle_monitor(args).await,
         SecurityCommands::Incident(args) => handle_incident(args),
         SecurityCommands::Audit(args) => handle_audit(args),
-        SecurityCommands::Pentest(args) => handle_pentest(args),
-        SecurityCommands::Remediation(args) => handle_remediation(args),
+        SecurityCommands::ThreatDetect(args) => handle_threat_detect(args),
+        SecurityCommands::Compliance(args) => handle_compliance(args),
+        SecurityCommands::DataProtection(args) => handle_data_protection(args),
     }
 }
 
@@ -268,7 +330,7 @@ fn handle_report(args: ReportArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_monitor(args: SecurityMonitorArgs) -> Result<()> {
+async fn handle_monitor(args: SecurityMonitorArgs) -> Result<()> {
     config::validate_contract_id(&args.contract)?;
     config::validate_network(&args.network)?;
 
@@ -295,7 +357,7 @@ fn handle_monitor(args: SecurityMonitorArgs) -> Result<()> {
     fs::create_dir_all(&report_dir)?;
 
     while running.load(Ordering::SeqCst) {
-        match stream.next_batch() {
+        match stream.next_batch().await {
             Ok(batch) => {
                 for event in batch {
                     let security_events = evaluate_event(
@@ -336,11 +398,11 @@ fn handle_monitor(args: SecurityMonitorArgs) -> Result<()> {
                 if !args.follow {
                     break;
                 }
-                stream.sleep();
+                stream.sleep().await;
             }
             Err(err) => {
                 notifications::warn(&format!("Stream error: {}. Retrying…", err));
-                stream.sleep_backoff();
+                stream.sleep_backoff().await;
             }
         }
     }
@@ -358,11 +420,17 @@ fn handle_incident(args: IncidentArgs) -> Result<()> {
                 p::info("No incidents recorded");
                 return Ok(());
             }
-            for inc in incidents {
+            for inc in &incidents {
                 println!(
                     "  {} [{}] {} — {:?} ({})",
                     inc.id, inc.severity, inc.title, inc.status, inc.created_at
                 );
+                if inc.playbook.is_some() {
+                    println!("    Playbook: assigned");
+                }
+                if !inc.evidence.is_empty() {
+                    println!("    Evidence: {} items", inc.evidence.len());
+                }
             }
             Ok(())
         }
@@ -374,6 +442,58 @@ fn handle_incident(args: IncidentArgs) -> Result<()> {
             p::success(&format!("Incident {} acknowledged", updated.id));
             Ok(())
         }
+        IncidentCommands::Show { id } => {
+            let summary = IncidentResponse::generate_incident_summary(&id)?;
+            println!("{}", summary);
+            Ok(())
+        }
+        IncidentCommands::CollectEvidence {
+            id,
+            evidence_type,
+            description,
+            data,
+        } => {
+            let item = IncidentStore::add_evidence(&id, &evidence_type, &description, &data)?;
+            p::success(&format!("Evidence {} collected for incident {}", item.id, id));
+            Ok(())
+        }
+        IncidentCommands::Notify {
+            id,
+            recipient,
+            channel,
+            message,
+        } => {
+            let notification =
+                IncidentStore::notify_stakeholder(&id, &recipient, &channel, &message)?;
+            p::success(&format!(
+                "Notification {} sent to {} via {}",
+                notification.id, recipient, channel
+            ));
+            Ok(())
+        }
+        IncidentCommands::Analyze {
+            id,
+            root_cause,
+            lessons,
+        } => {
+            let analysis = IncidentResponse::complete_post_analysis(
+                &id,
+                &root_cause,
+                lessons,
+                vec!["Review access controls".into(), "Add monitoring rules".into()],
+            )?;
+            p::success(&format!(
+                "Post-incident analysis completed for {}",
+                id
+            ));
+            p::kv("Root cause", &analysis.root_cause);
+            Ok(())
+        }
+        IncidentCommands::Summary { id } => {
+            let summary = IncidentResponse::generate_incident_summary(&id)?;
+            println!("{}", summary);
+            Ok(())
+        }
     }
 }
 
@@ -383,11 +503,12 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
     p::kv("Contract", &args.path.display().to_string());
 
     let cfg = AuditConfig {
-        run_slither: args.slither,
-        run_mythril: args.mythril,
+        run_slither: args.slither && !args.offline,
+        run_mythril: args.mythril && !args.offline,
     };
 
     let result = run_audit(&args.path, &cfg)?;
+    let min_score = args.min_score.or_else(|| args.ci.then_some(80.0));
 
     let score_label = match result.score as u32 {
         90..=100 => "Excellent",
@@ -398,6 +519,7 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
 
     p::separator();
     p::kv("Tools used", &result.tools_used.join(", "));
+    p::kv("CI ready", if result.ci_passed { "yes" } else { "no" });
     p::kv(
         "Security score",
         &format!("{:.1}/100  ({})", result.score, score_label),
@@ -407,6 +529,20 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
     p::kv("Medium  ", &result.summary.medium.to_string());
     p::kv("Low     ", &result.summary.low.to_string());
     p::kv("Info    ", &result.summary.info.to_string());
+
+    println!();
+    p::header("Tool Status");
+    for tool in &result.tool_statuses {
+        let detail = tool
+            .message
+            .as_deref()
+            .map(|message| format!(" - {}", message))
+            .unwrap_or_default();
+        println!(
+            "  {}: {} (findings: {}){}",
+            tool.tool, tool.status, tool.findings, detail
+        );
+    }
 
     if !result.findings.is_empty() {
         println!();
@@ -431,6 +567,34 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
         p::success("No security issues found.");
     }
 
+    if args.track {
+        let tracking_findings: Vec<_> = result
+            .findings
+            .iter()
+            .map(|finding| {
+                (
+                    finding.title.clone(),
+                    finding.severity.clone(),
+                    finding.description.clone(),
+                    finding.remediation.clone(),
+                )
+            })
+            .collect();
+        let created = track_findings("audit", &tracking_findings)?;
+        if !created.is_empty() {
+            p::info(&format!(
+                "Created {} remediation tracking item(s)",
+                created.len()
+            ));
+        }
+    }
+
+    if let Some(path) = &args.ci_workflow_out {
+        let workflow = generate_github_actions_workflow(&args.path, min_score.unwrap_or(80.0));
+        fs::write(path, workflow)?;
+        p::kv("CI workflow", &path.display().to_string());
+    }
+
     match args.format.as_str() {
         "json" => {
             let json = serde_json::to_string_pretty(&result)?;
@@ -441,16 +605,31 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
                 println!("{}", json);
             }
         }
-        _ => {
+        "html" => {
+            let html = format_html_report(&result);
+            if let Some(out) = &args.out {
+                fs::write(out, &html)?;
+                p::kv("Report saved", &out.display().to_string());
+            } else {
+                println!("{}", html);
+            }
+        }
+        "text" => {
             if let Some(out) = &args.out {
                 let text = format_report(&result);
                 fs::write(out, &text)?;
                 p::kv("Report saved", &out.display().to_string());
             }
         }
+        _ => {
+            anyhow::bail!(
+                "Unsupported audit format '{}'. Use text, json, or html.",
+                args.format
+            );
+        }
     }
 
-    if let Some(min) = args.min_score {
+    if let Some(min) = min_score {
         if result.score < min {
             anyhow::bail!(
                 "Security score {:.1} is below required minimum {:.1}",
@@ -464,127 +643,293 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_pentest(args: PentestArgs) -> Result<()> {
+fn handle_threat_detect(args: ThreatDetectArgs) -> Result<()> {
     config::validate_file_path(&args.path, Some("rs"))?;
-    p::header("Penetration Test Simulation");
-    p::kv("Contract", &args.path.display().to_string());
+    p::header("AI Threat Detection");
+    p::kv("Contract", &args.contract);
+    p::kv("Event type", &args.event_type);
 
-    let report = run_pentest(&args.path)?;
+    let mut engine = ThreatDetectionEngine::new(&args.contract);
 
-    if args.track {
-        let findings: Vec<_> = report
-            .results
-            .iter()
-            .filter(|r| r.exploited)
-            .map(|r| {
-                (
-                    r.name.clone(),
-                    r.severity.clone(),
-                    r.evidence.clone(),
-                    r.remediation.clone(),
-                )
-            })
-            .collect();
-        let created = track_findings("pentest", &findings)?;
-        if !created.is_empty() {
-            p::info(&format!(
-                "Created {} new remediation item(s)",
-                created.len()
-            ));
+    let event = engine.analyze_event(
+        &args.event_type,
+        &args.event_value,
+        &args.caller,
+        args.value,
+    )?;
+
+    let summary = engine.threat_summary();
+
+    p::separator();
+    p::kv("Threat score", &format!("{:.2}", event.score));
+    p::kv("Classification", event.classification.as_str());
+    p::kv("Severity", &event.severity);
+
+    if !event.indicators.is_empty() {
+        println!();
+        p::header("Indicators");
+        for indicator in &event.indicators {
+            println!("  - {}", indicator);
         }
     }
 
-    if args.format == "json" {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-        return Ok(());
+    if !event.recommended_actions.is_empty() {
+        println!();
+        p::header("Recommended Actions");
+        for action in &event.recommended_actions {
+            println!("  - {}", action);
+        }
     }
 
-    p::separator();
-    p::kv("Cases run", &report.cases_run.to_string());
-    p::kv("Cases exploited", &report.cases_exploited.to_string());
-    p::kv("Security score", &format!("{:.1}/100", report.score));
     println!();
+    p::kv("Total events analyzed", &summary.total_events.to_string());
+    p::kv("Malicious", &summary.malicious.to_string());
+    p::kv("Suspicious", &summary.suspicious.to_string());
 
-    for r in &report.results {
-        let icon = if r.exploited { "✗".red() } else { "✓".green() };
-        println!(
-            "  {} [{}] {} ({})",
-            icon,
-            r.severity.to_uppercase(),
-            r.name,
-            r.id
-        );
-        println!("      Attack vector: {}", r.attack_vector);
-        if r.exploited {
-            println!("      Evidence: {}", r.evidence);
-            println!("      Remediation: {}", r.remediation);
+    match args.format.as_str() {
+        "json" => {
+            let json = serde_json::to_string_pretty(&event)?;
+            println!("{}", json);
         }
+        _ => {}
     }
 
-    p::separator();
-    if report.cases_exploited == 0 {
-        p::success("No exploitable findings from simulated penetration tests");
-    } else {
-        p::warn(&format!(
-            "{} simulated attack(s) succeeded — see remediation items",
-            report.cases_exploited
+    if event.classification == crate::utils::security::ThreatClassification::Malicious {
+        notifications::alert(&format!(
+            "CRITICAL THREAT DETECTED [{}]: score {:.2}",
+            event.contract_id, event.score
         ));
     }
+
+    p::success("Threat analysis complete");
     Ok(())
 }
 
-fn handle_remediation(args: RemediationArgs) -> Result<()> {
-    match args.command {
-        RemediationCommands::List { status } => {
-            p::header("Remediation Tracker");
-            let mut items = crate::utils::security::remediation::load_all()?;
-            if let Some(status) = &status {
-                items.retain(|i| i.status.to_string() == *status);
-            }
-            if items.is_empty() {
-                p::info("No remediation items recorded.");
-                return Ok(());
-            }
-            for item in &items {
-                println!(
-                    "  {} [{}] {} — {} ({})",
-                    &item.id[..8.min(item.id.len())].cyan(),
-                    item.severity.to_uppercase(),
-                    item.title,
-                    item.status,
-                    item.source,
-                );
-                if let Some(assignee) = &item.assignee {
-                    println!("      Assigned to: {}", assignee);
-                }
-            }
-            Ok(())
-        }
-        RemediationCommands::Assign { id, to } => {
-            let item = crate::utils::security::remediation::assign(&id, &to)?;
-            p::success(&format!("Assigned '{}' to {}", item.title, to));
-            Ok(())
-        }
-        RemediationCommands::Status { id, status } => {
-            let parsed = match status.as_str() {
-                "open" => RemediationStatus::Open,
-                "in-progress" => RemediationStatus::InProgress,
-                "resolved" => RemediationStatus::Resolved,
-                "verified" => RemediationStatus::Verified,
-                "wont-fix" => RemediationStatus::WontFix,
-                other => anyhow::bail!(
-                    "Unknown status '{}'. Use one of: open, in-progress, resolved, verified, wont-fix",
-                    other
-                ),
-            };
-            let item = crate::utils::security::remediation::update_status(&id, parsed)?;
-            p::success(&format!("'{}' is now {}", item.title, item.status));
-            Ok(())
-        }
-        RemediationCommands::Note { id, note } => {
-            let item = crate::utils::security::remediation::add_note(&id, &note)?;
-            p::success(&format!("Note added to '{}'", item.title));
-            Ok(())
+fn handle_compliance(args: ComplianceArgs) -> Result<()> {
+    config::validate_file_path(&args.path, Some("rs"))?;
+    p::header("AI Compliance Monitoring");
+
+    let standards: Vec<ComplianceStandard> = args
+        .standards
+        .iter()
+        .map(|s| match s.to_lowercase().as_str() {
+            "gdpr" => ComplianceStandard::GDPR,
+            "soc2" => ComplianceStandard::SOC2,
+            "hipaa" => ComplianceStandard::HIPAA,
+            "iso27001" => ComplianceStandard::ISO27001,
+            _ => ComplianceStandard::Custom,
+        })
+        .collect();
+
+    if standards.is_empty() {
+        p::info("Checking all compliance standards...");
+    } else {
+        let names: Vec<&str> = standards.iter().map(|s| s.as_str()).collect();
+        p::kv("Standards", &names.join(", "));
+    }
+
+    let engine = ComplianceEngine::new();
+    let report = engine.check_compliance(&args.path, &standards)?;
+
+    p::separator();
+    p::kv("Score", &format!("{:.1}%", report.score));
+    p::kv("Passed", &report.passed.to_string());
+    p::kv("Failed", &report.failed.to_string());
+    p::kv("Risk level", &report.risk_assessment.overall_risk);
+
+    if !report.risk_assessment.critical_gaps.is_empty() {
+        println!();
+        p::header("Critical Gaps");
+        for gap in &report.risk_assessment.critical_gaps {
+            println!("  - {}", gap);
         }
     }
+
+    println!();
+    p::header("Results");
+    for result in &report.results {
+        let status = if result.passed { "PASS" } else { "FAIL" };
+        println!(
+            "  [{}] [{}] {} — {}",
+            status, result.standard, result.title, result.severity
+        );
+        if !result.passed {
+            println!("    Remediation: {}", result.remediation);
+        }
+    }
+
+    let saved_path = engine.save_report(&report)?;
+    p::kv("Report saved", &saved_path.display().to_string());
+
+    let incidents = IncidentStore::load_all().unwrap_or_default();
+    
+    let critical_open = incidents
+        .iter()
+        .filter(|i| {
+            i.severity.eq_ignore_ascii_case("critical")
+                && !matches!(i.status, crate::utils::security::IncidentStatus::Resolved)
+        })
+        .count();
+    let open_incidents = incidents
+        .iter()
+        .filter(|i| !matches!(i.status, crate::utils::security::IncidentStatus::Resolved))
+        .count();
+
+    let remediation_items = crate::utils::security::remediation::load_all().unwrap_or_default();
+    let open_remediation = remediation_items
+        .iter()
+        .filter(|i| {
+            let s = i.status.to_string();
+            s != "resolved" && s != "verified"
+        })
+        .count();
+
+    let mut score: i32 = 100;
+    score -= (critical_open as i32) * 20;
+    score -= ((open_incidents - critical_open) as i32) * 10;
+    score -= (open_remediation as i32) * 5;
+    let score = score.max(0);
+
+    println!();
+    p::kv("Security score", &format!("{}/100", score));
+    println!();
+
+    p::header("Risk Heatmap");
+    println!("  Critical open incidents : {}", critical_open);
+    println!("  Total open incidents    : {}", open_incidents);
+    println!("  Open remediation items  : {}", open_remediation);
+    println!();
+
+    p::header("Incident Timeline (most recent)");
+    if incidents.is_empty() {
+        p::info("No incidents recorded");
+    } else {
+        let mut sorted_incidents = incidents.clone();
+        sorted_incidents.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        for inc in sorted_incidents.iter().take(10) {
+            println!(
+                "  {} [{}] {} — {:?} ({})",
+                inc.id, inc.severity, inc.title, inc.status, inc.created_at
+            );
+        }
+    }
+    println!();
+
+    p::header("Compliance Status");
+    p::kv(
+        "No critical open incidents",
+        if critical_open == 0 { "PASS" } else { "FAIL" },
+    );
+    p::kv(
+        "Remediation backlog clear",
+        if open_remediation == 0 { "PASS" } else { "FAIL" },
+    );
+    println!();
+
+    match args.format.as_str() {
+        "json" => {
+            let json = serde_json::to_string_pretty(&report)?;
+            if let Some(out) = &args.out {
+                fs::write(out, &json)?;
+                p::kv("JSON saved", &out.display().to_string());
+            } else {
+                println!("\n{}", json);
+            }
+        }
+        _ => {
+            if let Some(out) = &args.out {
+                let text = format_compliance_report(&report);
+                fs::write(out, &text)?;
+                p::kv("Report saved", &out.display().to_string());
+            }
+        }
+    }
+
+    if !report.risk_assessment.critical_gaps.is_empty() {
+        anyhow::bail!(
+            "Compliance check failed: {} critical gaps found",
+            report.risk_assessment.critical_gaps.len()
+        );
+    }
+
+    p::success("Compliance check complete");
+    Ok(())
+}
+
+fn handle_data_protection(args: DataProtectionArgs) -> Result<()> {
+    config::validate_file_path(&args.path, Some("rs"))?;
+    p::header("AI Data Protection");
+
+    let engine = DataProtectionEngine::new();
+    let result = engine.check_protection(&args.path)?;
+
+    p::separator();
+    p::kv("Score", &format!("{:.1}%", result.score));
+    p::kv("Passed", &result.summary.passed.to_string());
+    p::kv("Failed", &result.summary.failed.to_string());
+
+    println!();
+    p::header("Category Scores");
+    p::kv(
+        "Encryption",
+        &format!("{:.1}%", result.summary.encryption_score),
+    );
+    p::kv(
+        "Access Control",
+        &format!("{:.1}%", result.summary.access_control_score),
+    );
+    p::kv(
+        "Key Management",
+        &format!("{:.1}%", result.summary.key_management_score),
+    );
+    p::kv(
+        "Data Integrity",
+        &format!("{:.1}%", result.summary.integrity_score),
+    );
+
+    println!();
+    p::header("Check Results");
+    for check in &result.checks {
+        let status = if check.passed { "PASS" } else { "FAIL" };
+        println!(
+            "  [{}] {} — {}",
+            status, check.title, check.severity
+        );
+        if !check.passed {
+            println!("    {}", check.details);
+            println!("    Remediation: {}", check.remediation);
+        }
+    }
+
+    let saved_path = engine.save_result(&result)?;
+    p::kv("Report saved", &saved_path.display().to_string());
+
+    match args.format.as_str() {
+        "json" => {
+            let json = serde_json::to_string_pretty(&result)?;
+            if let Some(out) = &args.out {
+                fs::write(out, &json)?;
+                p::kv("JSON saved", &out.display().to_string());
+            } else {
+                println!("\n{}", json);
+            }
+        }
+        _ => {
+            if let Some(out) = &args.out {
+                let text = format_data_protection_report(&result);
+                fs::write(out, &text)?;
+                p::kv("Report saved", &out.display().to_string());
+            }
+        }
+    }
+
+    if result.summary.failed > 0 {
+        anyhow::bail!(
+            "Data protection check: {} checks failed",
+            result.summary.failed
+        );
+    }
+
+    p::success("Data protection check complete");
+    Ok(())
 }

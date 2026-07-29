@@ -52,6 +52,29 @@ starforge tutorial next
 
 ---
 
+## `multisig`
+
+| Subcommand | Purpose |
+|------------|---------|
+| `wizard` | Interactive transaction proposal builder |
+| `create` | Create a proposal with threshold, signers, metadata, and optional transaction XDR |
+| `status <FILE>` | Show visual signature collection progress |
+| `verify <FILE>` | Validate signatures, duplicates, pending signers, and threshold readiness |
+| `notify <FILE>` | Queue signature request notifications for pending signers |
+| `export <FILE>` / `import <FILE>` | Share proposal JSON between signers |
+| `templates` / `from-template` | Use common scenarios like escrow, company treasury, DAO, vault, and payment |
+
+```bash
+starforge multisig wizard
+starforge multisig create --threshold 2 --signers alice,bob,carol \
+  --title "Treasury payment" --transaction-xdr <XDR>
+starforge multisig status proposal.json
+starforge multisig verify proposal.json
+starforge multisig notify proposal.json --message "Please sign the treasury payment"
+```
+
+---
+
 ## `new`
 
 | Subcommand | Purpose |
@@ -81,6 +104,46 @@ starforge deploy --wasm ./token.wasm --optimize --yes --execute
 
 starforge contract generate-bindings ./token.wasm --lang rust
 ```
+
+---
+
+## `test`
+
+| Flag | Purpose |
+|------|---------|
+| `--wasm <FILE>` | Compiled Soroban WASM under test |
+| `--fixture <FILE>` | JSON/TOML contract test suite with fixtures, mocks, and assertions |
+| `--source <FILE>` | Contract source used for generated tests or coverage |
+| `--coverage` | Include source coverage summary |
+| `--coverage-out <FILE>` | Write a dedicated coverage report |
+| `--coverage-format html\|json\|markdown\|text` | Format for `--coverage-out` |
+| `--coverage-goal <PCT>` | Minimum overall coverage percentage |
+| `--function-coverage-goal <PCT>` | Minimum function coverage percentage |
+| `--line-coverage-goal <PCT>` | Minimum line coverage percentage |
+| `--branch-coverage-goal <PCT>` | Minimum branch coverage percentage |
+| `--coverage-ci` | Fail when configured coverage goals are missed |
+| `--coverage-ci-workflow-out <FILE>` | Generate a GitHub Actions coverage workflow |
+| `--report html\|json\|junit` | Write a test report (`junit` is available for fixture suites) |
+| `--testnet` | Validate Soroban testnet integration for the run |
+| `--testnet-dry-run` | Validate testnet configuration without probing RPC health |
+
+```bash
+starforge test --wasm ./target/contract.wasm \
+  --fixture ./contract-tests.json --coverage --source ./src/lib.rs --report html
+
+starforge test --wasm ./target/contract.wasm --source ./src/lib.rs \
+  --coverage --coverage-out coverage.html --coverage-format html \
+  --coverage-ci --coverage-goal 85 --branch-coverage-goal 70
+
+starforge test --wasm ./target/contract.wasm --source ./src/lib.rs \
+  --coverage-ci-workflow-out .github/workflows/starforge-coverage.yml
+
+starforge test --wasm ./target/contract.wasm \
+  --fixture ./contract-tests.toml --testnet --testnet-dry-run
+```
+
+Fixture suites support named storage fixtures, mocked contract calls, and assertions such as `state_equals`, `state_exists`, `return_equals`, `event_emitted`, `fee_at_most`, and `mock_called`.
+Coverage analysis tracks Soroban contract functions, line spans, branch paths, uncovered functions, threshold goals, and HTML/JSON/Markdown/text reports.
 
 ---
 
@@ -129,17 +192,117 @@ starforge contract generate-bindings ./token.wasm --lang rust
 
 ---
 
+## `advanced-perf`
+
+| Subcommand | Purpose |
+|------------|---------|
+| `advanced-perf profile <WASM>` | Profile a compiled Soroban contract artifact |
+| `advanced-perf profile <WASM> --baseline <JSON>` | Detect gas, execution-time, or memory regressions against a saved profile |
+| `advanced-perf profile <WASM> --dashboard <HTML>` | Generate a local performance dashboard |
+| `advanced-perf analyze <CONTRACT>` | Analyze recorded runtime metrics for bottlenecks |
+| `advanced-perf detect-regression <CONTRACT>` | Detect regressions from recorded metric history |
+| `advanced-perf compare <CONTRACT>` | Compare recorded profiles across time windows |
+| `advanced-perf generate-dashboard <CONTRACT>` | Show the recorded-metrics performance dashboard |
+
+```bash
+starforge advanced-perf profile ./target/wasm32-unknown-unknown/release/token.wasm \
+  --label token --dashboard ./target/token-profile.html
+
+starforge advanced-perf profile ./target/wasm32-unknown-unknown/release/token.wasm \
+  --baseline ~/.starforge/contract_profiles/profile-abc123def456.json \
+  --output ./target/token-profile.json
+```
+
+The artifact profiler reports estimated execution time, memory usage, bottlenecks,
+baseline regression detection, comparison deltas, and a dashboard summary.
+
+---
+
+## `docs`
+
+AI-assisted documentation generation for Soroban contracts (issue #499).
+
+| Subcommand | Purpose |
+|------------|---------|
+| `docs generate <CONTRACT> --source <FILE.rs>` | Generate comprehensive Markdown docs from rustdoc + AI enrichment |
+| `docs generate <CONTRACT> --source <FILE.rs> --lang rust,ts,python,go` | Multi-language usage examples |
+| `docs generate <CONTRACT> --source <FILE.rs> --output docs.md --rustdoc-out stubs.rs` | Write Markdown + rustdoc stubs |
+| `docs extract <PATH> [--format json\|markdown]` | Extract rustdoc comments |
+| `docs show / list / search / versions / export` | Browse the local docs store (`~/.starforge/docs`) |
+| `docs html / api-ref / publish` | HTML site, API reference, and publish helpers |
+
+```bash
+starforge docs generate counter --name Counter \
+  --source ./contracts/counter/src/lib.rs \
+  --lang rust,ts,python \
+  --output ./docs/counter.md
+
+starforge docs export counter
+starforge docs show counter
+```
+
+With `--source`, StarForge extracts `///` / `//!` rustdoc comments, documents functions and types,
+infers architecture / storage layout / security notes, and emits multi-language usage guides.
+Set `STARFORGE_AI_API_KEY` (optional `STARFORGE_AI_BASE_URL`, `STARFORGE_AI_MODEL`) to refine prose via an OpenAI-compatible API.
+
+---
+
+## `security`
+
+| Subcommand | Purpose |
+|------------|---------|
+| `audit <PATH>` | Run built-in Soroban analysis plus optional Slither/Mythril integrations |
+| `audit --format json\|html --out <FILE>` | Generate machine-readable or HTML audit reports |
+| `audit --ci --min-score <N>` | Fail when the audit score is below the CI threshold |
+| `audit --ci-workflow-out <FILE>` | Generate a GitHub Actions workflow for security audits |
+| `audit --track` | Create remediation tracker items for findings |
+| `remediation list` | Review tracked audit and pentest remediation items |
+
+```bash
+starforge security audit ./contracts/token/src/lib.rs --format html --out audit.html
+starforge security audit ./contracts/token/src/lib.rs --ci --min-score 85
+starforge security audit ./contracts/token/src/lib.rs \
+  --ci-workflow-out .github/workflows/starforge-security.yml
+```
+
+External tools are optional. StarForge runs built-in Soroban heuristics every time and records whether Slither/Mythril were completed, failed, skipped, or unavailable.
+
+---
+
 ## `upgrade`
 
 | Subcommand | Purpose |
 |------------|---------|
 | `upgrade prepare` | Validate upgrade WASM (`--contract-id`, `--wasm`) |
+| `upgrade auto compat` | Compare old/new WASM ABI and storage layout (`--old-wasm`, `--new-wasm`) |
+| `upgrade auto plan` | Generate compatibility-aware upgrade plan and migration template |
 | `upgrade propose` | Create governance proposal |
 | `upgrade list` / `status` | List pending proposals |
 | `upgrade approve` | Approve proposal |
 | `upgrade execute` | Execute approved upgrade |
 | `upgrade rollback` | Roll back contract version |
 | `upgrade history` | Show upgrade history |
+
+---
+
+## `governance`
+
+Contract upgrade governance with voting, timelock, audit trail, and emergency upgrades.
+
+| Subcommand | Purpose |
+|------------|---------|
+| `governance propose` | Create upgrade proposal (`--contract-id`, `--wasm`, `--threshold`, `--timelock`) |
+| `governance list` | List proposals with optional filters |
+| `governance show` | Show proposal details and votes |
+| `governance vote` | Cast vote (`--for` or `--against`) |
+| `governance reject` | Reject a proposal |
+| `governance execute` | Execute after timelock and threshold met |
+| `governance emergency` | Emergency upgrade (bypasses timelock) |
+| `governance audit` | Show governance audit trail |
+| `governance dashboard` | Governance summary dashboard |
+| `governance config show/set` | View or update governance defaults |
+
+See [GOVERNANCE.md](GOVERNANCE.md) for the full workflow.
 
 ---
 
@@ -166,6 +329,48 @@ starforge contract generate-bindings ./token.wasm --lang rust
 | `lint <PATH>` | Static Soroban source lint |
 | `plugin install/list/run` | Dynamic plugin management |
 | `completions <SHELL>` | bash/zsh/fish completions |
+
+### `monitor`
+
+Live monitoring of contracts or wallets, including Soroban event streaming, routing, alerting, persistence, replay, and dashboard output.
+
+| Option | Purpose |
+|--------|---------|
+| `--contract <ID>` | Contract ID to monitor via Soroban RPC |
+| `--events <EVENTS>` | Comma-separated event names to filter |
+| `--type <TYPE>` | Soroban event type filter (`contract`, `system`, `diagnostic`) |
+| `--topic <TOPIC>` | Topic segment matcher, comma-separated, with `*` wildcards |
+| `--value <VALUE>` | Match event payload text |
+| `--transport <TRANSPORT>` | `auto`, `websocket`, or `http` transport selection |
+| `--websocket-url <URL>` | Override the derived WebSocket endpoint |
+| `--route <NAME=PATTERN>` | Route matching events into named lanes; repeatable |
+| `--alert <RULE>` | Alert rule in `pattern`, `severity:pattern`, or `severity:pattern:message` form |
+| `--persist [PATH]` | Persist matching events to JSONL, using the default StarForge event store path when PATH is omitted |
+| `--replay <PATH>` | Replay events from a JSONL event store instead of connecting live |
+| `--dashboard` | Render the event analytics dashboard |
+| `--trigger <PATTERN=COMMAND>` | Execute a shell command when a pattern matches; repeatable |
+| `--allow-triggers` | Required explicit opt-in before event triggers execute shell commands |
+| `--wallet <NAME>` | Wallet name to monitor |
+| `--threshold <AMOUNT>` | XLM threshold for notifications |
+| `--balance-alert <AMOUNT>` | Alert when wallet balance drops below this amount |
+| `--network <NETWORK>` | Network to use |
+| `--interval <SECONDS>` | Poll interval in seconds |
+
+Examples:
+
+```bash
+starforge monitor --contract CCPYZ... --transport websocket --dashboard
+starforge monitor --contract CCPYZ... --route swaps=swap --alert high:mint --persist
+starforge monitor --contract CCPYZ... --replay ~/.starforge/events/testnet-CCPYZ....jsonl --dashboard
+starforge monitor --contract CCPYZ... --trigger mint=./on-mint.sh --allow-triggers
+```
+
+Event stores use JSON Lines. Replay skips malformed records and deduplicates events by
+network, contract ID, and Soroban event ID. Triggers inherit event metadata through
+`STARFORGE_NETWORK`, `STARFORGE_CONTRACT_ID`, `STARFORGE_EVENT_ID`,
+`STARFORGE_EVENT_LEDGER`, `STARFORGE_EVENT_TYPE`, `STARFORGE_EVENT_TOPIC`, and
+`STARFORGE_EVENT_VALUE`. Treat trigger commands as trusted local code; they are disabled
+unless `--allow-triggers` is explicitly provided.
 
 ---
 
