@@ -58,11 +58,15 @@ pub fn init(config: LogConfig) -> Result<()> {
 
             let file_layer = fmt::layer()
                 .json()
+                .with_current_span(true)
+                .with_span_list(true)
                 .with_writer(non_blocking)
                 .with_filter(env_filter.clone());
 
             let stderr_layer = fmt::layer()
                 .json()
+                .with_current_span(true)
+                .with_span_list(true)
                 .with_writer(std::io::stderr)
                 .with_filter(env_filter);
 
@@ -77,6 +81,8 @@ pub fn init(config: LogConfig) -> Result<()> {
         (LogFormat::Json, None) => {
             let layer = fmt::layer()
                 .json()
+                .with_current_span(true)
+                .with_span_list(true)
                 .with_writer(std::io::stderr)
                 .with_filter(env_filter);
 

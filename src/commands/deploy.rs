@@ -5,14 +5,15 @@ use crate::utils::{
         self, last_successful, record_deployment, set_contract_id, set_duration, update_status,
         DeployRecord, DeployStatus,
     },
-    deployment_monitor, horizon, notifications, optimizer, print as p, soroban, wallet_signer,
+    deployment_monitor, horizon, notifications, optimizer, print as p, simulation_resources,
+    soroban, wallet_signer,
+    wasm_hash::{compute_wasm_hash, BuildEnvironment},
 };
 
 use crate::utils::hardware_wallet::HardwareWalletKind;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -94,14 +95,62 @@ fn is_wasm_above_size_limit(wasm_size_kb: f64) -> bool {
     wasm_size_kb > SOROBAN_WASM_LIMIT_KB
 }
 
+/// Print the CPU / memory / footprint accounting that simulation reported,
+/// plus the fee we recommend actually submitting.
+///
+/// Silently does nothing when the RPC server returned no resource accounting:
+/// the caller has already printed the fallback fee and any errors, and an
+/// invented footprint would be worse than none.
+fn report_simulation_resources(simulation: &soroban::SimulationResult, indent: &str) {
+    let Some(resources) = simulation.resources.as_ref() else {
+        return;
+    };
+
+    match resources.cpu_instructions {
+        Some(cpu) => p::kv(&format!("{}CPU instructions", indent), &cpu.to_string()),
+        None => p::kv(&format!("{}CPU instructions", indent), "not reported"),
+    }
+    match resources.memory_bytes {
+        Some(mem) => p::kv(&format!("{}Memory (bytes)", indent), &mem.to_string()),
+        None => p::kv(&format!("{}Memory (bytes)", indent), "not reported"),
+    }
+    if let Some(fp) = resources.footprint.as_ref() {
+        p::kv(
+            &format!("{}Footprint", indent),
+            &format!(
+                "{} read-only, {} read-write, {} B read, {} B written",
+                fp.read_only_entries, fp.read_write_entries, fp.read_bytes, fp.write_bytes
+            ),
+        );
+    }
+    if resources.requires_restore() {
+        p::warn(&format!(
+            "{}Archived ledger entries must be restored before this deploy can succeed",
+            indent
+        ));
+    }
+
+    if let Some(plan) = simulation.fee_plan(simulation_resources::DEFAULT_FEE_MARGIN_PERCENT) {
+        p::kv_accent(
+            &format!("{}Recommended fee", indent),
+            &format!(
+                "{} stroops ({:.7} XLM, includes a {}% margin)",
+                plan.recommended_fee_stroops,
+                plan.recommended_fee_xlm(),
+                plan.margin_percent
+            ),
+        );
+    }
+}
+
 /// Compute the Soroban WASM hash (SHA-256 over raw `.wasm` file bytes)
 /// and return it as a 64-character lowercase hex string.
 ///
 /// This matches the hash that `stellar contract inspect --wasm <file>` reports
 /// and that Soroban uses to identify uploaded contract bytecode on-chain.
 fn compute_local_wasm_hash(wasm_bytes: &[u8]) -> String {
-    let digest = Sha256::digest(wasm_bytes);
-    hex::encode(digest)
+    compute_wasm_hash(wasm_bytes, BuildEnvironment::current())
+        .unwrap_or_else(|e| panic!("failed to compute WASM hash: {e}"))
 }
 
 fn build_stellar_deploy_command(wasm: &std::path::Path, source: &str, network: &str) -> String {
@@ -128,9 +177,10 @@ fn build_stellar_deploy_args(wasm: &std::path::Path, source: &str, network: &str
 
 /// Validate and summarise a deployment plan without submitting any transaction.
 ///
-/// Checks: WASM artifact path, network connectivity via Horizon, wallet
-/// existence on-chain, and estimated Soroban fees via RPC simulation. Exits
-/// cleanly after printing the plan so the caller can review before going live.
+/// Shows: WASM artifact details + pre-flight policy check, wallet/account on
+/// Horizon, estimated Soroban fees, **authorization requirements**, and the
+/// exact **planned on-chain mutations** (upload WASM + create contract
+/// instance). Exits cleanly so the caller can review before going live.
 async fn run_dry_run(
     wasm_path: &std::path::Path,
     wasm_bytes: &[u8],
@@ -143,38 +193,51 @@ async fn run_dry_run(
 
     let mut warnings: Vec<String> = Vec::new();
     let mut checks_passed = 0u32;
-    let checks_total = 4u32;
+    let checks_total = 5u32;
 
-    // ── Check 1: artifact path ────────────────────────────────────────────
-    p::kv("[ 1/4 ] WASM artifact", &wasm_path.display().to_string());
+    // ── Check 1: WASM artifact + pre-flight policy ────────────────────────
+    p::kv("[ 1/5 ] WASM artifact", &wasm_path.display().to_string());
     p::kv("        Size", &format!("{:.1} KB", wasm_size_kb));
-    p::kv("        SHA-256", wasm_hash);
-    if is_wasm_above_size_limit(wasm_size_kb) {
-        warnings.push(format!(
-            "WASM is {:.1} KB — Soroban limit is 128 KB. Run `starforge gas optimize` first.",
-            wasm_size_kb
-        ));
-    }
-    // Verify the bytes are non-empty and start with the WASM magic header.
-    if wasm_bytes.len() < 4 || &wasm_bytes[..4] != b"\0asm" {
-        warnings.push(
-            "File does not appear to be a valid WASM binary (missing magic header).".to_string(),
-        );
+    p::kv("        SHA-256 (code hash)", wasm_hash);
+
+    let policy = wasm_preflight::WasmPolicy::default();
+    let preflight = wasm_preflight::validate_wasm_bytes(wasm_bytes, &wasm_path.to_string_lossy(), &policy);
+
+    if !preflight.is_valid_wasm {
+        for v in &preflight.violations {
+            warnings.push(format!("[{}] {}", v.code, v.message));
+        }
+        p::warn("        Pre-flight: invalid WASM binary");
+    } else if !preflight.passes_policy {
+        for v in &preflight.violations {
+            warnings.push(format!("[{}] {}", v.code, v.message));
+        }
+        p::warn("        Pre-flight: policy violations detected (see warnings)");
     } else {
         checks_passed += 1;
-        p::success("        Artifact is a valid WASM binary");
+        p::success("        Pre-flight: WASM valid and within policy");
+    }
+    for w in &preflight.warnings {
+        warnings.push(w.clone());
+    }
+    if !preflight.exports.is_empty() {
+        p::kv(
+            "        Exports",
+            &preflight.exports.join(", "),
+        );
     }
     println!();
 
     // ── Check 2: wallet existence ─────────────────────────────────────────
-    p::kv("[ 2/4 ] Wallet", &wallet.name);
+    p::kv("[ 2/5 ] Wallet", &wallet.name);
     p::kv("        Public key", &wallet.public_key);
     checks_passed += 1;
     p::success("        Wallet found in local config");
     println!();
 
     // ── Check 3: network connectivity / account balance ───────────────────
-    p::kv("[ 3/4 ] Network", network);
+    p::kv("[ 3/5 ] Network", network);
+    let mut xlm_balance = "0".to_string();
     match horizon::fetch_account(&wallet.public_key, network).await {
         Ok(account) => {
             let xlm = account
@@ -183,11 +246,13 @@ async fn run_dry_run(
                 .find(|b| b.asset_type == "native")
                 .map(|b| b.balance.as_str())
                 .unwrap_or("0");
+            xlm_balance = xlm.to_string();
             p::kv("        XLM balance", &format!("{} XLM", xlm));
             let balance: f64 = xlm.parse().unwrap_or(0.0);
             if balance < 1.0 {
                 warnings.push(format!(
-                    "Account balance ({} XLM) may be too low to cover deployment fees. Fund with: starforge wallet fund {}",
+                    "Account balance ({} XLM) may be too low to cover fees. \
+                     Fund with: starforge wallet fund {}",
                     xlm, wallet.name
                 ));
             }
@@ -196,7 +261,8 @@ async fn run_dry_run(
         }
         Err(e) => {
             warnings.push(format!(
-                "Cannot reach {} network or account not funded: {}. Fund with: starforge wallet fund {}",
+                "Cannot reach {} network or account not funded: {}. \
+                 Fund with: starforge wallet fund {}",
                 network, e, wallet.name
             ));
             p::warn(&format!("        Network/account check failed: {}", e));
@@ -205,13 +271,20 @@ async fn run_dry_run(
     println!();
 
     // ── Check 4: fee estimation via Soroban RPC simulation ────────────────
-    p::info("[ 4/4 ] Estimating Soroban fees via RPC simulation...");
+    p::info("[ 4/5 ] Estimating Soroban fees via RPC simulation...");
+    let mut estimated_fee_stroops: Option<u64> = None;
     match soroban::simulate_deploy_transaction(wasm_hash, network, wallet).await {
         Ok(simulation) => {
+            estimated_fee_stroops = Some(simulation.fee);
             p::kv(
-                "        Estimated fee",
-                &format!("{} stroops", simulation.fee),
+                "        Minimum resource fee",
+                &format!(
+                    "{} stroops ({:.7} XLM)",
+                    simulation.fee,
+                    simulation.fee as f64 / 10_000_000.0
+                ),
             );
+            report_simulation_resources(&simulation, "        ");
             if !simulation.errors.is_empty() {
                 for error in &simulation.errors {
                     warnings.push(format!("RPC simulation warning: {}", error));
@@ -223,33 +296,92 @@ async fn run_dry_run(
         }
         Err(e) => {
             warnings.push(format!(
-                "Fee simulation unavailable (Soroban RPC unreachable): {}. Deployment may still succeed.",
+                "Fee simulation unavailable (Soroban RPC unreachable): {}. \
+                 Deployment may still succeed.",
                 e
             ));
-            p::warn(&format!("        Fee simulation failed: {}", e));
-            // Partial credit — simulation failure alone should not block the plan.
-            checks_passed += 1;
+            p::warn(&format!("        Fee simulation skipped: {}", e));
+            checks_passed += 1; // non-fatal — RPC may be offline
         }
     }
+    println!();
+
+    // ── Check 5: authorization requirements ──────────────────────────────
+    p::kv("[ 5/5 ] Authorization", "");
+    p::kv(
+        "        Required signer",
+        &format!("{} ({})", wallet.name, wallet.public_key),
+    );
+    p::kv(
+        "        Signing method",
+        "Ed25519 (single-key, no threshold)",
+    );
+    checks_passed += 1;
+    p::success("        Authorization requirements satisfied by selected wallet");
+    println!();
+
+    // ── Planned mutations (what will happen on-chain) ─────────────────────
+    p::separator();
+    p::header("Planned On-Chain Mutations");
+    println!(
+        "  {} {} Upload WASM bytecode",
+        "Op 1:".cyan().bold(),
+        "InvokeHostFunction —".dimmed()
+    );
+    println!(
+        "         Code hash  : {}",
+        wasm_hash.cyan()
+    );
+    println!(
+        "         Size       : {:.1} KB ({} bytes)",
+        wasm_size_kb,
+        wasm_bytes.len()
+    );
+    println!(
+        "         Authorized : {}",
+        wallet.public_key
+    );
+    println!();
+    println!(
+        "  {} {} Create contract instance",
+        "Op 2:".cyan().bold(),
+        "InvokeHostFunction —".dimmed()
+    );
+    println!(
+        "         Constructor: default (no __constructor export detected)"
+    );
+    println!(
+        "         Storage    : Persistent (new ContractData ledger entry)"
+    );
+    println!(
+        "         Authorized : {}",
+        wallet.public_key
+    );
+    println!();
+    println!("  {} No existing contract state will be modified.", "Note:".dimmed());
+    println!("  {} This is a fresh deployment.", "Note:".dimmed());
     println!();
 
     // ── Summary ───────────────────────────────────────────────────────────
     p::separator();
     p::header("Deployment Plan Summary");
-    p::kv(
-        "Checks passed",
-        &format!("{}/{}", checks_passed, checks_total),
-    );
+    p::kv("Checks passed", &format!("{}/{}", checks_passed, checks_total));
     p::kv("Network", network);
     p::kv("Wallet", &wallet.name);
-    p::kv("WASM", &wasm_path.display().to_string());
-    p::kv("WASM hash (SHA-256)", wasm_hash);
+    p::kv("Account public key", &wallet.public_key);
+    p::kv("Account XLM balance", &format!("{} XLM", xlm_balance));
+    p::kv("WASM file", &wasm_path.display().to_string());
+    p::kv("WASM code hash (SHA-256)", wasm_hash);
+    if let Some(fee) = estimated_fee_stroops {
+        p::kv("Estimated fee", &format!("{} stroops", fee));
+    }
+    p::kv("Planned operations", "2 (upload WASM + create instance)");
 
     println!();
     let deploy_cmd = build_stellar_deploy_command(wasm_path, &wallet.public_key, network);
     println!("  Stellar CLI command to deploy:");
     for line in deploy_cmd.lines() {
-        println!("    {}", line);
+        println!("    {}", line.cyan());
     }
 
     if !warnings.is_empty() {
@@ -456,7 +588,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     println!();
                     anyhow::bail!(
                         "Compliance check failed: {} blocking issue(s) found.\n  Address the issues or run with --yes to force deployment.\n  Run `starforge compliance report show {}` for full details.",
-                        report.blocking_count,
+                        report.request_id,
                         report.request_id
                     );
                 }
@@ -483,7 +615,26 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 }
             }
         }
-        p::separator();
+    }
+
+    // ── WASM pre-flight policy check (always runs, blocks on violations) ───
+    {
+        let policy = wasm_preflight::WasmPolicy::default();
+        let report = wasm_preflight::validate_wasm_bytes(&wasm_bytes, &wasm_path.to_string_lossy(), &policy);
+        if !report.is_ok() {
+            for v in &report.violations {
+                p::warn(&format!("[{}] {}", v.code, v.message));
+>>>>>>> origin/master
+            }
+            anyhow::bail!(
+                "WASM pre-flight check failed with {} violation(s). \
+                 Fix the module before deploying.",
+                report.violations.len()
+            );
+        }
+        for w in &report.warnings {
+            p::warn(w);
+        }
     }
 
     // --dry-run: validate everything and print deployment plan, then exit.
@@ -503,7 +654,11 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         p::info("Simulating deploy transaction via Soroban RPC...");
         match soroban::simulate_deploy_transaction(&wasm_hash, &args.network, wallet).await {
             Ok(simulation) => {
-                p::kv("Estimated Fee", &format!("{} stroops", simulation.fee));
+                p::kv(
+                    "Minimum Resource Fee",
+                    &format!("{} stroops", simulation.fee),
+                );
+                report_simulation_resources(&simulation, "");
                 if !simulation.errors.is_empty() {
                     for error in &simulation.errors {
                         p::warn(&format!("Simulation error: {}", error));

@@ -29,6 +29,14 @@ struct AnthropicRequest {
 #[derive(serde::Deserialize)]
 struct AnthropicResponse {
     content: Vec<ContentBlock>,
+    #[serde(default)]
+    usage: Option<AnthropicUsage>,
+}
+
+#[derive(serde::Deserialize)]
+struct AnthropicUsage {
+    input_tokens: u64,
+    output_tokens: u64,
 }
 
 #[derive(serde::Deserialize)]
@@ -106,9 +114,35 @@ impl AiAuditService {
             request.include_attack_simulation,
         );
 
-        let ai_result = match self.call_claude(&system_prompt, &user_prompt).await {
-            Ok(result) => result,
-            Err(_) => {
+        let call_start = std::time::Instant::now();
+        let call_result = self.call_claude(&system_prompt, &user_prompt).await;
+        let elapsed_ms = call_start.elapsed().as_millis() as u64;
+
+        let ai_result = match call_result {
+            Ok((result, tokens_in, tokens_out)) => {
+                crate::utils::ai_telemetry::record_call(
+                    "anthropic",
+                    &self.model,
+                    "security-audit",
+                    tokens_in,
+                    tokens_out,
+                    elapsed_ms,
+                    true,
+                    None,
+                );
+                result
+            }
+            Err(e) => {
+                crate::utils::ai_telemetry::record_call(
+                    "anthropic",
+                    &self.model,
+                    "security-audit",
+                    None,
+                    None,
+                    elapsed_ms,
+                    false,
+                    Some(classify_claude_error(&e)),
+                );
                 return Ok(build_fallback_report(
                     &request.contract_name,
                     &request.contract_code,
@@ -139,8 +173,14 @@ impl AiAuditService {
         Ok(report)
     }
 
-    /// Call Claude API for contract analysis.
-    async fn call_claude(&self, system: &str, user_prompt: &str) -> Result<AiAuditResponse> {
+    /// Call Claude API for contract analysis. Returns the parsed response
+    /// along with (input_tokens, output_tokens) reported by the API, when
+    /// available, for telemetry/cost-estimation purposes.
+    async fn call_claude(
+        &self,
+        system: &str,
+        user_prompt: &str,
+    ) -> Result<(AiAuditResponse, Option<u64>, Option<u64>)> {
         let request_body = AnthropicRequest {
             model: self.model.clone(),
             max_tokens: 4096,
@@ -165,7 +205,11 @@ impl AiAuditService {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Anthropic API error {}: {}", status, error_text));
+            return Err(anyhow!(
+                "Anthropic API error {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let anthropic_response: AnthropicResponse = response
@@ -183,7 +227,29 @@ impl AiAuditService {
         let ai_result: AiAuditResponse = serde_json::from_str(response_text)
             .map_err(|e| anyhow!("Failed to parse AI audit response JSON: {}", e))?;
 
-        Ok(ai_result)
+        let tokens_in = anthropic_response.usage.as_ref().map(|u| u.input_tokens);
+        let tokens_out = anthropic_response.usage.as_ref().map(|u| u.output_tokens);
+
+        Ok((ai_result, tokens_in, tokens_out))
+    }
+}
+
+/// Coarse error classification for telemetry, derived from an error's
+/// display string (the Anthropic client has no typed error enum here).
+fn classify_claude_error(err: &anyhow::Error) -> &'static str {
+    let msg = err.to_string().to_lowercase();
+    if msg.contains("timeout") || msg.contains("timed out") {
+        "timeout"
+    } else if msg.contains("429") || msg.contains("rate limit") {
+        "rate_limit"
+    } else if msg.contains("401") || msg.contains("403") || msg.contains("unauthorized") {
+        "auth"
+    } else if msg.contains("failed to call") || msg.contains("connection") {
+        "network"
+    } else if msg.contains("parse") || msg.contains("no text in") {
+        "invalid_response"
+    } else {
+        "unknown"
     }
 }
 

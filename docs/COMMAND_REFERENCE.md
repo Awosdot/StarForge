@@ -9,6 +9,7 @@ Browse every top-level command and its most important flags. For wallet, templat
 | `-q, --quiet` | Suppress banner and decorative output |
 | `--log-format human\|json` | Structured log format (default: `human`) |
 | `--log-dir <PATH>` | Optional rotating log directory |
+| `--correlation-id <ID>` | Tie every log line of this invocation together (8–64 chars of `[A-Za-z0-9_-]`); defaults to `$STARFORGE_CORRELATION_ID` or a generated value — see [CORRELATION_IDS.md](CORRELATION_IDS.md) |
 | `-h, --help` | Command help |
 | `-V, --version` | CLI version |
 
@@ -49,6 +50,10 @@ starforge tutorial next
 | `import` | Import from file or `--mnemonic` |
 | `sign` | Sign a payload with a saved wallet |
 | `multisig` | Multisig helpers (create, add-signer, submit) |
+
+`import --file` accepts a plaintext backup JSON or an encrypted bundle, detected
+automatically. See [WALLET_IMPORT_SECURITY.md](WALLET_IMPORT_SECURITY.md) for the
+limits enforced on untrusted backup files.
 
 ---
 
@@ -95,6 +100,10 @@ starforge multisig notify proposal.json --message "Please sign the treasury paym
 | `deploy --wasm <FILE>` | Prepare Soroban deployment |
 
 **`deploy` flags:** `--network`, `--wallet`, `--optimize`, `--simulate`, `--yes`, `--execute`
+
+`--simulate` and `--dry-run` print the simulated CPU, memory, and ledger
+footprint alongside the minimum resource fee and a recommended fee that
+includes a safety margin. See [SIMULATION_RESOURCES.md](SIMULATION_RESOURCES.md).
 
 ```bash
 starforge deploy --wasm target/wasm32v1-none/release/token.wasm \
@@ -189,6 +198,27 @@ Coverage analysis tracks Soroban contract functions, line spans, branch paths, u
 | `gas analyze <WASM>` | Heuristic gas/cpu report (`--network`) |
 | `gas optimize --target <IN> --output <OUT>` | Lightweight WASM shrink pass |
 | `gas diff <OLD> <NEW>` | Compare estimated costs |
+
+---
+
+## `simulate` / `cost` — resource fees
+
+| Command | Purpose |
+|---------|---------|
+| `simulate resources --file <JSON>` | Report CPU, memory, footprint, and minimum resource fee from a saved `simulateTransaction` response |
+| `simulate resources --contract <ID> --function <NAME>` | The same, simulated live against Soroban RPC |
+| `cost resources --file <JSON>` | Price a simulation and check it against configured budgets (`--enforce` to gate CI) |
+
+Shared flags: `--margin <PERCENT>` (default `20`), `--inclusion-fee <STROOPS>`
+(default `100`). `simulate resources` also takes `--json`.
+
+```bash
+starforge simulate resources --file simulation.json --json
+starforge simulate resources --contract CCPYZ... --function balance --network testnet
+starforge cost resources --file simulation.json --network mainnet --enforce
+```
+
+Full reference: [SIMULATION_RESOURCES.md](SIMULATION_RESOURCES.md).
 
 ---
 
@@ -385,3 +415,7 @@ starforge my-plugin <args>
 
 - [API_REFERENCE.md](../API_REFERENCE.md) — detailed per-command examples and output samples
 - [DEVELOPER_GUIDE.md](../DEVELOPER_GUIDE.md) — contributing and local development
+- [SIMULATION_RESOURCES.md](SIMULATION_RESOURCES.md) — CPU, memory, footprint, and resource fees
+- [CORRELATION_IDS.md](CORRELATION_IDS.md) — correlating structured logs across an invocation
+- [CONFIGURATION.md](CONFIGURATION.md) — config parsing, overlays, and validation rules
+- [WALLET_IMPORT_SECURITY.md](WALLET_IMPORT_SECURITY.md) — limits on untrusted wallet backups

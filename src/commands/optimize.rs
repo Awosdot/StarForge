@@ -1,4 +1,4 @@
-use crate::utils::{config, print as p};
+use crate::utils::{ai_telemetry, config, print as p};
 use anyhow::Result;
 use chrono::Utc;
 use clap::{Args, Subcommand};
@@ -51,6 +51,12 @@ pub struct TransformArgs {
     /// Dry-run: print suggested changes but do not write them
     #[arg(long, default_value = "false")]
     pub dry_run: bool,
+    /// Skip the interactive confirmation prompt before applying changes
+    #[arg(long, short = 'y', default_value = "false")]
+    pub yes: bool,
+    /// Also request an AI-generated optimization opinion (requires STARFORGE_AI_API_KEY)
+    #[arg(long, default_value = "false")]
+    pub ai: bool,
 }
 
 #[derive(Args)]
@@ -133,10 +139,36 @@ impl OptimizationReport {
     }
 }
 
+/// The kind of optimization a [`TransformSuggestion`] represents (issue #497).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TransformCategory {
+    StoragePacking,
+    FunctionInlining,
+    LoopOptimization,
+    ConstantFolding,
+    DeadCodeElimination,
+    RedundantCode,
+}
+
+impl std::fmt::Display for TransformCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TransformCategory::StoragePacking => "storage-packing",
+            TransformCategory::FunctionInlining => "function-inlining",
+            TransformCategory::LoopOptimization => "loop-optimization",
+            TransformCategory::ConstantFolding => "constant-folding",
+            TransformCategory::DeadCodeElimination => "dead-code-elimination",
+            TransformCategory::RedundantCode => "redundant-code",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformSuggestion {
     pub file: String,
     pub line: usize,
+    pub category: TransformCategory,
     pub original: String,
     pub suggested: String,
     pub reason: String,
@@ -320,6 +352,11 @@ pub fn compute_score(issues: &[OptimizationIssue]) -> u8 {
 }
 
 /// Perform static source-code transformation suggestions on a Rust file.
+///
+/// Combines line-level heuristics (redundant `.clone()`, `.unwrap()`, long
+/// string literals) with the dedicated optimization-type detectors below:
+/// storage packing, function inlining, loop optimization, constant folding,
+/// and dead-code elimination (issue #497).
 pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
     let mut suggestions = Vec::new();
 
@@ -337,6 +374,7 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
             suggestions.push(TransformSuggestion {
                 file: file.to_string(),
                 line: line_no,
+                category: TransformCategory::RedundantCode,
                 original: line.to_string(),
                 suggested: line.replace(".clone()", " /* .clone() not needed for Copy types */").to_string(),
                 reason: "Copy types (u64, i64, u32, bool) don't need .clone() — remove it to avoid unnecessary overhead.".to_string(),
@@ -351,6 +389,7 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
                 suggestions.push(TransformSuggestion {
                     file: file.to_string(),
                     line: line_no,
+                    category: TransformCategory::RedundantCode,
                     original: line.to_string(),
                     suggested: line.replace("std::vec::Vec", "soroban_sdk::Vec").to_string(),
                     reason: "Prefer soroban_sdk::Vec over std::vec::Vec in contract code for Soroban compatibility.".to_string(),
@@ -370,6 +409,7 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
                 suggestions.push(TransformSuggestion {
                     file: file.to_string(),
                     line: line_no,
+                    category: TransformCategory::RedundantCode,
                     original: line.to_string(),
                     suggested: format!(
                         "{} // TODO: replace long string with short error symbol",
@@ -388,6 +428,7 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
             suggestions.push(TransformSuggestion {
                 file: file.to_string(),
                 line: line_no,
+                category: TransformCategory::RedundantCode,
                 original: line.to_string(),
                 suggested: line.replace(".unwrap()", ".expect(\"[reason]\") /* or handle error */").to_string(),
                 reason: "Prefer explicit error handling over .unwrap() — panics in contracts abort the entire transaction and waste fees.".to_string(),
@@ -395,6 +436,302 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
         }
     }
 
+    suggestions.extend(detect_constant_folding(content, file));
+    suggestions.extend(detect_dead_code(content, file));
+    suggestions.extend(detect_storage_packing(content, file));
+    suggestions.extend(detect_function_inlining(content, file));
+    suggestions.extend(detect_loop_optimization(content, file));
+
+    suggestions
+}
+
+/// Detects arithmetic between two integer literals that could be folded to a
+/// single constant at compile time (e.g. `60 * 60 * 24` → `86400`).
+fn detect_constant_folding(content: &str, file: &str) -> Vec<TransformSuggestion> {
+    let mut suggestions = Vec::new();
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.starts_with("const") {
+            continue;
+        }
+        for op in ['+', '*', '-'] {
+            let pattern = format!(" {} ", op);
+            if let Some(pos) = trimmed.find(&pattern) {
+                let left = trimmed[..pos].trim();
+                let right = trimmed[pos + pattern.len()..].trim();
+                let left_num = left.rsplit(|c: char| !c.is_ascii_digit()).next();
+                let right_num = right
+                    .split(|c: char| !c.is_ascii_digit() && c != '.')
+                    .next();
+                if let (Some(l), Some(r)) = (left_num, right_num) {
+                    if !l.is_empty()
+                        && !r.is_empty()
+                        && l.chars().all(|c| c.is_ascii_digit())
+                        && r.chars().all(|c| c.is_ascii_digit())
+                    {
+                        if let (Ok(lv), Ok(rv)) = (l.parse::<i128>(), r.parse::<i128>()) {
+                            let folded = match op {
+                                '+' => lv.checked_add(rv),
+                                '*' => lv.checked_mul(rv),
+                                '-' => lv.checked_sub(rv),
+                                _ => None,
+                            };
+                            if let Some(folded) = folded {
+                                suggestions.push(TransformSuggestion {
+                                    file: file.to_string(),
+                                    line: line_idx + 1,
+                                    category: TransformCategory::ConstantFolding,
+                                    original: line.to_string(),
+                                    suggested: line.replacen(
+                                        &format!("{} {} {}", l, op, r),
+                                        &folded.to_string(),
+                                        1,
+                                    ),
+                                    reason: format!(
+                                        "Literal expression `{} {} {}` can be folded to the constant `{}` at compile time, saving a runtime computation.",
+                                        l, op, r, folded
+                                    ),
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    suggestions
+}
+
+/// Detects private helper functions that are defined but never called
+/// elsewhere in the same file — a conservative, single-file heuristic for
+/// dead-code elimination (whole-crate reachability is out of scope here).
+/// Trivial one-line functions are skipped to avoid flagging ordinary small
+/// utility functions that may legitimately be part of a public API surface
+/// exercised from outside this file.
+fn detect_dead_code(content: &str, file: &str) -> Vec<TransformSuggestion> {
+    let mut suggestions = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    for (line_idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("fn ") || trimmed.starts_with("pub fn ") {
+            continue;
+        }
+        let prev = if line_idx > 0 { lines[line_idx - 1].trim() } else { "" };
+        if prev.starts_with('#') {
+            // Skip functions annotated with #[test], #[allow(...)], etc.
+            continue;
+        }
+        let name = trimmed
+            .trim_start_matches("fn ")
+            .split(|c: char| c == '(' || c == '<' || c.is_whitespace())
+            .next()
+            .unwrap_or("");
+        if name.is_empty() {
+            continue;
+        }
+
+        // Count non-empty body lines to skip trivial one-liners.
+        let mut depth = trimmed.matches('{').count() as i64 - trimmed.matches('}').count() as i64;
+        let mut j = line_idx + 1;
+        let mut body_lines = 0usize;
+        while j < lines.len() && depth > 0 {
+            depth += lines[j].matches('{').count() as i64 - lines[j].matches('}').count() as i64;
+            let t = lines[j].trim();
+            if !t.is_empty() && t != "}" {
+                body_lines += 1;
+            }
+            j += 1;
+        }
+        if body_lines <= 1 {
+            continue;
+        }
+
+        let call_pattern = format!("{}(", name);
+        let call_sites = content.matches(&call_pattern).count();
+        // One occurrence is the definition itself; zero additional call sites
+        // means the function is never invoked in this file.
+        if call_sites <= 1 {
+            suggestions.push(TransformSuggestion {
+                file: file.to_string(),
+                line: line_idx + 1,
+                category: TransformCategory::DeadCodeElimination,
+                original: line.to_string(),
+                suggested: format!("// consider removing unused function `{}`", name),
+                reason: format!(
+                    "Private function `{}` has no call sites elsewhere in this file. If it isn't used from another module, removing it reduces WASM binary size.",
+                    name
+                ),
+            });
+        }
+    }
+    suggestions
+}
+
+/// Rough byte size for common Rust/Soroban field types, used to detect
+/// suboptimal struct field ordering (storage packing / padding waste).
+fn type_size_hint(ty: &str) -> Option<usize> {
+    let ty = ty.trim();
+    Some(match ty {
+        "bool" | "u8" | "i8" => 1,
+        "u16" | "i16" => 2,
+        "u32" | "i32" | "f32" => 4,
+        "u64" | "i64" | "f64" => 8,
+        "u128" | "i128" => 16,
+        "Address" | "BytesN<32>" => 32,
+        _ => return None,
+    })
+}
+
+/// Detects `struct` definitions whose fields are not ordered largest-to-smallest,
+/// which on most targets wastes padding bytes per instance (storage packing).
+fn detect_storage_packing(content: &str, file: &str) -> Vec<TransformSuggestion> {
+    let mut suggestions = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        if (trimmed.starts_with("pub struct ") || trimmed.starts_with("struct "))
+            && trimmed.contains('{')
+        {
+            let struct_start = i;
+            let mut fields: Vec<(String, usize)> = Vec::new();
+            let mut j = i + 1;
+            while j < lines.len() && !lines[j].trim().starts_with('}') {
+                let field_line = lines[j].trim().trim_end_matches(',');
+                if let Some(colon) = field_line.find(':') {
+                    let field_name = field_line[..colon]
+                        .trim_start_matches("pub ")
+                        .trim()
+                        .to_string();
+                    let field_type = field_line[colon + 1..].trim();
+                    if let Some(size) = type_size_hint(field_type) {
+                        fields.push((field_name, size));
+                    } else {
+                        // Unknown type — bail out on this struct to avoid false positives.
+                        fields.clear();
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            if fields.len() >= 2 {
+                let mut sorted = fields.clone();
+                sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                if sorted != fields {
+                    suggestions.push(TransformSuggestion {
+                        file: file.to_string(),
+                        line: struct_start + 1,
+                        category: TransformCategory::StoragePacking,
+                        original: lines[struct_start].to_string(),
+                        suggested: format!(
+                            "// reorder fields largest-to-smallest: {}",
+                            sorted
+                                .iter()
+                                .map(|(n, _)| n.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        reason: "Struct fields are not ordered largest-to-smallest, which can waste padding bytes per instance. Reordering reduces storage/serialization size.".to_string(),
+                    });
+                }
+            }
+            i = j;
+        }
+        i += 1;
+    }
+    suggestions
+}
+
+/// Detects small, private, single-use helper functions that are good
+/// candidates for `#[inline]` to remove call overhead.
+fn detect_function_inlining(content: &str, file: &str) -> Vec<TransformSuggestion> {
+    let mut suggestions = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        if trimmed.starts_with("fn ") && !trimmed.starts_with("pub fn ") && trimmed.ends_with('{') {
+            let prev = if i > 0 { lines[i - 1].trim() } else { "" };
+            if prev.contains("#[inline") {
+                i += 1;
+                continue;
+            }
+            let mut depth = 1;
+            let mut j = i + 1;
+            let mut body_lines = 0usize;
+            while j < lines.len() && depth > 0 {
+                depth += lines[j].matches('{').count();
+                depth = depth.saturating_sub(lines[j].matches('}').count());
+                let t = lines[j].trim();
+                if !t.is_empty() && t != "}" {
+                    body_lines += 1;
+                }
+                j += 1;
+            }
+            let name = trimmed
+                .trim_start_matches("fn ")
+                .split(|c: char| c == '(' || c == '<' || c.is_whitespace())
+                .next()
+                .unwrap_or("");
+            let call_count = content.matches(&format!("{}(", name)).count();
+            // Body of 3 lines or fewer, called exactly once beyond its own definition.
+            if body_lines <= 3 && call_count == 2 && !name.is_empty() {
+                suggestions.push(TransformSuggestion {
+                    file: file.to_string(),
+                    line: i + 1,
+                    category: TransformCategory::FunctionInlining,
+                    original: lines[i].to_string(),
+                    suggested: format!("#[inline]\n{}", lines[i]),
+                    reason: format!(
+                        "`{}` is a small (<= 3 line) private function called exactly once — adding #[inline] lets the compiler remove the call overhead.",
+                        name
+                    ),
+                });
+            }
+            i = j;
+            continue;
+        }
+        i += 1;
+    }
+    suggestions
+}
+
+/// Detects `Vec::new()` followed by repeated `.push(...)` inside a `for` loop
+/// without a prior `with_capacity`, which causes repeated reallocation.
+fn detect_loop_optimization(content: &str, file: &str) -> Vec<TransformSuggestion> {
+    let mut suggestions = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    for (idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("for ") && trimmed.contains(" in ") {
+            // Look ahead a few lines for a `.push(` call inside this loop body.
+            let window_end = (idx + 8).min(lines.len());
+            let has_push = lines[idx + 1..window_end]
+                .iter()
+                .any(|l| l.trim_start().contains(".push("));
+            if has_push {
+                // Look behind a few lines for a `with_capacity` on the vec being built.
+                let window_start = idx.saturating_sub(5);
+                let has_capacity = lines[window_start..idx]
+                    .iter()
+                    .any(|l| l.contains("with_capacity"));
+                if !has_capacity {
+                    suggestions.push(TransformSuggestion {
+                        file: file.to_string(),
+                        line: idx + 1,
+                        category: TransformCategory::LoopOptimization,
+                        original: line.to_string(),
+                        suggested: format!(
+                            "// preallocate: Vec::with_capacity(<expected_len>) before this loop\n{}",
+                            line
+                        ),
+                        reason: "A loop pushes into a Vec that wasn't preallocated with with_capacity — this causes repeated reallocation as the vector grows.".to_string(),
+                    });
+                }
+            }
+        }
+    }
     suggestions
 }
 
@@ -539,28 +876,51 @@ fn handle_transform(args: TransformArgs) -> Result<()> {
         p::separator();
         p::success("No transformation suggestions found — source looks clean.");
         p::separator();
-        return Ok(());
-    }
-
-    p::separator();
-    println!(
-        "  {} suggestion(s) found in {}:",
-        suggestions.len().to_string().yellow().bold(),
-        args.src.display().to_string().cyan()
-    );
-    println!();
-
-    for s in &suggestions {
+    } else {
+        p::separator();
         println!(
-            "  Line {}: {}",
-            s.line.to_string().white().bold(),
-            s.reason.dimmed()
+            "  {} suggestion(s) found in {}:",
+            suggestions.len().to_string().yellow().bold(),
+            args.src.display().to_string().cyan()
         );
-        if args.dry_run {
-            println!("    {} {}", "Before:".dimmed(), s.original.trim().white());
-            println!("    {} {}", "After: ".dimmed(), s.suggested.trim().cyan());
+        println!();
+
+        let mut by_category: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for s in &suggestions {
+            *by_category.entry(s.category.to_string()).or_insert(0) += 1;
+        }
+        println!("  {}", "By optimization type:".dimmed());
+        for (cat, count) in &by_category {
+            println!("    {} {}", cat.cyan(), count);
         }
         println!();
+
+        for s in &suggestions {
+            println!(
+                "  Line {} [{}]: {}",
+                s.line.to_string().white().bold(),
+                s.category.to_string().magenta(),
+                s.reason.dimmed()
+            );
+            println!("    {} {}", "Before:".dimmed(), s.original.trim().white());
+            println!("    {} {}", "After: ".dimmed(), s.suggested.trim().cyan());
+            println!();
+        }
+    }
+
+    if args.ai {
+        if let Some(opinion) = fetch_ai_optimization_opinion(&content)? {
+            println!("  {}", "AI Optimization Opinion:".magenta().bold());
+            println!("  {}", opinion.trim());
+            println!();
+        } else {
+            p::info("AI opinion unavailable: set STARFORGE_AI_API_KEY to enable it.");
+        }
+    }
+
+    if suggestions.is_empty() {
+        return Ok(());
     }
 
     if args.dry_run {
@@ -568,21 +928,153 @@ fn handle_transform(args: TransformArgs) -> Result<()> {
         return Ok(());
     }
 
+    if !args.yes {
+        let confirmed = dialoguer::Confirm::new()
+            .with_prompt(format!(
+                "Apply {} transformation(s) to {}? A backup will be kept.",
+                suggestions.len(),
+                args.out.as_ref().unwrap_or(&args.src).display()
+            ))
+            .default(false)
+            .interact()
+            .unwrap_or(false);
+        if !confirmed {
+            p::info("Aborted: no files were modified.");
+            return Ok(());
+        }
+    }
+
     // Apply suggestions
     let out_path = args.out.as_ref().unwrap_or(&args.src);
+
+    // Safety guarantee: always keep a pre-transform backup of the source that
+    // is about to be overwritten, so changes can be reverted manually.
+    if out_path == &args.src {
+        let backup_path = args.src.with_extension(format!(
+            "{}.bak",
+            args.src
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("rs")
+        ));
+        fs::write(&backup_path, &content)?;
+        p::info(&format!("Backup written to {}.", backup_path.display()));
+    }
+
     let mut result = content.clone();
     for s in &suggestions {
         result = result.replacen(&s.original, &s.suggested, 1);
     }
-    fs::write(out_path, result)?;
+    fs::write(out_path, &result)?;
 
     p::success(&format!(
         "Applied {} transformation(s) to {}.",
         suggestions.len(),
         out_path.display()
     ));
+    println!(
+        "  {} {} bytes → {} bytes",
+        "Size:".dimmed(),
+        content.len(),
+        result.len()
+    );
     p::info("Review the changes before committing.");
     Ok(())
+}
+
+/// Optionally queries an OpenAI-compatible LLM for a natural-language
+/// optimization opinion on top of the deterministic static analysis, making
+/// this genuinely "AI-driven" per issue #497 while keeping the measurable,
+/// safety-guaranteed static engine as the primary source of truth. No-ops
+/// (returns `Ok(None)`) when no API key is configured.
+fn fetch_ai_optimization_opinion(source: &str) -> Result<Option<String>> {
+    let api_key = match std::env::var("STARFORGE_AI_API_KEY") {
+        Ok(key) if !key.trim().is_empty() => key,
+        _ => return Ok(None),
+    };
+    let base_url = std::env::var("STARFORGE_AI_BASE_URL")
+        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+    let model = std::env::var("STARFORGE_AI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+
+    let truncated: String = source.chars().take(6000).collect();
+    let body = serde_json::json!({
+        "model": model,
+        "temperature": 0.2,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a Soroban smart contract performance expert. Suggest \
+                    concrete gas/size optimizations (storage packing, function inlining, loop \
+                    optimization, constant folding, dead-code removal) for the given contract \
+                    source. Be specific and concise (under 200 words). Do not repeat generic advice."
+            },
+            {
+                "role": "user",
+                "content": format!("Contract source:\n```rust\n{}\n```", truncated)
+            }
+        ]
+    });
+
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let start = std::time::Instant::now();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = (|| -> Result<(String, Option<u64>, Option<u64>)> {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            rt.block_on(async {
+                let resp = crate::utils::http_client::get_client()
+                    .post(&url)
+                    .bearer_auth(&api_key)
+                    .json(&body)
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json::<serde_json::Value>()
+                    .await?;
+                let tokens_in = resp.pointer("/usage/prompt_tokens").and_then(|v| v.as_u64());
+                let tokens_out = resp
+                    .pointer("/usage/completion_tokens")
+                    .and_then(|v| v.as_u64());
+                let content = resp
+                    .pointer("/choices/0/message/content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Ok((content, tokens_in, tokens_out))
+            })
+        })();
+        let _ = tx.send(result);
+    });
+
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+    match rx.recv() {
+        Ok(Ok((content, tokens_in, tokens_out))) => {
+            ai_telemetry::record_call(
+                "openai",
+                &model,
+                "contract-optimize",
+                tokens_in,
+                tokens_out,
+                elapsed_ms,
+                true,
+                None,
+            );
+            if content.trim().is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(content))
+            }
+        }
+        Ok(Err(e)) => {
+            ai_telemetry::record_call(
+                "openai", &model, "contract-optimize", None, None, elapsed_ms, false, Some("network"),
+            );
+            Err(e)
+        }
+        Err(e) => Err(anyhow::anyhow!("AI opinion worker exited unexpectedly: {}", e)),
+    }
 }
 
 fn handle_bench(args: BenchArgs) -> Result<()> {
@@ -932,6 +1424,98 @@ fn add(a: u64, b: u64) -> u64 {
 "#;
         let suggestions = analyse_source(content, "clean.rs");
         assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn detects_constant_folding_opportunity() {
+        let content = "let seconds_per_day = 60 * 60 * 24;";
+        let suggestions = detect_constant_folding(content, "test.rs");
+        assert!(suggestions
+            .iter()
+            .any(|s| s.category == TransformCategory::ConstantFolding));
+    }
+
+    #[test]
+    fn detects_dead_code_unused_function() {
+        let content = r#"
+fn used_helper() -> u64 {
+    let x = 1;
+    let y = 2;
+    x + y
+}
+
+fn unused_helper() -> u64 {
+    let a = 10;
+    let b = 20;
+    a + b
+}
+
+pub fn entry_point() -> u64 {
+    used_helper()
+}
+"#;
+        let suggestions = detect_dead_code(content, "test.rs");
+        assert!(suggestions
+            .iter()
+            .any(|s| s.reason.contains("`unused_helper`")));
+        assert!(!suggestions.iter().any(|s| s.reason.contains("`used_helper`")));
+    }
+
+    #[test]
+    fn detects_storage_packing_suboptimal_order() {
+        let content = r#"
+pub struct Account {
+    active: bool,
+    balance: u128,
+    nonce: u64,
+}
+"#;
+        let suggestions = detect_storage_packing(content, "test.rs");
+        assert!(suggestions
+            .iter()
+            .any(|s| s.category == TransformCategory::StoragePacking));
+    }
+
+    #[test]
+    fn storage_packing_accepts_already_sorted_struct() {
+        let content = r#"
+pub struct Account {
+    balance: u128,
+    nonce: u64,
+    active: bool,
+}
+"#;
+        let suggestions = detect_storage_packing(content, "test.rs");
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn detects_loop_missing_with_capacity() {
+        let content = r#"
+fn build_list(n: u32) -> Vec<u32> {
+    let mut out = Vec::new();
+    for i in 0..n {
+        out.push(i);
+    }
+    out
+}
+"#;
+        let suggestions = detect_loop_optimization(content, "test.rs");
+        assert!(suggestions
+            .iter()
+            .any(|s| s.category == TransformCategory::LoopOptimization));
+    }
+
+    #[test]
+    fn transform_category_display() {
+        assert_eq!(
+            TransformCategory::StoragePacking.to_string(),
+            "storage-packing"
+        );
+        assert_eq!(
+            TransformCategory::DeadCodeElimination.to_string(),
+            "dead-code-elimination"
+        );
     }
 
     #[test]

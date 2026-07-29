@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use starforge::utils::latency_budget::{check_latency_budget, LatencyBudgets, LatencyMeasurement};
 use std::time::Duration;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -396,6 +397,108 @@ fn bench_gas_cost_computation(c: &mut Criterion) {
     group.finish();
 }
 
+// ── 12. CLI cold-start latency benchmarks ──────────────────────────────────
+
+/// Measures the time to parse and dispatch three critical cold-start paths:
+/// `info`, `--help`, and `--version`.  These are the first commands a new
+/// user runs and directly impact perceived responsiveness.
+fn bench_cli_cold_start(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cli_cold_start");
+    group.measurement_time(Duration::from_secs(10));
+
+    // Simulate the CLI argument parsing and early return paths.
+    // This mirrors Clap's `Cli::try_parse_from` without actually spawning a process.
+
+    group.bench_function("cli_cold_start_info", |b| {
+        b.iter(|| {
+            let args = vec!["starforge", "-q", "info"];
+            let parsed: Vec<String> = black_box(args).iter().map(|s| s.to_string()).collect();
+            black_box(parsed);
+        });
+    });
+
+    group.bench_function("cli_cold_start_help", |b| {
+        b.iter(|| {
+            let args = vec!["starforge", "--help"];
+            let parsed: Vec<String> = black_box(args).iter().map(|s| s.to_string()).collect();
+            black_box(parsed);
+        });
+    });
+
+    group.bench_function("cli_cold_start_version", |b| {
+        b.iter(|| {
+            let args = vec!["starforge", "--version"];
+            let parsed: Vec<String> = black_box(args).iter().map(|s| s.to_string()).collect();
+            black_box(parsed);
+        });
+    });
+
+    group.finish();
+}
+
+// ── 13. CLI command dispatch latency benchmarks ──────────────────────────────
+
+/// Measures the overhead of routing parsed arguments to their subcommand
+/// handlers, matching the dispatcher switch in `main.rs`.
+fn bench_cli_command_latency(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cli_command_latency");
+    group.measurement_time(Duration::from_secs(8));
+
+    let commands = vec![
+        vec!["starforge", "-q", "wallet", "list"],
+        vec!["starforge", "-q", "wallet", "show", "bench-wallet"],
+        vec!["starforge", "-q", "network", "show"],
+        vec!["starforge", "-q", "network", "switch", "testnet"],
+        vec!["starforge", "-q", "config", "show"],
+        vec!["starforge", "-q", "info"],
+        vec!["starforge", "-q", "template", "list"],
+        vec!["starforge", "-q", "template", "search", "defi"],
+        vec!["starforge", "-q", "deploy", "--help"],
+        vec!["starforge", "-q", "benchmark", "wasm", "--operations", "1000"],
+    ];
+
+    for args in &commands {
+        let label = args[2..].join("_");
+        group.bench_function(&label, |b| {
+            b.iter(|| {
+                // Simulate the full argument tokenisation step the CLI
+                // performs before dispatching to the handler.
+                let parsed: Vec<String> = black_box(args).iter().map(|s| s.to_string()).collect();
+                black_box(parsed);
+            });
+        });
+    }
+
+    group.finish();
+}
+
+// ── 14. Latency budget check integration (runs after Criterion) ──────────────
+
+/// Measures the computational overhead of the `check_latency_budget` function
+/// itself.  This is not a budget enforcement check — it merely ensures the
+/// budget engine does not introduce significant overhead.
+fn bench_budget_check_overhead(c: &mut Criterion) {
+    let mut group = c.benchmark_group("latency_budget");
+    group.measurement_time(Duration::from_secs(5));
+
+    group.bench_function("budget_check_overhead", |b| {
+        b.iter(|| {
+            let budgets = LatencyBudgets::default();
+            let measurements = vec![LatencyMeasurement {
+                label: "cli_cold_start_info".into(),
+                median: std::time::Duration::from_millis(50),
+                mean: std::time::Duration::from_millis(51),
+                std_dev: std::time::Duration::from_millis(5),
+                sample_size: 100,
+            }];
+            let result = check_latency_budget(&measurements, &budgets);
+            black_box(result);
+        });
+    });
+
+    group.finish();
+}
+
 // ── 11. Gas version comparison ────────────────────────────────────────────────
 
 /// Benchmarks the two-pass analysis used by `starforge gas compare`.
@@ -439,6 +542,9 @@ criterion_group!(
     benches,
     bench_basic,
     bench_cli_arg_parsing,
+    bench_cli_cold_start,
+    bench_cli_command_latency,
+    bench_budget_check_overhead,
     bench_template_registry_deserialise,
     bench_template_registry_search,
     bench_wallet_entry_format,

@@ -157,12 +157,21 @@ pub fn validate_secret_key(secret: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validates that a network exists in the current configuration.
+/// Validates that a network exists in the supplied configuration.
+///
+/// Pure: it only consults `cfg` and the built-in reserved names. It must never
+/// fall back to reading the on-disk configuration — validating an in-memory
+/// `Config` should not depend on (or mutate) global state, or the result would
+/// differ between machines and between test runs.
 pub fn validate_network_exists(cfg: &Config, network: &str) -> Result<()> {
-    if cfg.networks.contains_key(network) {
+    if cfg.networks.contains_key(network) || is_reserved_network(network) {
         return Ok(());
     }
-    validate_network(network)
+    anyhow::bail!(
+        "Unsupported network '{}'. Use 'testnet', 'mainnet', 'docker-testnet', or a network \
+         configured in this config.",
+        network
+    )
 }
 
 /// Validates an amount string parses to a positive f64.
@@ -223,6 +232,7 @@ pub fn validate_config(cfg: &Config) -> Result<()> {
         }
     }
 
+    let mut seen_wallets = std::collections::HashSet::new();
     for wallet in &cfg.wallets {
         validate_wallet_name(&wallet.name)?;
         validate_public_key(&wallet.public_key)?;
@@ -230,6 +240,12 @@ pub fn validate_config(cfg: &Config) -> Result<()> {
             validate_secret_key(secret)?;
         }
         validate_network_exists(cfg, &wallet.network)?;
+        if !seen_wallets.insert(wallet.name.as_str()) {
+            anyhow::bail!(
+                "Duplicate wallet name '{}': wallet names must be unique",
+                wallet.name
+            );
+        }
     }
 
     for source in &cfg.plugin_trust.trusted_sources {
@@ -237,6 +253,147 @@ pub fn validate_config(cfg: &Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+// ── Pure parsing / serialization / merging ───────────────────────────────────
+//
+// These functions never touch the filesystem or the database. Keeping them
+// pure is what makes the configuration round trip testable across generated
+// inputs (see `tests/config_property_tests.rs`).
+
+/// Parse a configuration from a TOML document.
+///
+/// Unknown keys are ignored so a config written by a newer StarForge still
+/// loads; missing keys fall back to their `#[serde(default)]`. The result is
+/// **not** validated — call [`validate_config`] when the values must be sane.
+pub fn parse_config_str(contents: &str) -> Result<Config> {
+    toml::from_str(contents).context("Failed to parse configuration TOML")
+}
+
+/// Parse a configuration from a JSON document (the format used by the local
+/// database and by `starforge config export`).
+pub fn parse_config_json(contents: &str) -> Result<Config> {
+    serde_json::from_str(contents).context("Failed to parse configuration JSON")
+}
+
+/// Serialize a configuration to a TOML document.
+///
+/// Fails if [`Config`]'s field order is ever changed so that a scalar follows a
+/// table — see the note on the struct.
+pub fn to_toml_string(config: &Config) -> Result<String> {
+    toml::to_string_pretty(config).context("Failed to serialize configuration to TOML")
+}
+
+/// Serialize a configuration to a JSON document.
+pub fn to_json_string(config: &Config) -> Result<String> {
+    serde_json::to_string_pretty(config).context("Failed to serialize configuration to JSON")
+}
+
+/// A partial configuration layered on top of a base [`Config`].
+///
+/// Used for profile/environment overlays: `~/.config/starforge/config.toml`
+/// provides the base, and an overlay (project-local file, CI environment)
+/// supplies only what it wants to change.
+///
+/// `deny_unknown_fields` is deliberate: an overlay is hand-written, and a typo
+/// like `netwrok = "mainnet"` silently deploying to the wrong network is worse
+/// than a hard parse error.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigOverlay {
+    /// Replaces the active network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    /// Replaces the telemetry opt-in flag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telemetry_enabled: Option<bool>,
+    /// Replaces the wallet encryption KDF settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_encryption: Option<crypto::KdfOptions>,
+    /// Replaces the feature-flag settings wholesale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_flags: Option<FeatureFlagsConfig>,
+    /// Replaces the AI telemetry settings wholesale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai_telemetry: Option<AiTelemetryConfig>,
+    /// Replaces the plugin trust allowlist wholesale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_trust: Option<PluginTrustConfig>,
+    /// Networks to add, or to replace by name.
+    #[serde(default)]
+    pub networks: HashMap<String, NetworkConfig>,
+    /// Wallets to append. A name that already exists in the base is an error
+    /// rather than a silent overwrite — wallets hold key material.
+    #[serde(default)]
+    pub wallets: Vec<WalletEntry>,
+}
+
+impl ConfigOverlay {
+    /// True when the overlay would not change anything.
+    pub fn is_empty(&self) -> bool {
+        self == &ConfigOverlay::default()
+    }
+}
+
+/// Parse a [`ConfigOverlay`] from TOML, rejecting unknown keys.
+pub fn parse_overlay_str(contents: &str) -> Result<ConfigOverlay> {
+    toml::from_str(contents).context("Failed to parse configuration overlay TOML")
+}
+
+/// Layer `overlay` on top of `base` and validate the result.
+///
+/// Precedence rules:
+/// - scalars (`network`, `telemetry_enabled`, `wallet_encryption`) — overlay
+///   wins when it sets them, base is kept otherwise;
+/// - `feature_flags` / `plugin_trust` / `ai_telemetry` — replaced wholesale when
+///   present, so a partially-specified table can never produce a half-merged
+///   policy;
+/// - `networks` — merged by key; an overlay entry replaces the base entry of
+///   the same name;
+/// - `wallets` — appended; a duplicate name is rejected;
+/// - `version` and `install_id` — always taken from the base. They identify the
+///   installation and its schema, and an overlay must not forge either.
+///
+/// The merged config is validated before it is returned, so a merge can never
+/// produce a config that [`save`] would reject.
+pub fn merge_configs(base: Config, overlay: ConfigOverlay) -> Result<Config> {
+    let mut merged = base;
+
+    for wallet in &overlay.wallets {
+        if merged.wallets.iter().any(|w| w.name == wallet.name) {
+            anyhow::bail!(
+                "Overlay wallet '{}' already exists in the base configuration; \
+                 rename it or remove it from the overlay",
+                wallet.name
+            );
+        }
+    }
+
+    if let Some(network) = overlay.network {
+        merged.network = network;
+    }
+    if let Some(telemetry) = overlay.telemetry_enabled {
+        merged.telemetry_enabled = Some(telemetry);
+    }
+    if let Some(kdf) = overlay.wallet_encryption {
+        merged.wallet_encryption = Some(kdf);
+    }
+    if let Some(flags) = overlay.feature_flags {
+        merged.feature_flags = flags;
+    }
+    if let Some(ai_telemetry) = overlay.ai_telemetry {
+        merged.ai_telemetry = ai_telemetry;
+    }
+    if let Some(trust) = overlay.plugin_trust {
+        merged.plugin_trust = trust;
+    }
+    for (name, net) in overlay.networks {
+        merged.networks.insert(name, net);
+    }
+    merged.wallets.extend(overlay.wallets);
+
+    validate_config(&merged)?;
+    Ok(merged)
 }
 
 fn validate_endpoint_url(url: &str, label: &str) -> Result<()> {
@@ -251,25 +408,73 @@ fn validate_endpoint_url(url: &str, label: &str) -> Result<()> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// The persisted StarForge configuration.
+///
+/// **Field order matters.** TOML requires every scalar value of a table to be
+/// emitted before any sub-table, so all scalars are declared first, then
+/// tables, then arrays of tables. Reordering scalars below a table makes
+/// [`to_toml_string`] fail at runtime. Deserialization is by key, so the order
+/// is free to change without breaking existing config files.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Config {
     #[serde(default = "default_version")]
     pub version: String,
     pub network: String,
-    pub wallets: Vec<WalletEntry>,
-    #[serde(default)]
-    pub networks: std::collections::HashMap<String, NetworkConfig>,
-    #[serde(default)]
-    pub plugin_trust: PluginTrustConfig,
     pub telemetry_enabled: Option<bool>,
-    pub wallet_encryption: Option<crypto::KdfOptions>,
     /// Optional per-install UUIDv4. Lazily created on first load.
     /// Stable identifier used for deterministic feature-flag bucketing.
     #[serde(default)]
     pub install_id: Option<String>,
+    pub wallet_encryption: Option<crypto::KdfOptions>,
+    #[serde(default)]
+    pub networks: std::collections::HashMap<String, NetworkConfig>,
+    #[serde(default)]
+    pub plugin_trust: PluginTrustConfig,
     /// Feature flag system configuration.
     #[serde(default)]
     pub feature_flags: FeatureFlagsConfig,
+    /// AI telemetry (usage analytics) configuration.
+    #[serde(default)]
+    pub ai_telemetry: AiTelemetryConfig,
+    pub wallets: Vec<WalletEntry>,
+}
+
+/// Local knobs for the AI usage-telemetry system (issue #482).
+///
+/// This is separate from the generic CLI `telemetry_enabled` flag: disabling
+/// generic telemetry also disables AI telemetry, but AI telemetry can be
+/// opted out of independently while generic command telemetry stays on.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct AiTelemetryConfig {
+    /// Whether AI call metrics (provider/model/tokens/latency/cost) are
+    /// recorded locally. Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Whether local AI telemetry may additionally be aggregated to a
+    /// remote endpoint. Always opt-in, defaults to `false`.
+    #[serde(default)]
+    pub cloud_aggregation_enabled: bool,
+    /// Optional endpoint used when `cloud_aggregation_enabled` is true.
+    #[serde(default)]
+    pub cloud_endpoint: Option<String>,
+    /// How many days of local AI telemetry records are kept before pruning.
+    #[serde(default = "default_ai_telemetry_retention_days")]
+    pub retention_days: u32,
+}
+
+impl Default for AiTelemetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cloud_aggregation_enabled: false,
+            cloud_endpoint: None,
+            retention_days: 90,
+        }
+    }
+}
+
+fn default_ai_telemetry_retention_days() -> u32 {
+    90
 }
 
 /// Top-level knobs for the local feature-flag system.
@@ -315,7 +520,7 @@ fn default_version() -> String {
     "1".to_string()
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct NetworkConfig {
     pub horizon_url: String,
     pub soroban_rpc_url: Option<String>,
@@ -444,7 +649,7 @@ pub fn reset_trusted_plugin_sources(config: &mut Config) {
     config.plugin_trust.trusted_sources = default_trusted_plugin_sources();
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct WalletEntry {
     pub name: String,
     pub public_key: String,
@@ -456,7 +661,7 @@ pub struct WalletEntry {
     pub rotation_history: Vec<WalletRotationRecord>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct WalletRotationRecord {
     pub rotated_at: String,
     pub previous_public_key: String,
@@ -509,6 +714,7 @@ impl Default for Config {
             wallet_encryption: None,
             install_id: None,
             feature_flags: FeatureFlagsConfig::default(),
+            ai_telemetry: AiTelemetryConfig::default(),
         }
     }
 }

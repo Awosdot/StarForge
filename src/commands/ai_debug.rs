@@ -11,7 +11,7 @@
 //! - `test`      — Analyse test failure output and suggest fixes
 
 use crate::utils::ai_debugger::{self, Severity};
-use crate::utils::print as p;
+use crate::utils::{ai_feedback, ai_telemetry, print as p};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::*;
@@ -24,12 +24,18 @@ use std::path::PathBuf;
 pub enum AiDebugCommands {
     /// Analyse a contract error message, with optional stack trace and variables
     Analyse(AnalyseArgs),
-    /// Explain a known error category (auth, arithmetic, storage, token, wasm, ttl, type)
+    /// Explain a known error category (auth, arithmetic, storage, token, wasm, ttl, type, compilation, configuration)
     Explain(ExplainArgs),
     /// Inspect variable state for potential bugs (pass name=value pairs)
     Inspect(InspectArgs),
     /// Analyse test failure output and suggest fixes
     Test(TestArgs),
+    /// Record whether a suggested fix helped (feeds the "learn from common errors" system)
+    Feedback(FeedbackArgs),
+    /// Show which fixes have historically been rated helpful, to prioritise common errors
+    Learned(LearnedArgs),
+    /// Predict bugs, suggest breakpoints, and visualize source execution paths
+    Source(SourceArgs),
 }
 
 // ── Analyse sub-command ───────────────────────────────────────────────────────
@@ -54,6 +60,40 @@ pub struct AnalyseArgs {
     /// Output format: text | json
     #[arg(long, default_value = "text", value_parser = ["text", "json"])]
     pub format: String,
+
+    /// When no local pattern matches, fall back to an AI provider for a plain-language
+    /// explanation (requires STARFORGE_AI_API_KEY to be set)
+    #[arg(long)]
+    pub deep: bool,
+}
+
+// ── Feedback sub-command ──────────────────────────────────────────────────────
+
+#[derive(Args)]
+pub struct FeedbackArgs {
+    /// The finding ID this feedback applies to (e.g. AUTH001, COMPILE001)
+    pub finding_id: String,
+
+    /// Mark the suggested fix as helpful
+    #[arg(long, conflicts_with = "not_helpful")]
+    pub helpful: bool,
+
+    /// Mark the suggested fix as not helpful
+    #[arg(long)]
+    pub not_helpful: bool,
+
+    /// Optional free-text comment
+    #[arg(long)]
+    pub comment: Option<String>,
+}
+
+// ── Learned sub-command ───────────────────────────────────────────────────────
+
+#[derive(Args)]
+pub struct LearnedArgs {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 // ── Explain sub-command ───────────────────────────────────────────────────────
@@ -89,6 +129,21 @@ pub struct TestArgs {
     pub error: Option<String>,
 }
 
+#[derive(Args)]
+pub struct SourceArgs {
+    /// Entry function used to build the execution path
+    pub entry: String,
+    /// Project directory to analyze
+    #[arg(long, default_value = ".")]
+    pub dir: PathBuf,
+    /// Maximum internal call depth
+    #[arg(long, default_value_t = 6)]
+    pub depth: usize,
+    /// Output the complete report as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
 // ── Top-level handler ─────────────────────────────────────────────────────────
 
 pub async fn handle(cmd: AiDebugCommands) -> Result<()> {
@@ -100,7 +155,52 @@ pub async fn handle(cmd: AiDebugCommands) -> Result<()> {
         AiDebugCommands::Explain(args) => handle_explain(args).await,
         AiDebugCommands::Inspect(args) => handle_inspect(args).await,
         AiDebugCommands::Test(args) => handle_test(args).await,
+        AiDebugCommands::Feedback(args) => handle_feedback(args).await,
+        AiDebugCommands::Learned(args) => handle_learned(args).await,
+        AiDebugCommands::Source(args) => handle_source(args),
     }
+}
+
+fn handle_source(args: SourceArgs) -> Result<()> {
+    let report =
+        crate::utils::ai_debug_enhancement::analyze_project(&args.dir, &args.entry, args.depth)?;
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    p::header("AI Source Debugging");
+    println!(
+        "{}",
+        crate::utils::ai_debug_enhancement::render_execution_path(&report)
+    );
+    println!("  {}", "Suggested Breakpoints".cyan().bold());
+    for breakpoint in &report.breakpoints {
+        println!(
+            "  {}:{} {} ({:.0}% confidence)",
+            breakpoint.file.display(),
+            breakpoint.line,
+            breakpoint.reason,
+            breakpoint.confidence * 100.0
+        );
+        println!("    inspect: {}", breakpoint.inspect.join(", "));
+    }
+    println!("\n  {}", "Bug Predictions".yellow().bold());
+    for prediction in &report.predictions {
+        println!(
+            "  [{}] {}:{} {}",
+            prediction.category,
+            prediction.file.display(),
+            prediction.line,
+            prediction.evidence
+        );
+        println!("    root cause: {}", prediction.root_cause);
+        println!("    fix: {}", prediction.fix);
+    }
+    for guidance in &report.guidance {
+        println!("\n  {}", guidance);
+    }
+    Ok(())
 }
 
 // ── analyse handler ───────────────────────────────────────────────────────────
@@ -119,7 +219,7 @@ async fn handle_analyse(args: AnalyseArgs) -> Result<()> {
     let variables = parse_variables(&args.variables)?;
     let vars_ref: Vec<(String, String)> = variables;
 
-    let report = ai_debugger::analyse(
+    let mut report = ai_debugger::analyse(
         &args.error,
         stack_trace_owned.as_deref(),
         if vars_ref.is_empty() {
@@ -130,12 +230,195 @@ async fn handle_analyse(args: AnalyseArgs) -> Result<()> {
         None,
     );
 
+    let mut deep_explanation: Option<String> = None;
+    if args.deep && report.findings.is_empty() {
+        match deep_explain_via_ai(&args.error).await {
+            Ok(Some(explanation)) => deep_explanation = Some(explanation),
+            Ok(None) => {
+                report.overall_guidance.push_str(
+                    "\n\nDeep explanation unavailable: set STARFORGE_AI_API_KEY to enable AI-powered fallback explanations.",
+                );
+            }
+            Err(e) => {
+                report
+                    .overall_guidance
+                    .push_str(&format!("\n\nDeep explanation failed: {}", e));
+            }
+        }
+    }
+
     if args.format == "json" {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        if let Some(explanation) = &deep_explanation {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "report": report,
+                    "deep_explanation": explanation,
+                }))?
+            );
+        } else {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         return Ok(());
     }
 
     print_report(&report);
+    if let Some(explanation) = &deep_explanation {
+        println!("  {}", "AI Deep Explanation:".magenta().bold());
+        wrap_print(explanation, 80, "    ");
+        println!();
+        p::separator();
+    }
+    Ok(())
+}
+
+/// Falls back to an AI provider to explain an error in plain language when no
+/// local rule-based pattern matched (issue #511). Mirrors the OpenAI-compatible
+/// call pattern used by `ai_docs::try_llm_enrichment`, and records the call via
+/// `ai_telemetry` under the "error-explain" feature.
+async fn deep_explain_via_ai(error_message: &str) -> Result<Option<String>> {
+    let api_key = match std::env::var("STARFORGE_AI_API_KEY") {
+        Ok(key) if !key.trim().is_empty() => key,
+        _ => return Ok(None),
+    };
+    let base_url = std::env::var("STARFORGE_AI_BASE_URL")
+        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+    let model = std::env::var("STARFORGE_AI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+
+    let body = serde_json::json!({
+        "model": model,
+        "temperature": 0.2,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant. The user encountered a Soroban smart \
+                    contract error. Explain what it means in plain language, identify the most \
+                    likely root cause, and suggest concrete troubleshooting steps. Keep it under \
+                    200 words."
+            },
+            {
+                "role": "user",
+                "content": format!("Error: {}", error_message)
+            }
+        ]
+    });
+
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let start = std::time::Instant::now();
+
+    let resp = crate::utils::http_client::get_client()
+        .post(&url)
+        .bearer_auth(&api_key)
+        .json(&body)
+        .send()
+        .await;
+
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+
+    let resp = match resp {
+        Ok(r) => r,
+        Err(e) => {
+            ai_telemetry::record_call(
+                "openai", &model, "error-explain", None, None, elapsed_ms, false, Some("network"),
+            );
+            return Err(anyhow::anyhow!("Deep-explain request failed: {}", e));
+        }
+    };
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        ai_telemetry::record_call(
+            "openai",
+            &model,
+            "error-explain",
+            None,
+            None,
+            elapsed_ms,
+            false,
+            Some(if status.as_u16() == 429 { "rate_limit" } else { "auth" }),
+        );
+        anyhow::bail!("AI provider returned error status {}", status);
+    }
+
+    let parsed: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to parse AI response: {}", e))?;
+
+    let tokens_in = parsed.pointer("/usage/prompt_tokens").and_then(|v| v.as_u64());
+    let tokens_out = parsed
+        .pointer("/usage/completion_tokens")
+        .and_then(|v| v.as_u64());
+    let content = parsed
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    ai_telemetry::record_call(
+        "openai",
+        &model,
+        "error-explain",
+        tokens_in,
+        tokens_out,
+        elapsed_ms,
+        true,
+        None,
+    );
+
+    if content.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(content))
+    }
+}
+
+// ── feedback handler ──────────────────────────────────────────────────────────
+
+async fn handle_feedback(args: FeedbackArgs) -> Result<()> {
+    if !args.helpful && !args.not_helpful {
+        anyhow::bail!("Specify either --helpful or --not-helpful");
+    }
+    let rating = if args.helpful {
+        ai_feedback::FeedbackRating::Positive
+    } else {
+        ai_feedback::FeedbackRating::Negative
+    };
+
+    ai_feedback::record_feedback(
+        "ai-debug",
+        &args.finding_id,
+        &format!("fix suggestion for {}", args.finding_id),
+        rating,
+        args.comment.clone(),
+        vec![],
+    )?;
+
+    p::success(&format!(
+        "Recorded feedback for finding {} — this helps prioritise common error fixes.",
+        args.finding_id
+    ));
+    Ok(())
+}
+
+// ── learned handler ───────────────────────────────────────────────────────────
+
+async fn handle_learned(args: LearnedArgs) -> Result<()> {
+    let stats = ai_feedback::get_feature_stats("ai-debug")?;
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&stats)?);
+        return Ok(());
+    }
+
+    p::header("AI Debugger — Learned From Common Errors");
+    p::separator();
+    p::kv("Total feedback entries", &stats.total_feedback.to_string());
+    p::kv("Positive rate", &format!("{:.1}%", stats.positive_rate * 100.0));
+    p::kv("Negative rate", &format!("{:.1}%", stats.negative_rate * 100.0));
+    p::kv("Avg quality score", &format!("{:.2}", stats.avg_quality_score));
+    p::separator();
     Ok(())
 }
 
@@ -154,8 +437,10 @@ async fn handle_explain(args: ExplainArgs) -> Result<()> {
         "ttl" | "archival" => "entry expired ttl elapsed",
         "test" | "assert" => "assertion failed left right",
         "type" | "abi" | "xdr" => "xdr type conversion mismatch",
+        "compilation" | "compile" | "compiler" => "error[E0308]: mismatched types, expected `u64`",
+        "configuration" | "config" => "failed to load config.toml: unknown network",
         other => anyhow::bail!(
-            "Unknown category '{}'. Valid categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type",
+            "Unknown category '{}'. Valid categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type, compilation, configuration",
             other
         ),
     };

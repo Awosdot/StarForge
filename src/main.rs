@@ -40,6 +40,12 @@ struct Cli {
     /// Directory to write rotating log files into (optional)
     #[arg(long, global = true)]
     log_dir: Option<std::path::PathBuf>,
+
+    /// Correlation ID tying every log line of this invocation together.
+    /// Defaults to $STARFORGE_CORRELATION_ID, or a freshly generated value.
+    /// Must be 8–64 characters of [A-Za-z0-9_-].
+    #[arg(long, global = true)]
+    correlation_id: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -47,6 +53,14 @@ enum Commands {
     /// AI-powered contract debugging assistant (error analysis, bug identification, fix suggestions)
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
+
+    /// AI-driven definitions, references, code graphs, dependencies, and contextual search
+    #[command(subcommand)]
+    AiNavigate(commands::ai_navigate::AiNavigateCommands),
+
+    /// Configurable code quality, security, performance, coverage, docs, and license gates
+    #[command(subcommand)]
+    AiQualityGate(commands::ai_quality_gate::AiQualityGateCommands),
 
     /// Local LLM assistant for Soroban contracts (audit, explain, test, optimise, profile)
     #[command(subcommand)]
@@ -287,6 +301,18 @@ enum Commands {
     Verify(commands::verify::VerifyCommands),
     /// AI Contextual Help: command, workflow, error, and best-practice guidance
     Help(commands::help::HelpArgs),
+
+    /// AI usage telemetry and analytics: calls, tokens, latency, cost, opt-out
+    #[command(subcommand)]
+    AiTelemetry(commands::ai_telemetry::AiTelemetryCommands),
+
+    /// Analyse and optimize compiled WASM / Rust contract source for gas and size
+    #[command(subcommand)]
+    Optimize(commands::optimize::OptimizeCommands),
+
+    /// AI-driven security training: lessons, exercises, progress tracking
+    #[command(subcommand)]
+    AiSecurityTraining(commands::ai_security_training::AiSecurityTrainingCommands),
 }
 
 #[tokio::main]
@@ -300,12 +326,27 @@ async fn main() {
         eprintln!("Warning: failed to initialise logger: {}", e);
     }
 
+    // Resolve the correlation ID before any command runs so every span, retry,
+    // network request, plugin call, and deployment step shares it. An invalid
+    // explicit value is fatal: silently generating a different ID would break
+    // the log join the caller asked for.
+    let correlation_id = match utils::correlation::resolve(cli.correlation_id.as_deref()) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Invalid correlation ID: {}", e);
+            std::process::exit(2);
+        }
+    };
+    utils::correlation::init(correlation_id);
+
     if !cli.quiet {
         print_banner();
     }
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
+        Commands::AiNavigate(_) => "ai-navigate",
+        Commands::AiQualityGate(_) => "ai-quality-gate",
         Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
@@ -369,12 +410,27 @@ async fn main() {
         Commands::External(_) => "external",
         Commands::Verify(_) => "verify",
         Commands::Help(_) => "help",
+        Commands::AiTelemetry(_) => "ai-telemetry",
+        Commands::Optimize(_) => "optimize",
+        Commands::AiSecurityTraining(_) => "ai-security-training",
     }
     .to_string();
+
+    // Root span: everything below inherits `correlation_id` through the span
+    // stack, including work done inside spawned command handlers.
+    let command_span = utils::correlation::command_span(&command_name);
+    let _command_guard = command_span.enter();
+    tracing::info!(
+        correlation_id = %utils::correlation::current_str(),
+        command = %command_name,
+        "command started"
+    );
 
     let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
+        Commands::AiNavigate(cmd) => commands::ai_navigate::handle(cmd),
+        Commands::AiQualityGate(cmd) => commands::ai_quality_gate::handle(cmd),
         Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
@@ -453,8 +509,19 @@ async fn main() {
         Commands::FeatureFlags(args) => commands::feature_flags_cmd::handle(args).await,
         Commands::External(args) => handle_external_plugin(args),
         Commands::Help(args) => commands::help::handle(args).await,
+        Commands::AiTelemetry(cmd) => commands::ai_telemetry::handle(cmd).await,
+        Commands::Optimize(cmd) => commands::optimize::handle(cmd).await,
+        Commands::AiSecurityTraining(cmd) => commands::ai_security_training::handle(cmd).await,
     };
     let duration = start.elapsed();
+
+    tracing::info!(
+        correlation_id = %utils::correlation::current_str(),
+        command = %command_name,
+        success = result.is_ok(),
+        duration_ms = duration.as_millis() as u64,
+        "command finished"
+    );
 
     let _ = utils::telemetry::track_event(
         &command_name,

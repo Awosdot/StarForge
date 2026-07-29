@@ -5,7 +5,13 @@
 //! command first (or with `--save`, the default) to build up the history
 //! this command reports, forecasts, and enforces budgets against.
 
-use crate::utils::{config, cost_estimation as ce, cost_management as cm, print as p};
+use crate::utils::{
+    config,
+    cost_estimation as ce,
+    cost_management as cm,
+    print as p,
+    simulation_resources as sr,
+};
 use anyhow::Result;
 use clap::Subcommand;
 use colored::*;
@@ -55,6 +61,26 @@ pub enum CostCommands {
         #[arg(long)]
         network: Option<String>,
     },
+    /// Price a `simulateTransaction` response: report CPU, memory, footprint,
+    /// and the minimum resource fee, then check it against configured budgets
+    Resources {
+        /// Path to a saved `simulateTransaction` JSON response
+        #[arg(long)]
+        file: PathBuf,
+        /// Network whose budgets the resulting fee is checked against
+        #[arg(long, default_value = "testnet")]
+        network: String,
+        /// Safety margin, in percent, applied to the minimum resource fee
+        #[arg(long, default_value_t = sr::DEFAULT_FEE_MARGIN_PERCENT)]
+        margin: u32,
+        /// Per-operation inclusion (base) fee in stroops
+        #[arg(long, default_value_t = sr::DEFAULT_INCLUSION_FEE_STROOPS)]
+        inclusion_fee: u64,
+        /// Exit with a non-zero status if the fee would exceed a budget
+        /// (suitable for gating CI/CD pipelines)
+        #[arg(long)]
+        enforce: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -101,7 +127,115 @@ pub async fn handle(cmd: CostCommands) -> Result<()> {
         CostCommands::Forecast { network, periods } => forecast(network, periods),
         CostCommands::CompareNetworks { wasm, networks } => compare_networks(wasm, networks),
         CostCommands::Report { network } => report(network),
+        CostCommands::Resources {
+            file,
+            network,
+            margin,
+            inclusion_fee,
+            enforce,
+        } => resources(file, network, margin, inclusion_fee, enforce),
     }
+}
+
+/// Outcome of checking a simulated resource fee against one budget.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResourceBudgetCheck {
+    pub network: String,
+    pub limit_xlm: f64,
+    pub spent_xlm: f64,
+    pub projected_spent_xlm: f64,
+    pub would_exceed: bool,
+}
+
+/// Project the period spend for each budget on `network` once a transaction
+/// costing `fee_xlm` is submitted.
+///
+/// Pure function — takes budgets and history as slices so the decision logic is
+/// testable without touching disk.
+pub fn check_resource_fee_against(
+    fee_xlm: f64,
+    network: &str,
+    budgets: &[cm::Budget],
+    history: &[ce::CostHistoryEntry],
+) -> Vec<ResourceBudgetCheck> {
+    budgets
+        .iter()
+        .filter(|b| b.network == network)
+        .map(|b| {
+            let status = cm::budget_status_for(b, history);
+            let projected = status.spent_xlm + fee_xlm;
+            ResourceBudgetCheck {
+                network: b.network.clone(),
+                limit_xlm: b.limit_xlm,
+                spent_xlm: status.spent_xlm,
+                projected_spent_xlm: projected,
+                would_exceed: projected > b.limit_xlm,
+            }
+        })
+        .collect()
+}
+
+fn resources(
+    file: PathBuf,
+    network: String,
+    margin: u32,
+    inclusion_fee: u64,
+    enforce: bool,
+) -> Result<()> {
+    config::validate_file_path(&file, Some("json"))?;
+    config::validate_network(&network)?;
+
+    let raw = std::fs::read_to_string(&file).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to read simulation response {}: {}",
+            file.display(),
+            e
+        )
+    })?;
+
+    let resources = sr::parse_simulation_response_str(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let plan =
+        sr::plan_fee(&resources, margin, inclusion_fee).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    sr::render_report(&resources, &plan);
+
+    let fee_xlm = plan.recommended_fee_xlm();
+    let budgets = cm::load_budgets()?;
+    let history = ce::load_cost_history()?;
+    let checks = check_resource_fee_against(fee_xlm, &network, &budgets, &history);
+
+    println!();
+    if checks.is_empty() {
+        p::info(&format!(
+            "No budget configured for '{}'. Set one with: starforge cost budget set --network {} --amount <xlm>",
+            network, network
+        ));
+        return Ok(());
+    }
+
+    let mut exceeded = false;
+    for check in &checks {
+        p::kv_accent("Budget network", &check.network);
+        p::kv("Limit", &format!("{:.7} XLM", check.limit_xlm));
+        p::kv("Spent this period", &format!("{:.7} XLM", check.spent_xlm));
+        p::kv("This transaction", &format!("{:.7} XLM", fee_xlm));
+        p::kv(
+            "Projected",
+            &format!("{:.7} XLM", check.projected_spent_xlm),
+        );
+        if check.would_exceed {
+            exceeded = true;
+            p::warn("This transaction would exceed the budget for the current period.");
+        } else {
+            p::success("Within budget.");
+        }
+    }
+
+    if exceeded && enforce {
+        anyhow::bail!("Budget enforcement failed: simulated resource fee exceeds the budget");
+    }
+
+    Ok(())
 }
 
 fn budget(action: BudgetAction) -> Result<()> {
@@ -375,4 +509,48 @@ fn report(network: Option<String>) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod resource_budget_tests {
+    use super::*;
+
+    fn budget(network: &str, limit_xlm: f64) -> cm::Budget {
+        cm::Budget {
+            network: network.to_string(),
+            period: cm::BudgetPeriod::Monthly,
+            limit_xlm,
+            label: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn reports_within_budget_for_a_small_fee() {
+        let checks =
+            check_resource_fee_against(0.001, "testnet", &[budget("testnet", 1.0)], &[]);
+        assert_eq!(checks.len(), 1);
+        assert!(!checks[0].would_exceed);
+        assert!((checks[0].projected_spent_xlm - 0.001).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ignores_budgets_for_other_networks() {
+        let checks =
+            check_resource_fee_against(5.0, "mainnet", &[budget("testnet", 1.0)], &[]);
+        assert!(checks.is_empty());
+    }
+
+    #[test]
+    fn fee_exactly_at_the_limit_is_not_an_overrun() {
+        let checks = check_resource_fee_against(1.0, "testnet", &[budget("testnet", 1.0)], &[]);
+        assert!(!checks[0].would_exceed);
+    }
+
+    #[test]
+    fn fee_above_the_limit_is_flagged() {
+        let checks =
+            check_resource_fee_against(1.000_000_1, "testnet", &[budget("testnet", 1.0)], &[]);
+        assert!(checks[0].would_exceed);
+    }
 }
