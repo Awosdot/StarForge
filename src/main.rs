@@ -39,6 +39,12 @@ struct Cli {
     /// Directory to write rotating log files into (optional)
     #[arg(long, global = true)]
     log_dir: Option<std::path::PathBuf>,
+
+    /// Correlation ID tying every log line of this invocation together.
+    /// Defaults to $STARFORGE_CORRELATION_ID, or a freshly generated value.
+    /// Must be 8–64 characters of [A-Za-z0-9_-].
+    #[arg(long, global = true)]
+    correlation_id: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -308,6 +314,19 @@ async fn main() {
         eprintln!("Warning: failed to initialise logger: {}", e);
     }
 
+    // Resolve the correlation ID before any command runs so every span, retry,
+    // network request, plugin call, and deployment step shares it. An invalid
+    // explicit value is fatal: silently generating a different ID would break
+    // the log join the caller asked for.
+    let correlation_id = match utils::correlation::resolve(cli.correlation_id.as_deref()) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Invalid correlation ID: {}", e);
+            std::process::exit(2);
+        }
+    };
+    utils::correlation::init(correlation_id);
+
     if !cli.quiet {
         print_banner();
     }
@@ -383,6 +402,16 @@ async fn main() {
         Commands::AiSecurityTraining(_) => "ai-security-training",
     }
     .to_string();
+
+    // Root span: everything below inherits `correlation_id` through the span
+    // stack, including work done inside spawned command handlers.
+    let command_span = utils::correlation::command_span(&command_name);
+    let _command_guard = command_span.enter();
+    tracing::info!(
+        correlation_id = %utils::correlation::current_str(),
+        command = %command_name,
+        "command started"
+    );
 
     let start = std::time::Instant::now();
     let result = match cli.command {
@@ -466,6 +495,14 @@ async fn main() {
         Commands::AiSecurityTraining(cmd) => commands::ai_security_training::handle(cmd).await,
     };
     let duration = start.elapsed();
+
+    tracing::info!(
+        correlation_id = %utils::correlation::current_str(),
+        command = %command_name,
+        success = result.is_ok(),
+        duration_ms = duration.as_millis() as u64,
+        "command finished"
+    );
 
     let _ = utils::telemetry::track_event(
         &command_name,

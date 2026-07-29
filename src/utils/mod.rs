@@ -33,6 +33,7 @@ pub mod contract_profiler;
 pub mod contract_test_framework;
 pub mod contract_test_runner;
 pub mod contract_testing;
+pub mod correlation;
 pub mod cost_estimation;
 pub mod cost_management;
 pub mod crypto;
