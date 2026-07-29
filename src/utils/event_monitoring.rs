@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -176,6 +177,10 @@ impl PersistedEvent {
             event,
         }
     }
+
+    pub fn identity(&self) -> String {
+        format!("{}:{}:{}", self.network, self.contract_id, self.event.id)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -231,6 +236,7 @@ impl EventStore {
         let reader = BufReader::new(file);
         let mut events = Vec::new();
 
+        let mut identities = HashSet::new();
         for (index, line) in reader.lines().enumerate() {
             let line = line.with_context(|| {
                 format!("failed to read line {} from {}", index + 1, self.path.display())
@@ -239,14 +245,21 @@ impl EventStore {
             if trimmed.is_empty() {
                 continue;
             }
-            let event: PersistedEvent = serde_json::from_str(trimmed).with_context(|| {
-                format!(
-                    "failed to parse persisted event on line {} of {}",
-                    index + 1,
-                    self.path.display()
-                )
-            })?;
-            events.push(event);
+            let event: PersistedEvent = match serde_json::from_str(trimmed) {
+                Ok(event) => event,
+                Err(error) => {
+                    eprintln!(
+                        "warning: skipping corrupt persisted event on line {} of {}: {}",
+                        index + 1,
+                        self.path.display(),
+                        error
+                    );
+                    continue;
+                }
+            };
+            if identities.insert(event.identity()) {
+                events.push(event);
+            }
         }
 
         Ok(events)
@@ -464,6 +477,7 @@ fn write_counts(out: &mut String, title: &str, counts: &HashMap<String, usize>) 
 mod tests {
     use super::*;
     use serde_json::json;
+    use tempfile::TempDir;
 
     fn sample_event() -> SorobanEvent {
         SorobanEvent {
@@ -496,5 +510,84 @@ mod tests {
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].severity, "critical");
         assert_eq!(alerts[0].message, "admin event");
+    }
+
+    #[test]
+    fn event_store_round_trips_persisted_events() {
+        let dir = TempDir::new().unwrap();
+        let store = EventStore::new(dir.path().join("events.jsonl"));
+        let event = sample_event();
+        let persisted = PersistedEvent::new(
+            "testnet",
+            "C123",
+            event,
+            vec!["dex".to_string()],
+            vec![EventAlert {
+                rule_id: "alert-1".to_string(),
+                severity: "high".to_string(),
+                message: "matched event pattern 'swap'".to_string(),
+            }],
+        );
+
+        store.persist(&persisted).unwrap();
+
+        let replayed = store.replay().unwrap();
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].network, "testnet");
+        assert_eq!(replayed[0].contract_id, "C123");
+        assert_eq!(replayed[0].routes, vec!["dex".to_string()]);
+        assert_eq!(replayed[0].alerts.len(), 1);
+        assert_eq!(replayed[0].event.id, "0000000042-0000000001");
+    }
+
+    #[test]
+    fn analytics_dashboard_includes_counts_and_recent_events() {
+        let event = sample_event();
+        let persisted = PersistedEvent::new(
+            "testnet",
+            "C123",
+            event,
+            vec!["dex".to_string()],
+            vec![EventAlert {
+                rule_id: "alert-1".to_string(),
+                severity: "critical".to_string(),
+                message: "admin event".to_string(),
+            }],
+        );
+
+        let analytics = EventAnalytics::from_events(&[persisted]);
+        let dashboard = analytics.render_dashboard();
+
+        assert!(dashboard.contains("Event Analytics Dashboard"));
+        assert!(dashboard.contains("Total events : 1"));
+        assert!(dashboard.contains("Alerts fired : 1"));
+        assert!(dashboard.contains("By route:"));
+        assert!(dashboard.contains("Recent events:"));
+    }
+
+    #[test]
+    fn replay_skips_corrupt_and_duplicate_records() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("events.jsonl");
+        let store = EventStore::new(path.clone());
+        let persisted = PersistedEvent::new(
+            "testnet",
+            "C123",
+            sample_event(),
+            Vec::new(),
+            Vec::new(),
+        );
+        store.persist(&persisted).unwrap();
+        store.persist(&persisted).unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(b"not-json\n")
+            .unwrap();
+
+        let replayed = store.replay().unwrap();
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].identity(), "testnet:C123:0000000042-0000000001");
     }
 }

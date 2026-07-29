@@ -79,6 +79,10 @@ pub struct MonitorArgs {
     #[arg(long = "trigger")]
     pub triggers: Vec<String>,
 
+    /// Explicitly allow configured event triggers to execute shell commands
+    #[arg(long)]
+    pub allow_triggers: bool,
+
     /// Wallet name from starforge config to monitor
     #[arg(long)]
     pub wallet: Option<String>,
@@ -130,6 +134,7 @@ pub async fn handle(args: MonitorArgs) -> Result<()> {
                 args.replay.as_ref(),
                 args.dashboard,
                 &args.triggers,
+                args.allow_triggers,
             )
             .await
         }
@@ -174,6 +179,7 @@ async fn monitor_contract(
     replay: Option<&PathBuf>,
     dashboard: bool,
     trigger_specs: &[String],
+    allow_triggers: bool,
 ) -> Result<()> {
     config::validate_contract_id(contract_id)?;
 
@@ -182,6 +188,9 @@ async fn monitor_contract(
     let router = EventRouter::from_specs(routes)?;
     let alert_engine = AlertEngine::from_specs(alerts)?;
     let triggers = EventTrigger::from_specs(trigger_specs)?;
+    if !triggers.is_empty() && !allow_triggers {
+        anyhow::bail!("event triggers execute shell commands; rerun with --allow-triggers to enable them");
+    }
 
     if let Some(replay_path) = replay {
         return replay_contract_events(
