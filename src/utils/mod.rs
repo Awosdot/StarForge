@@ -1,6 +1,15 @@
+pub mod ai_conversation;
 pub mod ai_debugger;
 pub mod ai_docs;
+pub mod ai_error_handler;
+pub mod ai_feedback;
 pub mod ai_gas_estimation;
+pub mod ai_property_testing;
+pub mod ai_recommendations;
+pub mod ai_search;
+pub mod ai_test_assistant;
+pub mod ai_test_generator;
+pub mod ai_tutorial;
 pub mod approval_engine;
 pub mod audit;
 pub mod backup;
@@ -10,8 +19,8 @@ pub mod bridge;
 pub mod call_graph;
 pub mod completion;
 pub mod compliance;
-pub mod completion;
 pub mod config;
+pub mod contract_suggestions;
 pub mod confirmation;
 pub mod context_help;
 pub mod contract_assertions;
@@ -31,6 +40,7 @@ pub mod deploy_history;
 pub mod deploy_orchestrator;
 pub mod deployment_verify;
 pub mod doc_api_ref;
+pub mod event_monitoring;
 pub mod doc_generator;
 pub mod doc_html;
 pub mod doc_publisher;
@@ -97,6 +107,7 @@ pub mod tutorial_engine;
 pub mod tx_batch;
 pub mod wallet_signer;
 pub mod ai_gas_estimation;
+pub mod workflow_guidance;
 
 // AI Deployment Planner
 pub mod ai_deployment_planner;
@@ -109,3 +120,7 @@ pub mod ai_validation;
 pub mod ai_context;
 // AI Rate Limiting (#489)
 pub mod ai_rate_limiter;
+// AI Request Caching (#483)
+pub mod ai_cache;
+// AI Test Analytics (#570)
+pub mod ai_test_analytics;

@@ -20,7 +20,7 @@ Closes #508
 - Add `src/utils/completion.rs` — std-only completion engine: source analysis, context-aware suggestions, boilerplate generation, function-stub completion, import inference, and type inference.
 - Add `src/commands/complete.rs` — `starforge complete` CLI with `suggest`, `boilerplate`, `stub`, `imports`, and `infer` subcommands (human + `--json` output).
 - Register the new modules and wire the `Complete` command into `src/main.rs`, `src/commands/mod.rs`, and `src/utils/mod.rs`.
-- Add `tests/completion_assistant.rs` — CLI integration tests.
+- Add `tests/completion_assistant_integration.rs` — CLI integration tests.
 - Incidental build fix: remove stray match-arm lines left inside `enum Commands`, wire the previously-unregistered `Migrate` variant into both dispatch matches, and drop a duplicate `pub mod simulate;` — `master` did not compile without these.
 
 ## Testing
@@ -36,7 +36,7 @@ Reproduce:
 
 ```bash
 cargo test --lib completion
-cargo test --test completion_assistant
+cargo test --test completion_assistant_integration
 ```
 
 - [x] Unit tests added/updated
@@ -46,6 +46,7 @@ cargo test --test completion_assistant
 ### Test Coverage
 
 Describe what scenarios have been tested:
+
 - Happy path: boilerplate generation for each kind, suggestions on a partial contract, import/type inference, stub `--write` applying generated bodies.
 - Edge cases: empty file (scaffold suggestion), imported-but-unused symbols, un-annotated `let` bindings incl. `mut`, brace balance/indentation preserved when splicing stub bodies.
 - Error handling: missing file returns a non-zero exit; unknown boilerplate kind is rejected with the list of valid kinds.

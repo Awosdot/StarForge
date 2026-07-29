@@ -9,7 +9,7 @@
 //! - Sending chat / generate requests with Soroban-optimised prompts
 //! - Falling back to a cloud-provider suggestion when Ollama is unavailable
 
-use crate::utils::http_client::get_client;
+use crate::utils::{ai_cache, http_client::get_client};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -69,7 +69,7 @@ pub struct GenerateOptions {
 }
 
 /// Successful response from `POST /api/generate` (non-streaming).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GenerateResponse {
     /// The generated text.
     pub response: String,
@@ -280,6 +280,80 @@ pub async fn generate(
         .context("Failed to parse Ollama generate response")?;
 
     Ok(resp)
+}
+
+/// Sends a prompt to Ollama with caching support.
+///
+/// First checks the cache for a matching request. If found and not expired,
+/// returns the cached response. Otherwise, makes the request to Ollama,
+/// stores the response in cache, and returns it.
+pub async fn generate_cached(
+    model: &str,
+    prompt: &str,
+    options: Option<GenerateOptions>,
+    ttl_seconds: Option<u64>,
+    tags: &str,
+) -> Result<GenerateResponse> {
+    use serde_json;
+    
+    // Try to open cache (may fail if database is locked, etc.)
+    let mut cache = match ai_cache::AiCache::open() {
+        Ok(cache) => cache,
+        Err(e) => {
+            tracing::warn!("Failed to open AI cache, falling back to direct call: {}", e);
+            return generate(model, prompt, options).await;
+        }
+    };
+    
+    // Generate cache key
+    let options_json = options.as_ref()
+        .map(|opts| serde_json::to_string(opts).unwrap_or_default())
+        .unwrap_or_default();
+    
+    let cache_key = ai_cache::AiCache::generate_cache_key(model, prompt, &options_json);
+    
+    // Try to get from cache
+    if let Some(entry) = cache.get(&cache_key)? {
+        tracing::debug!("Cache hit for key: {}", cache_key);
+        
+        // Parse response from cache
+        let response: GenerateResponse = serde_json::from_str(&entry.response)
+            .context("Failed to parse cached response")?;
+        
+        return Ok(response);
+    }
+    
+    tracing::debug!("Cache miss for key: {}, making request to Ollama", cache_key);
+    
+    // Make actual request
+    let response = generate(model, prompt, options).await?;
+    
+    // Store in cache
+    let response_json = serde_json::to_string(&response)
+        .context("Failed to serialize response for caching")?;
+    
+    let metadata = serde_json::json!({
+        "total_duration": response.total_duration,
+        "done": response.done,
+        "cached_at": chrono::Utc::now().to_rfc3339(),
+        "source": "ollama"
+    }).to_string();
+    
+    let entry = ai_cache::AiCache::create_entry(
+        model,
+        prompt,
+        &options_json,
+        &response_json,
+        &metadata,
+        ttl_seconds,
+        tags,
+    );
+    
+    if let Err(e) = cache.put(entry) {
+        tracing::warn!("Failed to store response in cache: {}", e);
+    }
+    
+    Ok(response)
 }
 
 // ─── Soroban prompt engineering ───────────────────────────────────────────────

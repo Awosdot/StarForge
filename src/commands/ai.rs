@@ -14,8 +14,10 @@
 //! - `compare-profiles`– AI-generated comparative analysis between two profile snapshots
 //! - `patterns`        – AI contract pattern recognition and anti-pattern detection
 //! - `library`         – browse the built-in Soroban pattern / anti-pattern library
+//! - `cache`           – manage AI request cache (stats, clear, export, etc.)
 
 use crate::utils::{
+    ai_cache,
     contract_profiler,
     ollama::{self, GenerateOptions},
     pattern_library,
@@ -24,6 +26,7 @@ use crate::utils::{
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::path::PathBuf;
+use crate::utils::ai_cache;
 
 // ─── Sub-command enum ─────────────────────────────────────────────────────────
 
@@ -216,6 +219,14 @@ pub enum AiCommands {
         #[arg(long)]
         note: Option<String>,
     },
+
+    /// Manage AI request cache (stats, clear, export, etc.)
+    #[command(subcommand)]
+    Cache(crate::commands::ai_cache_cmd::AiCacheCommands),
+
+    /// Test analytics
+    #[command(subcommand)]
+    Analytics(crate::commands::ai_test_analytics_cmd::AiTestAnalyticsCommands),
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
@@ -260,8 +271,14 @@ pub async fn handle(cmd: AiCommands) -> Result<()> {
         AiCommands::Library { category, anti, verbose } => {
             handle_library(category.as_deref(), anti, verbose)
         }
+        AiCommands::Cache(cache_cmd) => {
+            crate::commands::ai_cache_cmd::handle(cache_cmd).await
+        }
         AiCommands::PatternFeedback { pattern_id, verdict, file, note } => {
             handle_pattern_feedback(&pattern_id, &verdict, file.as_deref(), note.as_deref())
+        }
+        AiCommands::Analytics(analytics_cmd) => {
+            crate::commands::ai_test_analytics_cmd::handle(analytics_cmd).await
         }
     }
 }
@@ -415,9 +432,15 @@ async fn handle_ask(question: &str, model: &str, temperature: f32, max_tokens: u
     };
 
     let spinner = p::spinner("Thinking…");
-    let response = ollama::generate(model, &prompt, Some(opts))
-        .await
-        .context("LLM generation failed")?;
+    let response = ollama::generate_cached(
+        model,
+        &prompt,
+        Some(opts),
+        Some(ai_cache::DEFAULT_CACHE_TTL_SECONDS),
+        "ask",
+    )
+    .await
+    .context("LLM generation failed")?;
     spinner.finish_and_clear();
 
     println!("{}", response.response.trim());
@@ -495,9 +518,15 @@ async fn handle_file_task(file: &PathBuf, model: &str, task: Task) -> Result<()>
     };
 
     let spinner = p::spinner(&format!("Running {}…", task_label.to_lowercase()));
-    let response = ollama::generate(model, &prompt, Some(opts))
-        .await
-        .with_context(|| format!("LLM {} failed", task_label.to_lowercase()))?;
+    let response = ollama::generate_cached(
+        model,
+        &prompt,
+        Some(opts),
+        Some(ai_cache::DEFAULT_CACHE_TTL_SECONDS),
+        &task_label.to_lowercase(),
+    )
+    .await
+    .with_context(|| format!("LLM {} failed", task_label.to_lowercase()))?;
     spinner.finish_and_clear();
 
     println!("{}", response.response.trim());
@@ -995,6 +1024,7 @@ fn handle_pattern_feedback(
 // ─── Task enum ────────────────────────────────────────────────────────────────
 
 enum Task {
+    Audit,
     Explain,
     Test,
     Optimise,

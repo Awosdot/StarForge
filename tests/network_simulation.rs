@@ -660,7 +660,8 @@ fn test_simulator_config_with_initial_accounts() {
 fn test_simulator_get_status() {
     let mut sim = NetworkSimulator::new();
     sim.create_account(100.0);
-    let pk = sim.list_accounts()[0].public_key.clone();
+    let pubkey = sim.list_accounts()[0].public_key.clone();
+    let pk = pubkey.clone();
     sim.deploy_contract("wh", &pk).unwrap();
 
     let status = sim.get_status();
@@ -674,7 +675,8 @@ fn test_simulator_get_status() {
 fn test_reset_simulator() {
     let mut sim = NetworkSimulator::new();
     sim.create_account(100.0);
-    let pk = sim.list_accounts()[0].public_key.clone();
+    let pubkey = sim.list_accounts()[0].public_key.clone();
+    let pk = pubkey.clone();
     sim.deploy_contract("wh", &pk).unwrap();
     assert_eq!(sim.accounts.len(), 1);
     assert_eq!(sim.contracts.len(), 1);

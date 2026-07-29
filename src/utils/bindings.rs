@@ -117,6 +117,8 @@ fn parse_spec_entries(entries: &[ScSpecEntry]) -> ContractMetadata {
             }
             ScSpecEntry::UdtUnionV0(_) => {}
             ScSpecEntry::UdtErrorEnumV0(_) => {}
+            #[allow(unreachable_patterns)]
+            _ => {}
         }
     }
 

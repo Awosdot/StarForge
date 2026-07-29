@@ -122,7 +122,6 @@ impl PromptManager {
                 "Write thorough Rust unit tests for this Soroban contract. Cover edge cases and authorization. \
                 Code: {{ code }}"
             )?;
-
             self.add_prompt_and_version(
                 "code_explainer",
                 "code_explanation",

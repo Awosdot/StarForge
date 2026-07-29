@@ -25,6 +25,8 @@
 
 use std::collections::BTreeSet;
 
+use crate::utils::contract_suggestions as cs;
+
 /// The category a [`Completion`] belongs to. Mirrors the feature list in the
 /// issue so the CLI can group and filter suggestions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +38,7 @@ pub enum CompletionKind {
     ExternalCall,
     Import,
     Boilerplate,
+    ContractSuggestion,
 }
 
 impl CompletionKind {
@@ -49,6 +52,7 @@ impl CompletionKind {
             CompletionKind::ExternalCall => "external-call",
             CompletionKind::Import => "import",
             CompletionKind::Boilerplate => "boilerplate",
+            CompletionKind::ContractSuggestion => "contract-suggestion",
         }
     }
 }
@@ -319,6 +323,38 @@ pub fn suggest(source: &str) -> Vec<Completion> {
                 "Referenced but not imported: {}",
                 imports.missing.join(", ")
             ),
+        });
+    }
+
+    // 8. AI Contract Function Suggestions — context-aware suggestions
+    // based on contract type and best practices.
+    let contract_name = ctx.contract_name.as_deref().unwrap_or("Contract");
+    let contract_context = cs::ContractSuggestionEngine::analyze_context(source, contract_name);
+    let engine = cs::ContractSuggestionEngine::new();
+    let contract_suggestions = engine.suggest(&contract_context);
+
+    for suggestion in contract_suggestions.into_iter().take(5) {
+        // Convert FunctionSuggestion to Completion
+        let kind = match suggestion.category {
+            cs::SuggestionCategory::Initialization | cs::SuggestionCategory::Standard => {
+                CompletionKind::FunctionSignature
+            }
+            cs::SuggestionCategory::ErrorHandling => CompletionKind::ErrorHandling,
+            cs::SuggestionCategory::Storage => CompletionKind::StorageAccess,
+            cs::SuggestionCategory::Events => CompletionKind::Boilerplate,
+            _ => CompletionKind::ContractSuggestion,
+        };
+
+        out.push(Completion {
+            label: format!("{} ({})", suggestion.name, suggestion.category),
+            kind,
+            snippet: if suggestion.signature.is_empty() {
+                suggestion.implementation.clone()
+            } else {
+                suggestion.signature.clone()
+            },
+            confidence: suggestion.confidence,
+            detail: suggestion.description.clone(),
         });
     }
 

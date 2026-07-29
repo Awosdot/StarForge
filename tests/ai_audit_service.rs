@@ -43,7 +43,7 @@ async fn test_audit_contract_validates_empty_code() {
     let result = service.audit_contract(request).await;
     assert!(result.is_err(), "Should reject empty contract code");
     assert!(
-        result.unwrap_err().to_string().contains("empty"),
+        result.err().unwrap().to_string().contains("empty"),
         "Error should indicate empty code"
     );
 }
@@ -56,7 +56,7 @@ async fn test_audit_contract_validates_empty_name() {
     let result = service.audit_contract(request).await;
     assert!(result.is_err(), "Should reject empty contract name");
     assert!(
-        result.unwrap_err().to_string().contains("name"),
+        result.err().unwrap().to_string().contains("name"),
         "Error should indicate empty name"
     );
 }
@@ -70,7 +70,7 @@ async fn test_audit_contract_validates_code_size_limit() {
     let result = service.audit_contract(request).await;
     assert!(result.is_err(), "Should reject oversized contract");
     assert!(
-        result.unwrap_err().to_string().contains("50KB"),
+        result.err().unwrap().to_string().contains("50KB"),
         "Error should mention 50KB limit"
     );
 }
@@ -210,6 +210,7 @@ fn test_audit_service_model_selection() {
         service.is_ok(),
         "service should build from a well-formed key"
     );
+    let _service = service.unwrap();
 }
 
 #[test]
