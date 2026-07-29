@@ -195,10 +195,7 @@ pub fn generate_help(ctx: &HelpContext<'_>) -> ContextualHelp {
 
         if ctx.category_enabled("workflow") {
             for wf_name in meta.workflows {
-                if let Some(wf) = help_metadata::WORKFLOWS
-                    .iter()
-                    .find(|w| w.name == *wf_name)
-                {
+                if let Some(wf) = help_metadata::WORKFLOWS.iter().find(|w| w.name == *wf_name) {
                     out.workflow_suggestions
                         .push(format!("{} — {}", wf.name, wf.description));
                 }
@@ -283,7 +280,10 @@ pub fn predict_issues(command: &str, history: &[HistoryEntry]) -> Vec<String> {
         // needed.
         let satisfied = history.iter().any(|h| h.command.contains(need.pattern));
         if !satisfied {
-            warnings.push(format!("{} → run `{}` to clear this", need.warning, need.remedy));
+            warnings.push(format!(
+                "{} → run `{}` to clear this",
+                need.warning, need.remedy
+            ));
         }
     }
     warnings
@@ -306,7 +306,10 @@ pub fn expertise_level(category: &str, history: &[HistoryEntry]) -> Expertise {
     let mut weight: u32 = 0;
     let mut recent_count: u32 = 0;
     for entry in history {
-        let secs = now.signed_duration_since(entry.last_used).num_seconds().max(0);
+        let secs = now
+            .signed_duration_since(entry.last_used)
+            .num_seconds()
+            .max(0);
         let recency: f32 = if secs < 86_400 {
             1.0
         } else if secs < 86_400 * 7 {
@@ -397,7 +400,9 @@ pub fn proactive_tip(command: &str, history: &[HistoryEntry]) -> Option<String> 
     // If the user has never explored tutorials, nudge them.
     let ever_tutorial = history.iter().any(|h| h.command.starts_with("tutorial"));
     if !ever_tutorial {
-        return Some("Tip: run `starforge tutorial start hello-world` for a guided first run.".into());
+        return Some(
+            "Tip: run `starforge tutorial start hello-world` for a guided first run.".into(),
+        );
     }
 
     // For first-time deploys, recommend audit.
@@ -416,9 +421,7 @@ pub fn proactive_tip(command: &str, history: &[HistoryEntry]) -> Option<String> 
 
     // After wallet-related commands, remind about encryption.
     if command.starts_with("wallet") {
-        let ever_encrypt = history
-            .iter()
-            .any(|h| h.command.contains("--encrypt"));
+        let ever_encrypt = history.iter().any(|h| h.command.contains("--encrypt"));
         if !ever_encrypt {
             return Some(
                 "Tip: use `starforge wallet create <name> --encrypt` to password-protect the saved secret key."
@@ -527,8 +530,12 @@ where
 
 /// Word-boundary matcher used by `expertise_level`.
 fn command_matches(entry_cmd: &str, category: &str) -> bool {
-    if category.is_empty() { return true; }
-    if entry_cmd == category { return true; }
+    if category.is_empty() {
+        return true;
+    }
+    if entry_cmd == category {
+        return true;
+    }
     let cat_len = category.len();
     if entry_cmd.len() >= cat_len && entry_cmd.starts_with(category) {
         match entry_cmd.as_bytes().get(cat_len) {
@@ -595,7 +602,11 @@ mod tests {
             ..HelpContext::default()
         };
         let h = generate_help(&ctx);
-        assert!(h.workflow_suggestions.is_empty(), "got {:?}", h.workflow_suggestions);
+        assert!(
+            h.workflow_suggestions.is_empty(),
+            "got {:?}",
+            h.workflow_suggestions
+        );
         // Tips still appear because we're only filtering workflow.
         assert!(!h.best_practice_tips.is_empty());
     }
@@ -609,7 +620,11 @@ mod tests {
             ..HelpContext::default()
         };
         let h = generate_help(&ctx);
-        assert!(h.flags_and_examples.is_empty(), "got {:?}", h.flags_and_examples);
+        assert!(
+            h.flags_and_examples.is_empty(),
+            "got {:?}",
+            h.flags_and_examples
+        );
         assert!(h.workflow_suggestions.is_empty());
         assert!(!h.best_practice_tips.is_empty());
     }
@@ -622,14 +637,26 @@ mod tests {
             entry("deploy --wasm bar.wasm --optimize", 20, 2),
             entry("deploy --wasm baz.wasm", 15, 3),
         ];
-        let begin_ctx = HelpContext { command: "deploy", history: &hist, ..HelpContext::default() };
+        let begin_ctx = HelpContext {
+            command: "deploy",
+            history: &hist,
+            ..HelpContext::default()
+        };
         let advanced_tips = generate_help(&begin_ctx).best_practice_tips.len();
 
-        let empty_ctx = HelpContext { command: "deploy", history: &[], ..HelpContext::default() };
+        let empty_ctx = HelpContext {
+            command: "deploy",
+            history: &[],
+            ..HelpContext::default()
+        };
         let beginner_tips = generate_help(&empty_ctx).best_practice_tips.len();
 
-        assert!(advanced_tips < beginner_tips,
-                "advanced={} beginner={}", advanced_tips, beginner_tips);
+        assert!(
+            advanced_tips < beginner_tips,
+            "advanced={} beginner={}",
+            advanced_tips,
+            beginner_tips
+        );
     }
 
     #[test]
@@ -641,7 +668,9 @@ mod tests {
         };
         let h = generate_help(&ctx);
         assert!(
-            h.troubleshooting_steps.iter().any(|s| s.contains("Authorization")),
+            h.troubleshooting_steps
+                .iter()
+                .any(|s| s.contains("Authorization")),
             "missing troubleshooting for auth error: {:?}",
             h.troubleshooting_steps
         );
@@ -687,10 +716,7 @@ mod tests {
 
     #[test]
     fn moderate_history_is_intermediate() {
-        let hist = vec![
-            entry("deploy", 3, 0),
-            entry("deploy --wasm a.wasm", 3, 1),
-        ];
+        let hist = vec![entry("deploy", 3, 0), entry("deploy --wasm a.wasm", 3, 1)];
         assert_eq!(expertise_level("deploy", &hist), Expertise::Intermediate);
     }
 
@@ -718,13 +744,20 @@ mod tests {
     #[test]
     fn troubleshoot_finds_overflow_error() {
         let steps = troubleshoot("attempt to multiply with overflow");
-        assert!(steps.iter().any(|s| s.to_lowercase().contains("arithmetic")));
+        assert!(steps
+            .iter()
+            .any(|s| s.to_lowercase().contains("arithmetic")));
     }
 
     #[test]
     fn troubleshoot_falls_back_for_unknown_text() {
         let steps = troubleshoot("xyzzy no recognizable error");
-        assert_eq!(steps.len(), 1, "expected single fallback step, got {:?}", steps);
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected single fallback step, got {:?}",
+            steps
+        );
         assert!(steps[0].contains("No specific pattern"));
     }
 
@@ -795,9 +828,15 @@ mod tests {
 
     #[test]
     fn empty_disabled_with_empty_enabled_means_all_enabled() {
-        let ctx = HelpContext { command: "deploy", ..HelpContext::default() };
+        let ctx = HelpContext {
+            command: "deploy",
+            ..HelpContext::default()
+        };
         for c in CATEGORIES {
-            assert!(ctx.category_enabled(c), "category {c} unexpectedly disabled");
+            assert!(
+                ctx.category_enabled(c),
+                "category {c} unexpectedly disabled"
+            );
         }
     }
 }

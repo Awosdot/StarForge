@@ -516,16 +516,20 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                         };
                         match report_format.as_str() {
                             "html" => test_automation::TestReportExporter::export_html(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                             "json" => test_automation::TestReportExporter::export_json(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                             "junit" => test_automation::TestReportExporter::export_junit(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                             _ => test_automation::TestReportExporter::export_html(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                         }
                         p::kv("Report saved", &report_path.display().to_string());
@@ -543,8 +547,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                             if report.coverage_summary.lines_total > 0 {
                                 (report.coverage_summary.lines_covered as f64
                                     / report.coverage_summary.lines_total as f64
-                                    * 100.0)
-                                    as u32
+                                    * 100.0) as u32
                             } else {
                                 0
                             }
@@ -599,7 +602,8 @@ pub async fn handle(args: TestArgs) -> Result<()> {
         };
 
         // Generate optimization report
-        if args.optimize || args.perf_analysis || args.optimize_out.is_some() || args.optimize_html {
+        if args.optimize || args.perf_analysis || args.optimize_out.is_some() || args.optimize_html
+        {
             let generated_cases = if let Some(source) = &args.source {
                 if args.generate {
                     crate::utils::test_generator::generate_from_source(source)
@@ -626,7 +630,9 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             for flaky in &opt_report.flaky_tests {
                 p::warn(&format!(
                     "Flaky test '{}' (score: {:.1}, failure rate: {:.1}%)",
-                    flaky.test_name, flaky.flakiness_score, flaky.failure_rate * 100.0
+                    flaky.test_name,
+                    flaky.flakiness_score,
+                    flaky.failure_rate * 100.0
                 ));
             }
 
@@ -634,7 +640,9 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                 for dup in &opt_report.duplicate_tests {
                     p::warn(&format!(
                         "Duplicate pair: '{}' <-> '{}' (similarity: {:.0}%)",
-                        dup.test_a, dup.test_b, dup.similarity_score * 100.0
+                        dup.test_a,
+                        dup.test_b,
+                        dup.similarity_score * 100.0
                     ));
                 }
             }
@@ -645,7 +653,12 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             );
             p::kv(
                 "Slowest test",
-                &opt_report.performance.slowest_tests.first().cloned().unwrap_or_default(),
+                &opt_report
+                    .performance
+                    .slowest_tests
+                    .first()
+                    .cloned()
+                    .unwrap_or_default(),
             );
             p::kv(
                 "Parallel efficiency",

@@ -93,7 +93,8 @@ impl Backoff {
 
 impl SorobanEventStream {
     pub fn new(rpc_url: String, contract_id: String) -> Self {
-        let websocket_url = websocket_url_from_rpc_url(&rpc_url).unwrap_or_else(|_| rpc_url.clone());
+        let websocket_url =
+            websocket_url_from_rpc_url(&rpc_url).unwrap_or_else(|_| rpc_url.clone());
         Self {
             rpc_url,
             websocket_url,
@@ -252,7 +253,12 @@ impl SorobanEventStream {
 
         let (websocket, _) = connect_async(self.websocket_url.as_str())
             .await
-            .with_context(|| format!("failed to connect to Soroban RPC WebSocket {}", self.websocket_url))?;
+            .with_context(|| {
+                format!(
+                    "failed to connect to Soroban RPC WebSocket {}",
+                    self.websocket_url
+                )
+            })?;
         self.websocket = Some(websocket);
         Ok(())
     }

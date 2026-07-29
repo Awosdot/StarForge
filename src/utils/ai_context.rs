@@ -148,9 +148,7 @@ impl AIContextManager {
         content: String,
     ) -> Result<()> {
         let mut sessions = self.sessions.write().await;
-        let session = sessions
-            .get_mut(session_id)
-            .context("Session not found")?;
+        let session = sessions.get_mut(session_id).context("Session not found")?;
         session.add_message(role, content);
         Ok(())
     }
@@ -161,9 +159,7 @@ impl AIContextManager {
         max_messages: usize,
     ) -> Result<Vec<ConversationMessage>> {
         let sessions = self.sessions.read().await;
-        let session = sessions
-            .get(session_id)
-            .context("Session not found")?;
+        let session = sessions.get(session_id).context("Session not found")?;
         Ok(session.recent_messages(max_messages).to_vec())
     }
 
@@ -250,7 +246,11 @@ impl AIContextManager {
         if let Ok(entries) = std::fs::read_dir(project_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() && path.file_name().map_or(false, |n| n == "contracts" || n == "src") {
+                if path.is_dir()
+                    && path
+                        .file_name()
+                        .map_or(false, |n| n == "contracts" || n == "src")
+                {
                     if let Ok(contract_items) = collect_rust_files_sync(&path, &self.config) {
                         items.extend(contract_items);
                     }

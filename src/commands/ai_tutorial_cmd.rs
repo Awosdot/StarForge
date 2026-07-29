@@ -4,12 +4,12 @@
 //! personalized learning paths, and progress tracking.
 
 use crate::utils::{
-    ai_tutorial::{TutorialManager, SkillLevel, TutorialTopic, StepResult},
+    ai_tutorial::{SkillLevel, StepResult, TutorialManager, TutorialTopic},
     print as p,
 };
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use dialoguer::{Select, Input, Confirm};
+use dialoguer::{Confirm, Input, Select};
 
 #[derive(Subcommand)]
 pub enum AiTutorialCommands {
@@ -139,7 +139,10 @@ async fn handle_start(tutorial_id: &str) -> Result<()> {
     p::separator();
     p::info(&tutorial.description);
     p::kv("Difficulty", &format!("{:?}", tutorial.difficulty));
-    p::kv("Estimated Time", &format!("{} min", tutorial.estimated_total_minutes));
+    p::kv(
+        "Estimated Time",
+        &format!("{} min", tutorial.estimated_total_minutes),
+    );
     p::separator();
     println!();
 
@@ -209,23 +212,26 @@ async fn run_tutorial_steps(
                 crate::utils::ai_tutorial::ExerciseType::CommandExecution => {
                     if let Some(cmd) = &exercise.command {
                         p::info(&format!("Run this command: {}", cmd));
-                        
+
                         let executed = Confirm::new()
                             .with_prompt("Have you executed the command?")
                             .interact()?;
 
                         if executed {
                             let result = manager
-                                .complete_step(user_id, tutorial_id, &step.id, Some("executed".to_string()))
+                                .complete_step(
+                                    user_id,
+                                    tutorial_id,
+                                    &step.id,
+                                    Some("executed".to_string()),
+                                )
                                 .await?;
                             p::success(&result.feedback);
                         }
                     }
                 }
                 crate::utils::ai_tutorial::ExerciseType::CodeCompletion => {
-                    let answer = Input::new()
-                        .with_prompt("Enter your answer")
-                        .interact()?;
+                    let answer = Input::new().with_prompt("Enter your answer").interact()?;
 
                     let result = manager
                         .complete_step(user_id, tutorial_id, &step.id, Some(answer))
@@ -246,9 +252,7 @@ async fn run_tutorial_steps(
                     }
                 }
                 crate::utils::ai_tutorial::ExerciseType::FreeText => {
-                    let answer = Input::new()
-                        .with_prompt("Enter your answer")
-                        .interact()?;
+                    let answer = Input::new().with_prompt("Enter your answer").interact()?;
 
                     let result = manager
                         .complete_step(user_id, tutorial_id, &step.id, Some(answer))
@@ -313,9 +317,18 @@ async fn handle_progress() -> Result<()> {
     let progress = manager.get_user_progress(user_id).await?;
 
     p::kv("Skill Level", &format!("{:?}", progress.skill_level));
-    p::kv("Completed Tutorials", &progress.completed_tutorials.len().to_string());
-    p::kv("Total Time Spent", &format!("{} min", progress.total_time_spent_minutes));
-    p::kv("Last Activity", &progress.last_activity.format("%Y-%m-%d %H:%M").to_string());
+    p::kv(
+        "Completed Tutorials",
+        &progress.completed_tutorials.len().to_string(),
+    );
+    p::kv(
+        "Total Time Spent",
+        &format!("{} min", progress.total_time_spent_minutes),
+    );
+    p::kv(
+        "Last Activity",
+        &progress.last_activity.format("%Y-%m-%d %H:%M").to_string(),
+    );
     println!();
 
     p::info("Learning Path:");
@@ -347,7 +360,9 @@ async fn handle_assess() -> Result<()> {
     let manager = TutorialManager::new();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    p::info("Assessing your current skill level based on completed tutorials and exercise scores...");
+    p::info(
+        "Assessing your current skill level based on completed tutorials and exercise scores...",
+    );
     println!();
 
     let skill_level = manager.assess_skill_level(user_id).await?;
@@ -409,14 +424,22 @@ async fn handle_show(tutorial_id: &str) -> Result<()> {
     p::kv("Title", &tutorial.title);
     p::kv("Topic", tutorial.topic.display_name());
     p::kv("Difficulty", &format!("{:?}", tutorial.difficulty));
-    p::kv("Estimated Time", &format!("{} min", tutorial.estimated_total_minutes));
+    p::kv(
+        "Estimated Time",
+        &format!("{} min", tutorial.estimated_total_minutes),
+    );
     println!();
     p::info(&tutorial.description);
     println!();
 
     p::info("Steps:");
     for (i, step) in tutorial.steps.iter().enumerate() {
-        println!("  {}. {} ({} min)", i + 1, step.title, step.estimated_minutes);
+        println!(
+            "  {}. {} ({} min)",
+            i + 1,
+            step.title,
+            step.estimated_minutes
+        );
     }
 
     p::separator();

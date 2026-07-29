@@ -825,7 +825,11 @@ mod tests {
     #[test]
     fn test_compare_profiles() {
         run_with_temp_home(|| {
-            let contract_id = format!("COMPARE_{}_{}", chrono::Utc::now().timestamp_millis(), rand::random::<u64>());
+            let contract_id = format!(
+                "COMPARE_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                rand::random::<u64>()
+            );
             let base_time = chrono::Utc::now();
 
             for i in 0..8 {

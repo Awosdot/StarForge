@@ -366,7 +366,14 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
     // ── AI-driven compliance checks (regulatory, security, best practices) ─
     if args.compliance {
         p::header("AI Deployment Compliance Checks");
-        let request_id = format!("deploy-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0000"));
+        let request_id = format!(
+            "deploy-{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0000")
+        );
         let contract_id = format!("wasm:{}", &wasm_hash[..16]);
 
         match crate::utils::compliance::run_compliance_checks(
@@ -377,7 +384,10 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         ) {
             Ok(report) => {
                 p::kv("Compliance Report ID", &report.request_id[..12]);
-                p::kv("Regulatory checks", &report.regulatory_checks.len().to_string());
+                p::kv(
+                    "Regulatory checks",
+                    &report.regulatory_checks.len().to_string(),
+                );
                 p::kv("Best practices", &report.best_practices.len().to_string());
 
                 for check in &report.checks {
@@ -387,12 +397,22 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                         "✗".red()
                     };
                     let sev_label = match check.severity {
-                        crate::utils::compliance::ComplianceSeverity::Blocking => "[BLOCKING]".red(),
-                        crate::utils::compliance::ComplianceSeverity::Warning => "[WARNING]".yellow(),
+                        crate::utils::compliance::ComplianceSeverity::Blocking => {
+                            "[BLOCKING]".red()
+                        }
+                        crate::utils::compliance::ComplianceSeverity::Warning => {
+                            "[WARNING]".yellow()
+                        }
                         crate::utils::compliance::ComplianceSeverity::Info => "[INFO]".dimmed(),
                     };
                     if !check.passed {
-                        println!("  {} {} {} — {}", status, sev_label, check.policy_name, check.message.dimmed());
+                        println!(
+                            "  {} {} {} — {}",
+                            status,
+                            sev_label,
+                            check.policy_name,
+                            check.message.dimmed()
+                        );
                     }
                 }
 
@@ -401,11 +421,20 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     p::kv(
                         "Risk Level",
                         &match risk.overall_level {
-                            crate::utils::compliance::RiskLevel::Low => risk.overall_level.to_string().green(),
-                            crate::utils::compliance::RiskLevel::Medium => risk.overall_level.to_string().yellow(),
-                            crate::utils::compliance::RiskLevel::High => risk.overall_level.to_string().red(),
-                            crate::utils::compliance::RiskLevel::Critical => risk.overall_level.to_string().red().bold(),
-                        }.to_string(),
+                            crate::utils::compliance::RiskLevel::Low => {
+                                risk.overall_level.to_string().green()
+                            }
+                            crate::utils::compliance::RiskLevel::Medium => {
+                                risk.overall_level.to_string().yellow()
+                            }
+                            crate::utils::compliance::RiskLevel::High => {
+                                risk.overall_level.to_string().red()
+                            }
+                            crate::utils::compliance::RiskLevel::Critical => {
+                                risk.overall_level.to_string().red().bold()
+                            }
+                        }
+                        .to_string(),
                     );
                     p::kv("Risk Score", &format!("{}/100", risk.overall_score));
 
@@ -442,9 +471,15 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             }
             Err(e) => {
                 if args.yes {
-                    p::warn(&format!("Compliance check failed (bypassed with --yes): {}", e));
+                    p::warn(&format!(
+                        "Compliance check failed (bypassed with --yes): {}",
+                        e
+                    ));
                 } else {
-                    anyhow::bail!("Compliance check failed: {}\n  Run with --yes to skip compliance checks.", e);
+                    anyhow::bail!(
+                        "Compliance check failed: {}\n  Run with --yes to skip compliance checks.",
+                        e
+                    );
                 }
             }
         }
@@ -640,7 +675,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     duration_secs: None,
                     success: false,
                     error: Some(stderr.clone()),
-                }
+                },
             )));
 
             // Automatic rollback safety net: revert to the last good deployment.
@@ -678,7 +713,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 duration_secs: None,
                 success: true,
                 error: None,
-            }
+            },
         )));
 
         p::success("Deployment executed successfully!");

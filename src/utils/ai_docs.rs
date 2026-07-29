@@ -371,7 +371,9 @@ fn document_configuration(extracted: &ExtractedDocs, network: &str, version: &st
              entirely by constructor/`initialize` arguments at deploy time.\n",
         );
     } else {
-        out.push_str("\n### Constants\n\n| Name | Type | Value | Description |\n|---|---|---|---|\n");
+        out.push_str(
+            "\n### Constants\n\n| Name | Type | Value | Description |\n|---|---|---|---|\n",
+        );
         for c in &extracted.constants {
             out.push_str(&format!(
                 "| `{}` | `{}` | `{}` | {} |\n",
@@ -388,7 +390,11 @@ fn document_configuration(extracted: &ExtractedDocs, network: &str, version: &st
 
 /// Heuristic troubleshooting guide covering the most common failure modes
 /// for the detected contract shape (auth, storage, arithmetic).
-fn build_troubleshooting(source: &str, extracted: &ExtractedDocs, storage: &[StorageDoc]) -> String {
+fn build_troubleshooting(
+    source: &str,
+    extracted: &ExtractedDocs,
+    storage: &[StorageDoc],
+) -> String {
     let mut tips: Vec<String> = Vec::new();
 
     if source.contains("require_auth") {

@@ -103,7 +103,8 @@ async fn handle_overview() -> Result<()> {
     println!(
         "  {} {}",
         "→".cyan(),
-        "starforge help --why [--error <t>]  Explain a recent error and suggest next steps".dimmed()
+        "starforge help --why [--error <t>]  Explain a recent error and suggest next steps"
+            .dimmed()
     );
     println!(
         "  {} {}",
@@ -148,9 +149,7 @@ async fn handle_overview() -> Result<()> {
         );
     }
     println!();
-    p::info(
-        "Run `starforge help --enable tip --disable workflow` to customise what's shown.",
-    );
+    p::info("Run `starforge help --enable tip --disable workflow` to customise what's shown.");
     Ok(())
 }
 
@@ -172,17 +171,14 @@ async fn handle_command(cmd: &str, args: &HelpArgs) -> Result<()> {
 
     let canonical = cmd.trim().to_lowercase();
     p::header(&format!("Help: {}", canonical));
-    let summary_line = context_help::command_summary(&canonical)
-        .unwrap_or_else(|| help.description.as_str());
+    let summary_line =
+        context_help::command_summary(&canonical).unwrap_or_else(|| help.description.as_str());
     println!("  {}", summary_line.dimmed());
     println!();
 
     let expertise = context_help::expertise_level(&canonical, &history_entries);
     p::kv("Detected expertise", expertise.label());
-    p::kv(
-        "History entries",
-        &history_entries.len().to_string(),
-    );
+    p::kv("History entries", &history_entries.len().to_string());
     if args.verbose {
         // Surface category settings so users can see what they're filtering.
         p::kv(
@@ -357,14 +353,11 @@ async fn handle_why(args: &HelpArgs) -> Result<()> {
         _ => {
             p::header("Troubleshoot an error");
             p::separator();
-            p::info(
-                "No error text supplied. Pass the error message as the command argument:",
-            );
+            p::info("No error text supplied. Pass the error message as the command argument:");
             println!();
             println!(
                 "    {}",
-                "starforge help --why \"require_auth failed for caller\""
-                    .bright_white()
+                "starforge help --why \"require_auth failed for caller\"".bright_white()
             );
             println!();
             return Ok(());
@@ -445,20 +438,28 @@ async fn handle_settings(args: &HelpArgs) -> Result<()> {
     p::header("Available Categories");
     p::separator();
     for c in context_help::CATEGORIES {
-    let enabled = if !args.enable.is_empty() {
-        // Normalise through the engine so aliases (“tips”, “troubleshooting”)
-        // are accepted on this command-line.
-        let normalised: HashSet<&'static str> =
-            context_help::normalise_categories(args.enable.iter()).into_iter().collect();
-        normalised.contains(c)
-    } else if !args.disable.is_empty() {
-        let normalised: HashSet<&'static str> =
-            context_help::normalise_categories(args.disable.iter()).into_iter().collect();
-        !normalised.contains(c)
-    } else {
-        true
-    };
-        let marker = if enabled { "✓".green() } else { "·".dimmed() };
+        let enabled = if !args.enable.is_empty() {
+            // Normalise through the engine so aliases (“tips”, “troubleshooting”)
+            // are accepted on this command-line.
+            let normalised: HashSet<&'static str> =
+                context_help::normalise_categories(args.enable.iter())
+                    .into_iter()
+                    .collect();
+            normalised.contains(c)
+        } else if !args.disable.is_empty() {
+            let normalised: HashSet<&'static str> =
+                context_help::normalise_categories(args.disable.iter())
+                    .into_iter()
+                    .collect();
+            !normalised.contains(c)
+        } else {
+            true
+        };
+        let marker = if enabled {
+            "✓".green()
+        } else {
+            "·".dimmed()
+        };
         println!("  {} {}", marker, c.bright_white());
     }
     println!();
@@ -509,13 +510,11 @@ struct WorkflowEntry {
 
 fn workflows_iter() -> impl Iterator<Item = WorkflowEntry> {
     use crate::utils::help_metadata::WORKFLOWS;
-    WORKFLOWS
-        .iter()
-        .map(|w| WorkflowEntry {
-            name: w.name,
-            description: w.description,
-            approx_duration: w.approx_duration,
-        })
+    WORKFLOWS.iter().map(|w| WorkflowEntry {
+        name: w.name,
+        description: w.description,
+        approx_duration: w.approx_duration,
+    })
 }
 
 /// Load command history, swallowing I/O errors so help still works on
@@ -534,7 +533,11 @@ mod tests {
 
     #[test]
     fn normalise_accepts_plurals_and_case() {
-        let raw = vec!["tip".to_string(), "TROUBLESHOOT".to_string(), "unknown".to_string()];
+        let raw = vec![
+            "tip".to_string(),
+            "TROUBLESHOOT".to_string(),
+            "unknown".to_string(),
+        ];
         let out = normalise_categories(raw.iter());
         assert_eq!(out, vec!["tip", "troubleshoot"]);
     }

@@ -2,9 +2,9 @@ use crate::utils::print as p;
 use crate::utils::security::{
     apply_hardening, default_rules, evaluate_event, format_compliance_report,
     format_data_protection_report, format_report, generate_hardening_report, run_audit,
-    run_checklist, validate_security, write_report, AnomalyDetector, AuditConfig,
-    ComplianceEngine, ComplianceStandard, DataProtectionEngine, HardeningOptions,
-    IncidentResponse, IncidentStore, ThreatDetectionEngine, ThreatFeed,
+    run_checklist, validate_security, write_report, AnomalyDetector, AuditConfig, ComplianceEngine,
+    ComplianceStandard, DataProtectionEngine, HardeningOptions, IncidentResponse, IncidentStore,
+    ThreatDetectionEngine, ThreatFeed,
 };
 use crate::utils::stream::{EventStreamFilters, SorobanEventStream};
 use crate::utils::{config, notifications, soroban};
@@ -454,7 +454,10 @@ fn handle_incident(args: IncidentArgs) -> Result<()> {
             data,
         } => {
             let item = IncidentStore::add_evidence(&id, &evidence_type, &description, &data)?;
-            p::success(&format!("Evidence {} collected for incident {}", item.id, id));
+            p::success(&format!(
+                "Evidence {} collected for incident {}",
+                item.id, id
+            ));
             Ok(())
         }
         IncidentCommands::Notify {
@@ -480,12 +483,12 @@ fn handle_incident(args: IncidentArgs) -> Result<()> {
                 &id,
                 &root_cause,
                 lessons,
-                vec!["Review access controls".into(), "Add monitoring rules".into()],
+                vec![
+                    "Review access controls".into(),
+                    "Add monitoring rules".into(),
+                ],
             )?;
-            p::success(&format!(
-                "Post-incident analysis completed for {}",
-                id
-            ));
+            p::success(&format!("Post-incident analysis completed for {}", id));
             p::kv("Root cause", &analysis.root_cause);
             Ok(())
         }
@@ -762,7 +765,7 @@ fn handle_compliance(args: ComplianceArgs) -> Result<()> {
     p::kv("Report saved", &saved_path.display().to_string());
 
     let incidents = IncidentStore::load_all().unwrap_or_default();
-    
+
     let critical_open = incidents
         .iter()
         .filter(|i| {
@@ -821,7 +824,11 @@ fn handle_compliance(args: ComplianceArgs) -> Result<()> {
     );
     p::kv(
         "Remediation backlog clear",
-        if open_remediation == 0 { "PASS" } else { "FAIL" },
+        if open_remediation == 0 {
+            "PASS"
+        } else {
+            "FAIL"
+        },
     );
     println!();
 
@@ -890,10 +897,7 @@ fn handle_data_protection(args: DataProtectionArgs) -> Result<()> {
     p::header("Check Results");
     for check in &result.checks {
         let status = if check.passed { "PASS" } else { "FAIL" };
-        println!(
-            "  [{}] {} — {}",
-            status, check.title, check.severity
-        );
+        println!("  [{}] {} — {}", status, check.title, check.severity);
         if !check.passed {
             println!("    {}", check.details);
             println!("    Remediation: {}", check.remediation);

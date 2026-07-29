@@ -357,7 +357,6 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
                 });
             }
         }
-        }
 
         // Flag large string literals in contract code
         if trimmed.contains('"') && !trimmed.starts_with("//") {

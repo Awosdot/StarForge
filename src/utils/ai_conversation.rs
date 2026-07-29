@@ -4,11 +4,11 @@
 //! workflow guidance, and personality customization.
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 /// Conversation message
@@ -187,11 +187,7 @@ impl ConversationManager {
     }
 
     /// Add a system message to the conversation
-    pub async fn add_system_message(
-        &self,
-        session_id: &str,
-        content: String,
-    ) -> Result<()> {
+    pub async fn add_system_message(&self, session_id: &str, content: String) -> Result<()> {
         let message = ConversationMessage {
             role: MessageRole::System,
             content,
@@ -204,9 +200,7 @@ impl ConversationManager {
 
     async fn add_message(&self, session_id: &str, message: ConversationMessage) -> Result<()> {
         let mut contexts = self.contexts.write().await;
-        let context = contexts
-            .get_mut(session_id)
-            .context("Session not found")?;
+        let context = contexts.get_mut(session_id).context("Session not found")?;
 
         context.messages.push(message);
         context.last_updated = Utc::now();
@@ -222,16 +216,17 @@ impl ConversationManager {
                     false
                 }
             });
-            
+
             // Add back recent messages up to limit
-            let recent_messages: Vec<_> = context.messages
+            let recent_messages: Vec<_> = context
+                .messages
                 .iter()
                 .filter(|m| m.role != MessageRole::System)
                 .rev()
                 .take(self.max_context_messages)
                 .cloned()
                 .collect();
-            
+
             context.messages.extend(recent_messages.into_iter().rev());
         }
 
@@ -260,9 +255,7 @@ impl ConversationManager {
         workflow_state: WorkflowState,
     ) -> Result<()> {
         let mut contexts = self.contexts.write().await;
-        let context = contexts
-            .get_mut(session_id)
-            .context("Session not found")?;
+        let context = contexts.get_mut(session_id).context("Session not found")?;
 
         context.workflow_state = Some(workflow_state);
         context.last_updated = Utc::now();
@@ -276,9 +269,7 @@ impl ConversationManager {
         preferences: UserPreferences,
     ) -> Result<()> {
         let mut contexts = self.contexts.write().await;
-        let context = contexts
-            .get_mut(session_id)
-            .context("Session not found")?;
+        let context = contexts.get_mut(session_id).context("Session not found")?;
 
         context.user_preferences = preferences;
         context.last_updated = Utc::now();
@@ -288,9 +279,7 @@ impl ConversationManager {
     /// Clear conversation history
     pub async fn clear_history(&self, session_id: &str) -> Result<()> {
         let mut contexts = self.contexts.write().await;
-        let context = contexts
-            .get_mut(session_id)
-            .context("Session not found")?;
+        let context = contexts.get_mut(session_id).context("Session not found")?;
 
         // Keep system messages
         context.messages.retain(|m| m.role == MessageRole::System);
@@ -301,9 +290,7 @@ impl ConversationManager {
     /// Delete a session
     pub async fn delete_session(&self, session_id: &str) -> Result<()> {
         let mut contexts = self.contexts.write().await;
-        contexts
-            .remove(session_id)
-            .context("Session not found")?;
+        contexts.remove(session_id).context("Session not found")?;
         Ok(())
     }
 
@@ -314,12 +301,9 @@ impl ConversationManager {
     }
 
     /// Generate proactive suggestions based on context
-    pub async fn generate_suggestions(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<Suggestion>> {
+    pub async fn generate_suggestions(&self, session_id: &str) -> Result<Vec<Suggestion>> {
         let context = self.get_context(session_id).await?;
-        
+
         if !context.user_preferences.enable_proactive_suggestions {
             return Ok(vec![]);
         }
@@ -327,15 +311,9 @@ impl ConversationManager {
         let mut suggestions = Vec::new();
 
         // Analyze last few messages for context
-        let recent_messages: Vec<_> = context.messages
-            .iter()
-            .rev()
-            .take(5)
-            .collect();
+        let recent_messages: Vec<_> = context.messages.iter().rev().take(5).collect();
 
-        let last_user_message = recent_messages
-            .iter()
-            .find(|m| m.role == MessageRole::User);
+        let last_user_message = recent_messages.iter().find(|m| m.role == MessageRole::User);
 
         if let Some(msg) = last_user_message {
             let content = msg.content.to_lowercase();
@@ -344,7 +322,8 @@ impl ConversationManager {
             if content.contains("deploy") || content.contains("contract") {
                 suggestions.push(Suggestion {
                     title: "Check deployment prerequisites".to_string(),
-                    description: "Ensure your wallet is funded and contract is compiled".to_string(),
+                    description: "Ensure your wallet is funded and contract is compiled"
+                        .to_string(),
                     action_type: SuggestionAction::NextStep,
                     confidence: 0.8,
                 });
@@ -352,7 +331,9 @@ impl ConversationManager {
                 suggestions.push(Suggestion {
                     title: "Run gas analysis".to_string(),
                     description: "Analyze gas costs before deployment".to_string(),
-                    action_type: SuggestionAction::Command("starforge gas analyze --wasm <file>".to_string()),
+                    action_type: SuggestionAction::Command(
+                        "starforge gas analyze --wasm <file>".to_string(),
+                    ),
                     confidence: 0.7,
                 });
             }
@@ -396,7 +377,9 @@ impl ConversationManager {
                         suggestions.push(Suggestion {
                             title: "Compile contract".to_string(),
                             description: "Build the WASM file".to_string(),
-                            action_type: SuggestionAction::Command("cargo build --target wasm32-unknown-unknown --release".to_string()),
+                            action_type: SuggestionAction::Command(
+                                "cargo build --target wasm32-unknown-unknown --release".to_string(),
+                            ),
                             confidence: 0.95,
                         });
                     }
@@ -411,19 +394,31 @@ impl ConversationManager {
     /// Format conversation for AI prompt
     pub async fn format_for_prompt(&self, session_id: &str) -> Result<String> {
         let context = self.get_context(session_id).await?;
-        
+
         let mut prompt = String::new();
-        
+
         // Add personality context
-        prompt.push_str(&format!("Personality: {:?}\n", context.user_preferences.personality));
-        prompt.push_str(&format!("Expertise Level: {:?}\n", context.user_preferences.expertise_level));
-        prompt.push_str(&format!("Verbosity: {:?}\n\n", context.user_preferences.verbosity));
+        prompt.push_str(&format!(
+            "Personality: {:?}\n",
+            context.user_preferences.personality
+        ));
+        prompt.push_str(&format!(
+            "Expertise Level: {:?}\n",
+            context.user_preferences.expertise_level
+        ));
+        prompt.push_str(&format!(
+            "Verbosity: {:?}\n\n",
+            context.user_preferences.verbosity
+        ));
 
         // Add workflow context if active
         if let Some(workflow) = &context.workflow_state {
             prompt.push_str(&format!("Current Workflow: {:?}\n", workflow.workflow_type));
             prompt.push_str(&format!("Current Step: {}\n", workflow.current_step));
-            prompt.push_str(&format!("Completed Steps: {:?}\n\n", workflow.completed_steps));
+            prompt.push_str(&format!(
+                "Completed Steps: {:?}\n\n",
+                workflow.completed_steps
+            ));
         }
 
         // Add conversation history
@@ -507,7 +502,11 @@ mod tests {
             .unwrap();
 
         manager
-            .add_user_message(&session_id, "I want to deploy my contract".to_string(), None)
+            .add_user_message(
+                &session_id,
+                "I want to deploy my contract".to_string(),
+                None,
+            )
             .await
             .unwrap();
 

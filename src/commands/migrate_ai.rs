@@ -233,8 +233,10 @@ fn build_analysis_config(
 ) -> Result<AnalysisConfig> {
     let old_sdk = old_sdk_version.or_else(|| migration_ai::extract_sdk_version(old_specs));
     let new_sdk = new_sdk_version.or_else(|| migration_ai::extract_sdk_version(new_specs));
-    let old_proto = old_protocol_version.or_else(|| migration_ai::extract_protocol_version(old_specs));
-    let new_proto = new_protocol_version.or_else(|| migration_ai::extract_protocol_version(new_specs));
+    let old_proto =
+        old_protocol_version.or_else(|| migration_ai::extract_protocol_version(old_specs));
+    let new_proto =
+        new_protocol_version.or_else(|| migration_ai::extract_protocol_version(new_specs));
 
     Ok(AnalysisConfig {
         old_wasm: old_wasm.map(|p| p.display().to_string()),
@@ -291,7 +293,9 @@ fn load_or_build_plan(
         None => "new_hash".to_string(),
     };
 
-    migration_ai::analyze_contract_compatibility(&old_specs, &new_specs, &old_hash, &new_hash, &config)
+    migration_ai::analyze_contract_compatibility(
+        &old_specs, &new_specs, &old_hash, &new_hash, &config,
+    )
 }
 
 fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
@@ -362,7 +366,10 @@ fn handle_breaking_changes(args: BreakingChangesArgs) -> Result<()> {
             change.title.white().bold(),
         );
         println!("     {}", change.description.dimmed());
-        println!("     {}", format!("Guide: {}", change.migration_guide).dimmed());
+        println!(
+            "     {}",
+            format!("Guide: {}", change.migration_guide).dimmed()
+        );
     }
 
     if args.fail_on_breaking && !plan.breaking_changes.is_empty() {
@@ -405,11 +412,7 @@ fn handle_generate(args: GenerateArgs) -> Result<()> {
          // From: {} → {}\n\
          // SDK: {} → {}\n\
          // Compatibility: {}\n\n",
-        plan.from_version,
-        plan.to_version,
-        plan.from_version,
-        plan.to_version,
-        plan.compatibility,
+        plan.from_version, plan.to_version, plan.from_version, plan.to_version, plan.compatibility,
     ));
 
     code.push_str("use soroban_sdk::{self, Address, Env};\n\n");
@@ -478,10 +481,17 @@ fn handle_generate(args: GenerateArgs) -> Result<()> {
     code.push_str("    }\n");
     code.push_str("}\n");
 
-    fs::write(&args.output, &code)
-        .with_context(|| format!("Failed to write migration code to {}", args.output.display()))?;
+    fs::write(&args.output, &code).with_context(|| {
+        format!(
+            "Failed to write migration code to {}",
+            args.output.display()
+        )
+    })?;
 
-    p::success(&format!("Wrote migration code to {}", args.output.display()));
+    p::success(&format!(
+        "Wrote migration code to {}",
+        args.output.display()
+    ));
     p::info("Review and customize the generated migration function before deploying.");
 
     Ok(())
@@ -527,7 +537,13 @@ fn handle_suggest(args: SuggestArgs) -> Result<()> {
             suggestion.title.white().bold(),
         );
         println!("     {}", suggestion.description.dimmed());
-        println!("     {} {:<10} {} {}", "Effort:".dimmed(), suggestion.effort.white(), "Risk:".dimmed(), suggestion.risk.white());
+        println!(
+            "     {} {:<10} {} {}",
+            "Effort:".dimmed(),
+            suggestion.effort.white(),
+            "Risk:".dimmed(),
+            suggestion.risk.white()
+        );
 
         if let Some(snippet) = &suggestion.code_snippet {
             for line in snippet.lines() {
@@ -574,7 +590,10 @@ fn handle_plan(args: PlanArgs) -> Result<()> {
 
     print_plan_summary(&plan);
 
-    println!("\n{}", "Recommended Migration Steps:".white().bold().underline());
+    println!(
+        "\n{}",
+        "Recommended Migration Steps:".white().bold().underline()
+    );
     for step in &plan.steps {
         println!(
             "\n  {}. {}",
@@ -612,8 +631,12 @@ fn handle_plan(args: PlanArgs) -> Result<()> {
 
 fn print_plan_summary(plan: &MigrationPlan) {
     let compat_color = match plan.compatibility {
-        crate::utils::migration_ai::Compatibility::FullyCompatible => "fully compatible".green().bold(),
-        crate::utils::migration_ai::Compatibility::CompatibleWithMigration => "compatible with migration".yellow().bold(),
+        crate::utils::migration_ai::Compatibility::FullyCompatible => {
+            "fully compatible".green().bold()
+        }
+        crate::utils::migration_ai::Compatibility::CompatibleWithMigration => {
+            "compatible with migration".yellow().bold()
+        }
         crate::utils::migration_ai::Compatibility::Incompatible => "incompatible".red().bold(),
     };
 
@@ -658,9 +681,21 @@ fn print_plan_summary(plan: &MigrationPlan) {
     }
 
     if !plan.suggestions.is_empty() {
-        let high_count = plan.suggestions.iter().filter(|s| s.priority == "high").count();
-        let medium_count = plan.suggestions.iter().filter(|s| s.priority == "medium").count();
-        let low_count = plan.suggestions.iter().filter(|s| s.priority == "low").count();
+        let high_count = plan
+            .suggestions
+            .iter()
+            .filter(|s| s.priority == "high")
+            .count();
+        let medium_count = plan
+            .suggestions
+            .iter()
+            .filter(|s| s.priority == "medium")
+            .count();
+        let low_count = plan
+            .suggestions
+            .iter()
+            .filter(|s| s.priority == "low")
+            .count();
         println!(
             "\n{} {} high, {} medium, {} low priority suggestions",
             "Suggestions:".cyan().bold(),

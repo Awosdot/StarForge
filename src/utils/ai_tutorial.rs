@@ -4,11 +4,11 @@
 //! interactive exercises, real-time feedback, and progress tracking.
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 /// User skill level assessment
@@ -99,7 +99,7 @@ pub struct UserProgress {
     pub skill_level: SkillLevel,
     pub completed_tutorials: Vec<String>,
     pub completed_steps: HashMap<String, Vec<String>>, // tutorial_id -> step_ids
-    pub exercise_scores: HashMap<String, f64>, // exercise_id -> score
+    pub exercise_scores: HashMap<String, f64>,         // exercise_id -> score
     pub total_time_spent_minutes: u64,
     pub last_activity: DateTime<Utc>,
     pub learning_path: Vec<TutorialTopic>,
@@ -250,7 +250,7 @@ impl TutorialManager {
     /// Assess user skill level
     pub async fn assess_skill_level(&self, user_id: &str) -> Result<SkillLevel> {
         let progress = self.get_or_create_progress(user_id).await;
-        
+
         // Calculate skill level based on completed tutorials and scores
         let completed_count = progress.completed_tutorials.len();
         let avg_score: f64 = progress.exercise_scores.values().cloned().sum::<f64>()
@@ -278,7 +278,7 @@ impl TutorialManager {
     /// Get or create user progress
     async fn get_or_create_progress(&self, user_id: &str) -> UserProgress {
         let progress_map = self.user_progress.read().await;
-        
+
         if let Some(progress) = progress_map.get(user_id) {
             progress.clone()
         } else {
@@ -293,7 +293,7 @@ impl TutorialManager {
                 last_activity: Utc::now(),
                 learning_path: self.generate_learning_path(SkillLevel::Beginner),
             };
-            
+
             let mut progress_map = self.user_progress.write().await;
             progress_map.insert(user_id.to_string(), new_progress.clone());
             new_progress
@@ -368,7 +368,7 @@ impl TutorialManager {
     /// Start a tutorial
     pub async fn start_tutorial(&self, user_id: &str, tutorial_id: &str) -> Result<Tutorial> {
         let tutorial = self.get_tutorial(tutorial_id).await?;
-        
+
         // Update progress
         let mut progress_map = self.user_progress.write().await;
         if let Some(progress) = progress_map.get_mut(user_id) {
@@ -400,10 +400,10 @@ impl TutorialManager {
         if let Some(answer) = exercise_answer {
             if let Some(exercise) = &step.exercise {
                 is_correct = self.check_exercise_answer(exercise, &answer);
-                
+
                 if is_correct {
                     feedback = "Correct! Well done.".to_string();
-                    
+
                     // Update exercise score
                     let mut progress_map = self.user_progress.write().await;
                     if let Some(progress) = progress_map.get_mut(user_id) {
@@ -411,7 +411,7 @@ impl TutorialManager {
                     }
                 } else {
                     feedback = "Not quite right. Try again!".to_string();
-                    
+
                     let mut progress_map = self.user_progress.write().await;
                     if let Some(progress) = progress_map.get_mut(user_id) {
                         progress.exercise_scores.insert(exercise.id.clone(), 0.0);
@@ -433,7 +433,11 @@ impl TutorialManager {
         }
 
         // Check if tutorial is complete
-        let all_steps = tutorial.steps.iter().map(|s| s.id.clone()).collect::<Vec<_>>();
+        let all_steps = tutorial
+            .steps
+            .iter()
+            .map(|s| s.id.clone())
+            .collect::<Vec<_>>();
         let completed_steps = {
             let progress_map = self.user_progress.read().await;
             progress_map
@@ -448,14 +452,18 @@ impl TutorialManager {
         if tutorial_complete {
             let mut progress_map = self.user_progress.write().await;
             if let Some(progress) = progress_map.get_mut(user_id) {
-                if !progress.completed_tutorials.contains(&tutorial_id.to_string()) {
+                if !progress
+                    .completed_tutorials
+                    .contains(&tutorial_id.to_string())
+                {
                     progress.completed_tutorials.push(tutorial_id.to_string());
-                    
+
                     // Update skill level
                     progress.skill_level = self.assess_skill_level_internal(progress).await;
-                    
+
                     // Update learning path
-                    progress.learning_path = self.generate_learning_path(progress.skill_level.clone());
+                    progress.learning_path =
+                        self.generate_learning_path(progress.skill_level.clone());
                 }
             }
         }
@@ -483,7 +491,10 @@ impl TutorialManager {
                     answer.trim() == expected.trim()
                 } else {
                     // Check if answer is a valid option index
-                    answer.parse::<usize>().ok().map_or(false, |idx| idx < options.len())
+                    answer
+                        .parse::<usize>()
+                        .ok()
+                        .map_or(false, |idx| idx < options.len())
                 }
             }
             ExerciseType::CommandExecution => {
@@ -492,7 +503,10 @@ impl TutorialManager {
             }
             ExerciseType::CodeCompletion => {
                 if let Some(expected) = &exercise.expected_answer {
-                    answer.trim().to_lowercase().contains(&expected.trim().to_lowercase())
+                    answer
+                        .trim()
+                        .to_lowercase()
+                        .contains(&expected.trim().to_lowercase())
                 } else {
                     false
                 }

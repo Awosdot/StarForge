@@ -156,7 +156,9 @@ pub fn analyze_best_practices(
         let recs = match category {
             BestPracticeCategory::Security => check_security(source_code, &analysis),
             BestPracticeCategory::GasOptimization => check_gas_optimization(source_code, &analysis),
-            BestPracticeCategory::CodeOrganization => check_code_organization(source_code, &analysis),
+            BestPracticeCategory::CodeOrganization => {
+                check_code_organization(source_code, &analysis)
+            }
             BestPracticeCategory::Testing => check_testing(source_code),
             BestPracticeCategory::Deployment => check_deployment(source_code),
             BestPracticeCategory::ErrorHandling => check_error_handling(source_code),
@@ -210,11 +212,17 @@ fn check_security(source_code: &str, analysis: &ata::ContractAnalysis) -> Vec<Re
     recs
 }
 
-fn check_gas_optimization(_source_code: &str, _analysis: &ata::ContractAnalysis) -> Vec<Recommendation> {
+fn check_gas_optimization(
+    _source_code: &str,
+    _analysis: &ata::ContractAnalysis,
+) -> Vec<Recommendation> {
     vec![]
 }
 
-fn check_code_organization(_source_code: &str, _analysis: &ata::ContractAnalysis) -> Vec<Recommendation> {
+fn check_code_organization(
+    _source_code: &str,
+    _analysis: &ata::ContractAnalysis,
+) -> Vec<Recommendation> {
     vec![]
 }
 
@@ -274,7 +282,9 @@ fn check_error_handling(source_code: &str) -> Vec<Recommendation> {
             description: format!("Found {} panic/unwrap/expect calls", panic_count),
             current_issue: None,
             suggested_fix: "Use Result<T, E> return types with the ? operator".to_string(),
-            code_example: Some("let value = map.get(&key).ok_or(ContractError::KeyNotFound)?;".to_string()),
+            code_example: Some(
+                "let value = map.get(&key).ok_or(ContractError::KeyNotFound)?;".to_string(),
+            ),
             references: vec![],
             estimated_effort: EffortLevel::Medium,
             priority_score: 75.0,
@@ -287,7 +297,10 @@ fn check_storage(_source_code: &str) -> Vec<Recommendation> {
     vec![]
 }
 
-fn check_access_control(source_code: &str, analysis: &ata::ContractAnalysis) -> Vec<Recommendation> {
+fn check_access_control(
+    source_code: &str,
+    analysis: &ata::ContractAnalysis,
+) -> Vec<Recommendation> {
     let mut recs = Vec::new();
     let mutating_without_auth: Vec<&str> = analysis
         .functions
@@ -336,8 +349,14 @@ fn calculate_category_breakdown(recommendations: &[Recommendation]) -> HashMap<S
 }
 
 fn calculate_score(recommendations: &[Recommendation]) -> BestPracticeScore {
-    let critical_count = recommendations.iter().filter(|r| r.severity == RecommendationSeverity::Critical).count();
-    let high_count = recommendations.iter().filter(|r| r.severity == RecommendationSeverity::High).count();
+    let critical_count = recommendations
+        .iter()
+        .filter(|r| r.severity == RecommendationSeverity::Critical)
+        .count();
+    let high_count = recommendations
+        .iter()
+        .filter(|r| r.severity == RecommendationSeverity::High)
+        .count();
     let penalty = critical_count as f64 * 20.0 + high_count as f64 * 10.0;
     let overall = (100.0 - penalty).max(0.0);
     BestPracticeScore {

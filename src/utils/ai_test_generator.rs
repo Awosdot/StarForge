@@ -4,12 +4,12 @@
 //! E2E tests, property-based testing, fuzzing, and regression tests.
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 
 /// Test type
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -166,28 +166,28 @@ impl AiTestGenerator {
         // Simple parsing - in production, use syn or proper Rust parser
         for line in code.lines() {
             let line = line.trim();
-            
+
             // Detect functions
             if line.starts_with("pub fn") || line.starts_with("fn ") {
                 let is_pub = line.starts_with("pub");
                 let is_mutating = line.contains("&mut env") || line.contains("&mut self");
-                
+
                 let func_name = line
                     .split("fn ")
                     .nth(1)
                     .and_then(|s| s.split('(').next())
                     .unwrap_or("unknown")
                     .to_string();
-                
+
                 let signature = line.to_string();
-                
+
                 functions.push(FunctionInfo {
                     name: func_name.clone(),
                     signature,
                     visibility: if is_pub { "public" } else { "private" }.to_string(),
                     is_mutating,
                     parameters: Vec::new(), // Would need full parsing
-                    return_type: None, // Would need full parsing
+                    return_type: None,      // Would need full parsing
                 });
 
                 // Detect Soroban entry points
@@ -205,7 +205,7 @@ impl AiTestGenerator {
                     .unwrap_or("unknown")
                     .trim()
                     .to_string();
-                
+
                 structs.push(StructInfo {
                     name: struct_name,
                     fields: Vec::new(),
@@ -221,7 +221,7 @@ impl AiTestGenerator {
                     .unwrap_or("unknown")
                     .trim()
                     .to_string();
-                
+
                 enums.push(EnumInfo {
                     name: enum_name,
                     variants: Vec::new(),
@@ -245,7 +245,7 @@ impl AiTestGenerator {
         code: &str,
     ) -> Result<TestSuite> {
         let start_time = std::time::Instant::now();
-        
+
         let analysis = self.analyze_code(code)?;
         let mut tests = Vec::new();
 
@@ -286,13 +286,22 @@ impl AiTestGenerator {
         analytics.total_tests_generated += tests.len() as u64;
         analytics.generation_time_ms += generation_time;
         for test in &tests {
-            *analytics.tests_by_type.entry(test.test_type.clone()).or_insert(0) += 1;
-            *analytics.tests_by_category.entry(test.category.clone()).or_insert(0) += 1;
+            *analytics
+                .tests_by_type
+                .entry(test.test_type.clone())
+                .or_insert(0) += 1;
+            *analytics
+                .tests_by_category
+                .entry(test.category.clone())
+                .or_insert(0) += 1;
         }
         analytics.average_coverage = coverage_estimate;
 
         Ok(TestSuite {
-            name: format!("{}_tests", target_file.file_stem().unwrap().to_string_lossy()),
+            name: format!(
+                "{}_tests",
+                target_file.file_stem().unwrap().to_string_lossy()
+            ),
             target_file: target_file.clone(),
             tests,
             coverage_estimate,
@@ -348,7 +357,10 @@ impl AiTestGenerator {
         Ok(tests)
     }
 
-    async fn generate_integration_tests(&self, analysis: &CodeAnalysis) -> Result<Vec<GeneratedTest>> {
+    async fn generate_integration_tests(
+        &self,
+        analysis: &CodeAnalysis,
+    ) -> Result<Vec<GeneratedTest>> {
         let mut tests = Vec::new();
 
         // Generate integration tests for entry points
@@ -368,7 +380,10 @@ impl AiTestGenerator {
         Ok(tests)
     }
 
-    async fn generate_property_based_tests(&self, analysis: &CodeAnalysis) -> Result<Vec<GeneratedTest>> {
+    async fn generate_property_based_tests(
+        &self,
+        analysis: &CodeAnalysis,
+    ) -> Result<Vec<GeneratedTest>> {
         let mut tests = Vec::new();
 
         // Generate property-based tests for pure functions
@@ -410,7 +425,10 @@ impl AiTestGenerator {
         Ok(tests)
     }
 
-    async fn generate_regression_tests(&self, analysis: &CodeAnalysis) -> Result<Vec<GeneratedTest>> {
+    async fn generate_regression_tests(
+        &self,
+        analysis: &CodeAnalysis,
+    ) -> Result<Vec<GeneratedTest>> {
         let mut tests = Vec::new();
 
         // Generate regression tests for all public functions
@@ -432,7 +450,11 @@ impl AiTestGenerator {
         Ok(tests)
     }
 
-    fn generate_happy_path_test(&self, function: &FunctionInfo, _analysis: &CodeAnalysis) -> String {
+    fn generate_happy_path_test(
+        &self,
+        function: &FunctionInfo,
+        _analysis: &CodeAnalysis,
+    ) -> String {
         format!(
             r#"
 #[test]
@@ -447,7 +469,9 @@ fn test_{}_happy_path() {{
     assert!(true);
 }}
 "#,
-            function.name, function.name.to_uppercase().replace("_", ""), function.name
+            function.name,
+            function.name.to_uppercase().replace("_", ""),
+            function.name
         )
     }
 
@@ -469,7 +493,8 @@ fn test_{}_edge_cases() {{
     // TODO: Implement edge case tests
 }}
 "#,
-            function.name, function.name.to_uppercase().replace("_", "")
+            function.name,
+            function.name.to_uppercase().replace("_", "")
         )
     }
 
@@ -488,11 +513,16 @@ fn test_{}_error_conditions() {{
     // Test with insufficient resources
 }}
 "#,
-            function.name, function.name.to_uppercase().replace("_", "")
+            function.name,
+            function.name.to_uppercase().replace("_", "")
         )
     }
 
-    fn generate_integration_test_code(&self, entry_point: &str, _analysis: &CodeAnalysis) -> String {
+    fn generate_integration_test_code(
+        &self,
+        entry_point: &str,
+        _analysis: &CodeAnalysis,
+    ) -> String {
         format!(
             r#"
 #[test]
@@ -506,11 +536,16 @@ fn test_{}_integration() {{
     // Verify end-to-end behavior
 }}
 "#,
-            entry_point, entry_point.to_uppercase().replace("_", "")
+            entry_point,
+            entry_point.to_uppercase().replace("_", "")
         )
     }
 
-    fn generate_property_test_code(&self, function: &FunctionInfo, _analysis: &CodeAnalysis) -> String {
+    fn generate_property_test_code(
+        &self,
+        function: &FunctionInfo,
+        _analysis: &CodeAnalysis,
+    ) -> String {
         format!(
             r#"
 proptest! {{
@@ -525,7 +560,8 @@ proptest! {{
     }}
 }}
 "#,
-            function.name, function.name.to_uppercase().replace("_", "")
+            function.name,
+            function.name.to_uppercase().replace("_", "")
         )
     }
 
@@ -547,11 +583,17 @@ fn fuzz_{}_input() {{
     }}
 }}
 "#,
-            entry_point, entry_point, entry_point.to_uppercase().replace("_", "")
+            entry_point,
+            entry_point,
+            entry_point.to_uppercase().replace("_", "")
         )
     }
 
-    fn generate_regression_test_code(&self, function: &FunctionInfo, _analysis: &CodeAnalysis) -> String {
+    fn generate_regression_test_code(
+        &self,
+        function: &FunctionInfo,
+        _analysis: &CodeAnalysis,
+    ) -> String {
         format!(
             r#"
 #[test]
@@ -567,7 +609,9 @@ fn test_{}_regression() {{
     // Test case 2: Bug #456 - Fixed in v1.3.0
 }}
 "#,
-            function.name, function.name, function.name.to_uppercase().replace("_", "")
+            function.name,
+            function.name,
+            function.name.to_uppercase().replace("_", "")
         )
     }
 
@@ -598,18 +642,23 @@ fn test_{}_regression() {{
         output.push_str("// Auto-generated test suite\n");
         output.push_str(&format!("// Generated at: {}\n", suite.generated_at));
         output.push_str(&format!("// Target: {}\n", suite.target_file.display()));
-        output.push_str(&format!("// Estimated coverage: {:.1}%\n", suite.coverage_estimate * 100.0));
+        output.push_str(&format!(
+            "// Estimated coverage: {:.1}%\n",
+            suite.coverage_estimate * 100.0
+        ));
         output.push_str("\n");
 
         for test in &suite.tests {
             output.push_str(&format!("// {}\n", test.description));
-            output.push_str(&format!("// Type: {:?}, Category: {:?}\n", test.test_type, test.category));
+            output.push_str(&format!(
+                "// Type: {:?}, Category: {:?}\n",
+                test.test_type, test.category
+            ));
             output.push_str(&test.code);
             output.push_str("\n");
         }
 
-        std::fs::write(output_path, output)
-            .context("Failed to write test suite file")?;
+        std::fs::write(output_path, output).context("Failed to write test suite file")?;
 
         Ok(())
     }
@@ -663,7 +712,10 @@ pub fn increment(&self, env: Env) -> u64 {
             storage_keys: vec![],
         };
 
-        let tests = generator.generate_unit_tests(&function, &analysis).await.unwrap();
+        let tests = generator
+            .generate_unit_tests(&function, &analysis)
+            .await
+            .unwrap();
         assert!(!tests.is_empty());
         assert_eq!(tests[0].test_type, TestType::Unit);
     }
@@ -696,18 +748,16 @@ pub fn increment(&self, env: Env) -> u64 {
             storage_keys: vec![],
         };
 
-        let tests = vec![
-            GeneratedTest {
-                id: "test1".to_string(),
-                name: "test1".to_string(),
-                test_type: TestType::Unit,
-                category: TestCategory::HappyPath,
-                code: String::new(),
-                description: String::new(),
-                coverage_target: vec!["func1".to_string()],
-                estimated_complexity: 1,
-            },
-        ];
+        let tests = vec![GeneratedTest {
+            id: "test1".to_string(),
+            name: "test1".to_string(),
+            test_type: TestType::Unit,
+            category: TestCategory::HappyPath,
+            code: String::new(),
+            description: String::new(),
+            coverage_target: vec!["func1".to_string()],
+            estimated_complexity: 1,
+        }];
 
         let coverage = generator.estimate_coverage(&tests, &analysis);
         assert_eq!(coverage, 0.5);

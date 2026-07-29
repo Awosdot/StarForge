@@ -272,10 +272,9 @@ Diff:\n\
 fn parse_change_analysis(text: &str) -> Result<ChangeAnalysis> {
     let changes = extract_list(text, "CHANGES:");
     let breaking_changes = extract_list(text, "BREAKING_CHANGES:");
-    let impact_level = extract_field(text, "IMPACT_LEVEL:")
-        .unwrap_or_else(|| "Medium".to_string());
-    let summary = extract_field(text, "SUMMARY:")
-        .unwrap_or_else(|| "No summary available".to_string());
+    let impact_level = extract_field(text, "IMPACT_LEVEL:").unwrap_or_else(|| "Medium".to_string());
+    let summary =
+        extract_field(text, "SUMMARY:").unwrap_or_else(|| "No summary available".to_string());
 
     Ok(ChangeAnalysis {
         changes,
@@ -300,10 +299,9 @@ fn parse_compatibility_check(text: &str) -> Result<CompatibilityCheck> {
 }
 
 fn parse_update_suggestion(text: &str, current_version: &str) -> Result<UpdateSuggestion> {
-    let suggested_version = extract_field(text, "SUGGESTED_VERSION:")
-        .unwrap_or_else(|| current_version.to_string());
-    let reason = extract_field(text, "REASON:")
-        .unwrap_or_else(|| "No reason provided".to_string());
+    let suggested_version =
+        extract_field(text, "SUGGESTED_VERSION:").unwrap_or_else(|| current_version.to_string());
+    let reason = extract_field(text, "REASON:").unwrap_or_else(|| "No reason provided".to_string());
     let benefits = extract_list(text, "BENEFITS:");
 
     Ok(UpdateSuggestion {

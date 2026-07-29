@@ -53,16 +53,12 @@ pub async fn fund_account(public_key: &str, network: &str) -> Result<()> {
     let separator = if friendbot.contains('?') { '&' } else { '?' };
     let url = format!("{}{}addr={}", friendbot, separator, public_key);
 
-    let res = HTTP_CLIENT
-        .get(&url)
-        .send()
-        .await
-        .with_context(|| {
-            format!(
-                "Could not reach Friendbot on '{}'. Check your internet connection.",
-                network
-            )
-        })?;
+    let res = HTTP_CLIENT.get(&url).send().await.with_context(|| {
+        format!(
+            "Could not reach Friendbot on '{}'. Check your internet connection.",
+            network
+        )
+    })?;
 
     if res.status() == 200 {
         Ok(())

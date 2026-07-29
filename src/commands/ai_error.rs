@@ -48,9 +48,11 @@ pub async fn handle(cmd: AiErrorCommands) -> Result<()> {
         AiErrorCommands::Stats => handle_stats().await,
         AiErrorCommands::Reset => handle_reset().await,
         AiErrorCommands::ListProviders => handle_list_providers().await,
-        AiErrorCommands::ToggleProvider { provider, enable, disable } => {
-            handle_toggle_provider(&provider, enable, disable).await
-        }
+        AiErrorCommands::ToggleProvider {
+            provider,
+            enable,
+            disable,
+        } => handle_toggle_provider(&provider, enable, disable).await,
         AiErrorCommands::TestRecovery { failures } => handle_test_recovery(failures).await,
     }
 }
@@ -63,25 +65,31 @@ async fn handle_stats() -> Result<()> {
     let analytics = handler.get_analytics().await;
 
     p::kv("Total Errors", &analytics.total_errors.to_string());
-    p::kv("Successful Recoveries", &analytics.successful_recoveries.to_string());
-    p::kv("Failed Recoveries", &analytics.failed_recoveries.to_string());
-    
+    p::kv(
+        "Successful Recoveries",
+        &analytics.successful_recoveries.to_string(),
+    );
+    p::kv(
+        "Failed Recoveries",
+        &analytics.failed_recoveries.to_string(),
+    );
+
     let recovery_rate = analytics.recovery_rate();
     p::kv("Recovery Rate", &format!("{:.1}%", recovery_rate * 100.0));
 
     println!();
     p::info("Errors by Category:");
     println!();
-    
+
     let headers = &["Category", "Count"];
     let mut rows: Vec<Vec<String>> = analytics
         .errors_by_category
         .iter()
         .map(|(cat, count)| vec![cat.user_friendly_name().to_string(), count.to_string()])
         .collect();
-    
+
     rows.sort_by(|a, b| b[1].cmp(&a[1]));
-    
+
     if rows.is_empty() {
         p::info("No errors recorded yet.");
     } else {
@@ -91,16 +99,16 @@ async fn handle_stats() -> Result<()> {
     println!();
     p::info("Errors by Provider:");
     println!();
-    
+
     let headers = &["Provider", "Count"];
     let mut rows: Vec<Vec<String>> = analytics
         .errors_by_provider
         .iter()
         .map(|(provider, count)| vec![provider.clone(), count.to_string()])
         .collect();
-    
+
     rows.sort_by(|a, b| b[1].cmp(&a[1]));
-    
+
     if rows.is_empty() {
         p::info("No errors recorded yet.");
     } else {
@@ -137,7 +145,12 @@ async fn handle_list_providers() -> Result<()> {
             vec![
                 p.name.clone(),
                 p.priority.to_string(),
-                if p.enabled { "Enabled ✓" } else { "Disabled ✗" }.to_string(),
+                if p.enabled {
+                    "Enabled ✓"
+                } else {
+                    "Disabled ✗"
+                }
+                .to_string(),
             ]
         })
         .collect();
@@ -164,12 +177,17 @@ async fn handle_toggle_provider(provider: &str, enable: bool, disable: bool) -> 
         let handler = AiErrorHandler::new();
         let providers = handler.get_providers();
         let current = providers.iter().find(|p| p.name == provider);
-        
+
         match current {
             Some(p) => !p.enabled,
-            None => anyhow::bail!("Provider '{}' not found. Available providers: {}", 
-                provider, 
-                providers.iter().map(|p| &p.name).collect::<Vec<_>>().join(", ")
+            None => anyhow::bail!(
+                "Provider '{}' not found. Available providers: {}",
+                provider,
+                providers
+                    .iter()
+                    .map(|p| &p.name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         }
     };
@@ -207,10 +225,16 @@ async fn handle_test_recovery(failures: u32) -> Result<()> {
 
     match result {
         Ok(_) => {
-            p::success(&format!("Recovery successful after {} attempts.", attempt_count));
+            p::success(&format!(
+                "Recovery successful after {} attempts.",
+                attempt_count
+            ));
         }
         Err(e) => {
-            p::error(&format!("Recovery failed after {} attempts: {}", attempt_count, e));
+            p::error(&format!(
+                "Recovery failed after {} attempts: {}",
+                attempt_count, e
+            ));
         }
     }
 
@@ -218,7 +242,10 @@ async fn handle_test_recovery(failures: u32) -> Result<()> {
     println!();
     let analytics = handler.get_analytics().await;
     p::kv("Total Errors", &analytics.total_errors.to_string());
-    p::kv("Recovery Rate", &format!("{:.1}%", analytics.recovery_rate() * 100.0));
+    p::kv(
+        "Recovery Rate",
+        &format!("{:.1}%", analytics.recovery_rate() * 100.0),
+    );
 
     p::separator();
     Ok(())

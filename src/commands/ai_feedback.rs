@@ -222,9 +222,7 @@ fn handle_stats(args: StatsArgs) -> Result<()> {
     let mut feature_counts: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
     for entry in &store.entries {
-        *feature_counts
-            .entry(entry.feature.clone())
-            .or_insert(0) += 1;
+        *feature_counts.entry(entry.feature.clone()).or_insert(0) += 1;
     }
 
     match args.format.as_str() {
@@ -284,7 +282,10 @@ fn handle_preferences() -> Result<()> {
             pref.confidence * 100.0,
             pref.learned_from
         );
-        println!("    Last updated: {}", pref.last_updated.format("%Y-%m-%d %H:%M"));
+        println!(
+            "    Last updated: {}",
+            pref.last_updated.format("%Y-%m-%d %H:%M")
+        );
         println!();
     }
 
@@ -315,10 +316,7 @@ fn handle_quality(args: QualityArgs) -> Result<()> {
                 "Completeness",
                 &format!("{:.1}%", metrics.completeness_score * 100.0),
             );
-            p::kv(
-                "Clarity",
-                &format!("{:.1}%", metrics.clarity_score * 100.0),
-            );
+            p::kv("Clarity", &format!("{:.1}%", metrics.clarity_score * 100.0));
             p::separator();
             p::kv(
                 "Overall",
@@ -410,7 +408,8 @@ fn print_local_improvement(feature: &str) -> Result<()> {
     if stats.negative_rate > 0.3 {
         println!("  → High negative feedback: investigate common failure modes");
     }
-    if stats.top_corrections
+    if stats
+        .top_corrections
         .iter()
         .any(|(c, _)| *c == af::CorrectionCategory::Security)
     {

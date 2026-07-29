@@ -5,11 +5,10 @@
 
 use crate::utils::{
     ai_conversation::{
-        ConversationManager, UserPreferences, AssistantPersonality, VerbosityLevel,
-        ExpertiseLevel, WorkflowState, WorkflowType,
+        AssistantPersonality, ConversationManager, ExpertiseLevel, UserPreferences, VerbosityLevel,
+        WorkflowState, WorkflowType,
     },
-    ollama,
-    print as p,
+    ollama, print as p,
 };
 use anyhow::{Context, Result};
 use clap::Subcommand;
@@ -79,9 +78,10 @@ pub async fn handle(cmd: AiChatCommands) -> Result<()> {
         AiChatCommands::ListSessions => handle_list_sessions().await,
         AiChatCommands::History { session } => handle_history(&session).await,
         AiChatCommands::DeleteSession { session } => handle_delete_session(&session).await,
-        AiChatCommands::Workflow { workflow_type, session } => {
-            handle_workflow(&workflow_type, session).await
-        }
+        AiChatCommands::Workflow {
+            workflow_type,
+            session,
+        } => handle_workflow(&workflow_type, session).await,
     }
 }
 
@@ -96,7 +96,10 @@ async fn handle_chat(
 
     let session_id = if let Some(sid) = session_id {
         // Resume existing session
-        manager.get_context(&sid).await.context("Session not found")?;
+        manager
+            .get_context(&sid)
+            .await
+            .context("Session not found")?;
         sid
     } else {
         // Create new session
@@ -133,7 +136,7 @@ async fn handle_chat(
         match readline {
             Ok(line) => {
                 let line = line.trim();
-                
+
                 if line.is_empty() {
                     continue;
                 }
@@ -167,11 +170,11 @@ async fn handle_chat(
 
                 // Generate AI response
                 let prompt = manager.format_for_prompt(&session_id).await?;
-                
+
                 p::info("AI: Thinking...");
-                
+
                 let response = generate_ai_response(&prompt, model).await?;
-                
+
                 println!("AI: {}", response);
 
                 // Add assistant response
@@ -280,7 +283,10 @@ async fn handle_workflow(workflow_type: &str, session_id: Option<String>) -> Res
     };
 
     let session_id = if let Some(sid) = session_id {
-        manager.get_context(&sid).await.context("Session not found")?;
+        manager
+            .get_context(&sid)
+            .await
+            .context("Session not found")?;
         sid
     } else {
         let preferences = UserPreferences::default();
@@ -294,7 +300,9 @@ async fn handle_workflow(workflow_type: &str, session_id: Option<String>) -> Res
         data: HashMap::new(),
     };
 
-    manager.set_workflow_state(&session_id, workflow_state).await?;
+    manager
+        .set_workflow_state(&session_id, workflow_state)
+        .await?;
 
     p::header(&format!("Workflow: {:?}", workflow));
     p::separator();
@@ -303,7 +311,14 @@ async fn handle_workflow(workflow_type: &str, session_id: Option<String>) -> Res
     p::separator();
 
     // Start chat with workflow context
-    handle_chat(Some(session_id), ollama::DEFAULT_MODEL, "professional", "intermediate", "normal").await
+    handle_chat(
+        Some(session_id),
+        ollama::DEFAULT_MODEL,
+        "professional",
+        "intermediate",
+        "normal",
+    )
+    .await
 }
 
 async fn generate_ai_response(prompt: &str, model: &str) -> Result<String> {
@@ -314,14 +329,14 @@ async fn generate_ai_response(prompt: &str, model: &str) -> Result<String> {
     };
 
     let response = ollama::generate_cached(
-    model,
-    &prompt,
-    Some(opts),
-    Some(ai_cache::DEFAULT_CACHE_TTL_SECONDS),
-    "ask",
-)
-.await
-.context("LLM generation failed")?;
+        model,
+        &prompt,
+        Some(opts),
+        Some(ai_cache::DEFAULT_CACHE_TTL_SECONDS),
+        "ask",
+    )
+    .await
+    .context("LLM generation failed")?;
 
     Ok(response.response.trim().to_string())
 }
@@ -340,7 +355,9 @@ fn print_suggestions(suggestions: &[crate::utils::ai_conversation::Suggestion]) 
     for (i, suggestion) in suggestions.iter().enumerate() {
         println!("  {}. {}", i + 1, suggestion.title);
         println!("     {}", suggestion.description);
-        if let crate::utils::ai_conversation::SuggestionAction::Command(cmd) = &suggestion.action_type {
+        if let crate::utils::ai_conversation::SuggestionAction::Command(cmd) =
+            &suggestion.action_type
+        {
             println!("     Command: {}", cmd);
         }
     }

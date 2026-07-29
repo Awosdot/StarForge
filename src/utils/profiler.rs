@@ -38,7 +38,12 @@ unsafe impl GlobalAlloc for MemoryProfiler {
             let current = CURRENT.load(Ordering::Relaxed);
             let mut peak = PEAK.load(Ordering::Relaxed);
             while current > peak {
-                match PEAK.compare_exchange_weak(peak, current, Ordering::Relaxed, Ordering::Relaxed) {
+                match PEAK.compare_exchange_weak(
+                    peak,
+                    current,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
                     Ok(_) => break,
                     Err(p) => peak = p,
                 }
@@ -172,7 +177,7 @@ impl Profiler {
     pub fn mark(&mut self, label: impl Into<String>) {
         let label_str = label.into();
         let at = Instant::now();
-        
+
         #[cfg(feature = "memory-profiling")]
         {
             let label_for_tracker = label_str.clone();

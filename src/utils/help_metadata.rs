@@ -543,7 +543,10 @@ mod tests {
 
     #[test]
     fn registry_lookup_finds_well_known_commands() {
-        for cmd in ["deploy", "wallet", "contract", "network", "gas", "audit", "ai-debug", "test", "tutorial", "template"] {
+        for cmd in [
+            "deploy", "wallet", "contract", "network", "gas", "audit", "ai-debug", "test",
+            "tutorial", "template",
+        ] {
             assert!(
                 HELP_REGISTRY.iter().any(|c| c.name == cmd),
                 "registry missing '{cmd}'"
@@ -583,7 +586,11 @@ mod tests {
     fn workflows_have_at_least_two_steps() {
         for wf in WORKFLOWS {
             assert!(wf.steps.len() >= 2, "workflow '{}' too short", wf.name);
-            assert!(!wf.description.is_empty(), "workflow '{}' missing description", wf.name);
+            assert!(
+                !wf.description.is_empty(),
+                "workflow '{}' missing description",
+                wf.name
+            );
         }
     }
 
@@ -598,12 +605,7 @@ mod tests {
 
     #[test]
     fn error_fixes_cover_common_patterns() {
-        let required_anywhere = [
-            "require_auth",
-            "overflow",
-            "wasm",
-            "ttl",
-        ];
+        let required_anywhere = ["require_auth", "overflow", "wasm", "ttl"];
         for kw in required_anywhere {
             assert!(
                 ERROR_QUICK_FIXES
@@ -629,15 +631,26 @@ mod tests {
             assert!(!set.command.is_empty(), "prereq set has empty command");
             assert!(!set.needs.is_empty(), "prereq set {} is empty", set.command);
             for need in set.needs {
-                assert!(!need.pattern.is_empty(), "{} has empty pattern", set.command);
-                assert!(!need.warning.is_empty(), "{} has empty warning", set.command);
+                assert!(
+                    !need.pattern.is_empty(),
+                    "{} has empty pattern",
+                    set.command
+                );
+                assert!(
+                    !need.warning.is_empty(),
+                    "{} has empty warning",
+                    set.command
+                );
             }
         }
     }
 
     #[test]
     fn lookup_helper_returns_command() {
-        let cmd = HELP_REGISTRY.iter().find(|c| c.name == "deploy").expect("deploy");
+        let cmd = HELP_REGISTRY
+            .iter()
+            .find(|c| c.name == "deploy")
+            .expect("deploy");
         assert!(cmd.examples.len() >= 1);
         assert!(cmd.workflows.contains(&"first-contract"));
     }

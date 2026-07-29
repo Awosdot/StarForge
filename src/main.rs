@@ -472,10 +472,10 @@ async fn main() {
     }
 
     // On a successful run, optionally surface a single proactive tip.
-// Gated so the happy path stays cheap:
-//   * STARFORGE_HELP_TIPS=0 explicitly opts out;
-//   * telemetry must be enabled (it already touches the disk/network);
-//   * `proactive_tip` further ignores commands on its blocklist.
+    // Gated so the happy path stays cheap:
+    //   * STARFORGE_HELP_TIPS=0 explicitly opts out;
+    //   * telemetry must be enabled (it already touches the disk/network);
+    //   * `proactive_tip` further ignores commands on its blocklist.
     // Truthy semantics: only the listed false-strings opt out. Any other
     // value ("1", "yes", " true", "", unset) keeps tips enabled; tighten
     // with care so we never regress "1" → disable.
@@ -517,8 +517,13 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Download a model: starforge ai pull codellama:7b".into());
             } else if msg.contains("wasm") || msg.contains("profile") {
                 hints.push("Build your contract first: stellar contract build".into());
-                hints.push("Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into());
-                hints.push("Save a baseline first: starforge ai profile <wasm> --output baseline.json".into());
+                hints.push(
+                    "Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into(),
+                );
+                hints.push(
+                    "Save a baseline first: starforge ai profile <wasm> --output baseline.json"
+                        .into(),
+                );
             }
         }
         "wallet" => {
@@ -643,11 +648,16 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Start Ollama: ollama serve".into());
                 hints.push("Or run without --use-ai for local generation".into());
             } else if msg.contains("coverage") {
-                hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
+                hints.push(
+                    "Generate coverage first: starforge test --coverage --source src/lib.rs".into(),
+                );
             }
         }
         "ai-property-test" => {
-            hints.push("Provide a contract source file: starforge ai-property-test discover src/lib.rs".into());
+            hints.push(
+                "Provide a contract source file: starforge ai-property-test discover src/lib.rs"
+                    .into(),
+            );
             hints.push("Run without --use-ai for local property discovery".into());
         }
         "ai-feedback" => {
@@ -668,8 +678,7 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Pass the correct --wasm path to the command.".into());
             }
         }
-        }
-        "benchmark" | "test" => {}
+
         _ => {}
     }
 

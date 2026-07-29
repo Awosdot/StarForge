@@ -197,16 +197,19 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             version,
             cli_version_min,
             cli_version_max,
-        } => import(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-        ).await,
+        } => {
+            import(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+            )
+            .await
+        }
         TemplateCommands::Publish {
             path,
             name,
@@ -220,20 +223,23 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             repository,
             homepage,
             documentation,
-        } => publish(
-            path,
-            name,
-            description,
-            author,
-            tags,
-            version,
-            cli_version_min,
-            cli_version_max,
-            license,
-            repository,
-            homepage,
-            documentation,
-        ).await,
+        } => {
+            publish(
+                path,
+                name,
+                description,
+                author,
+                tags,
+                version,
+                cli_version_min,
+                cli_version_max,
+                license,
+                repository,
+                homepage,
+                documentation,
+            )
+            .await
+        }
         TemplateCommands::List => list().await,
         TemplateCommands::Search {
             query,
@@ -256,12 +262,18 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
-        TemplateCommands::Analyze { name, json, out, ai } => {
-            template_analyze(name, json, out, ai).await
-        }
-        TemplateCommands::Feedback { name, comment, rating, category } => {
-            template_feedback(name, comment, rating, category)
-        }
+        TemplateCommands::Analyze {
+            name,
+            json,
+            out,
+            ai,
+        } => template_analyze(name, json, out, ai).await,
+        TemplateCommands::Feedback {
+            name,
+            comment,
+            rating,
+            category,
+        } => template_feedback(name, comment, rating, category),
     }
 }
 
@@ -288,7 +300,8 @@ async fn import(
         None,
         None,
         None,
-    ).await?;
+    )
+    .await?;
     p::header("Template Import");
     p::info("Template package imported into the local registry.");
     Ok(())
@@ -347,7 +360,8 @@ async fn publish(
         repository,
         homepage,
         documentation,
-    ).await?;
+    )
+    .await?;
     let template = templates::get_template(&name).await?;
 
     p::header("Template Publish");
@@ -739,7 +753,8 @@ async fn install(
     println!();
 
     p::step(1, 2, "Resolving and fetching template...");
-    let entry = templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
+    let entry =
+        templates::install_template(&source, name.as_deref(), version.as_deref(), force).await?;
 
     p::step(2, 2, "Registering in local registry...");
     println!();
@@ -882,10 +897,17 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push_str("| Field | Value |\n|---|---|\n");
     md.push_str(&format!("| Author | {} |\n", entry.author));
     md.push_str(&format!("| Version | {} |\n", entry.version));
-    md.push_str(&format!("| License | {} |\n", entry.license.as_deref().unwrap_or("Not declared")));
+    md.push_str(&format!(
+        "| License | {} |\n",
+        entry.license.as_deref().unwrap_or("Not declared")
+    ));
     md.push_str(&format!(
         "| Tags | {} |\n",
-        if entry.tags.is_empty() { "—".to_string() } else { entry.tags.join(", ") }
+        if entry.tags.is_empty() {
+            "—".to_string()
+        } else {
+            entry.tags.join(", ")
+        }
     ));
     md.push_str(&format!("| Source | {} |\n", entry.source));
     if let Some(ref repo) = entry.repository {
@@ -929,7 +951,10 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     // Usage
     md.push_str("## Usage\n\n");
     md.push_str("```bash\n");
-    md.push_str(&format!("starforge new contract my-project --template {}\n", name));
+    md.push_str(&format!(
+        "starforge new contract my-project --template {}\n",
+        name
+    ));
     md.push_str("```\n");
 
     match output {
@@ -951,11 +976,7 @@ async fn template_audit(name: Option<String>) -> Result<()> {
     let registry = templates::load_registry().await?;
 
     let entries: Vec<&templates::TemplateEntry> = match &name {
-        Some(n) => registry
-            .templates
-            .iter()
-            .filter(|t| &t.name == n)
-            .collect(),
+        Some(n) => registry.templates.iter().filter(|t| &t.name == n).collect(),
         None => registry.templates.iter().collect(),
     };
 
@@ -1068,7 +1089,10 @@ async fn template_analyze(
     match out {
         Some(path) => {
             std::fs::write(&path, &rendered)?;
-            p::success(&format!("Community analysis report written to {}", path.display()));
+            p::success(&format!(
+                "Community analysis report written to {}",
+                path.display()
+            ));
         }
         None => {
             if !json {

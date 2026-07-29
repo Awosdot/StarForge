@@ -250,8 +250,7 @@ pub fn learn_preferences(store: &mut FeedbackStore) {
                 _ => continue,
             };
             let map = pref_counts.entry(pref_type).or_insert_with(HashMap::new);
-            *map.entry(correction.corrected_output.clone())
-                .or_insert(0) += 1;
+            *map.entry(correction.corrected_output.clone()).or_insert(0) += 1;
         }
     }
 
@@ -260,9 +259,11 @@ pub fn learn_preferences(store: &mut FeedbackStore) {
             let total: usize = values.values().sum();
             let confidence = *count as f64 / total as f64;
 
-            if let Some(existing) = store.preferences.iter_mut().find(|p| {
-                p.preference_type == *pref_type
-            }) {
+            if let Some(existing) = store
+                .preferences
+                .iter_mut()
+                .find(|p| p.preference_type == *pref_type)
+            {
                 existing.confidence = confidence;
                 existing.learned_from += 1;
                 existing.last_updated = Utc::now();
@@ -283,7 +284,10 @@ pub fn learn_preferences(store: &mut FeedbackStore) {
 }
 
 /// Get the current preference for a given type.
-pub fn get_preference<'a>(store: &'a FeedbackStore, pref_type: &PreferenceType) -> Option<&'a UserPreference> {
+pub fn get_preference<'a>(
+    store: &'a FeedbackStore,
+    pref_type: &PreferenceType,
+) -> Option<&'a UserPreference> {
     store
         .preferences
         .iter()
@@ -325,23 +329,27 @@ pub fn calculate_quality_metrics(feature: &str) -> Result<QualityMetrics> {
 
     let accuracy_score = (positive_count as f64 + partial_count as f64 * 0.5) / total;
     let relevance_score = accuracy_score * 0.9;
-    let completeness_score = (total - feature_entries
-        .iter()
-        .filter(|e| e.corrections.len() > 2)
-        .count() as f64)
+    let completeness_score = (total
+        - feature_entries
+            .iter()
+            .filter(|e| e.corrections.len() > 2)
+            .count() as f64)
         / total;
-    let clarity_score = (total - feature_entries
-        .iter()
-        .filter(|e| {
-            e.corrections
-                .iter()
-                .any(|c| c.category == CorrectionCategory::Syntax)
-        })
-        .count() as f64)
+    let clarity_score = (total
+        - feature_entries
+            .iter()
+            .filter(|e| {
+                e.corrections
+                    .iter()
+                    .any(|c| c.category == CorrectionCategory::Syntax)
+            })
+            .count() as f64)
         / total;
 
-    let overall_score =
-        accuracy_score * 0.3 + relevance_score * 0.3 + completeness_score * 0.2 + clarity_score * 0.2;
+    let overall_score = accuracy_score * 0.3
+        + relevance_score * 0.3
+        + completeness_score * 0.2
+        + clarity_score * 0.2;
 
     Ok(QualityMetrics {
         accuracy_score,
@@ -396,7 +404,8 @@ pub fn get_feature_stats(feature: &str) -> Result<FeatureStats> {
         }
     }
 
-    let mut top_corrections: Vec<(CorrectionCategory, usize)> = correction_counts.into_iter().collect();
+    let mut top_corrections: Vec<(CorrectionCategory, usize)> =
+        correction_counts.into_iter().collect();
     top_corrections.sort_by(|a, b| b.1.cmp(&a.1));
     top_corrections.truncate(5);
 
@@ -416,10 +425,7 @@ pub fn get_feature_stats(feature: &str) -> Result<FeatureStats> {
 // ── Prompt Building ──────────────────────────────────────────────────────────
 
 /// Build a prompt that incorporates learned preferences into AI responses.
-pub fn build_preference_aware_prompt(
-    base_prompt: &str,
-    feature: &str,
-) -> Result<String> {
+pub fn build_preference_aware_prompt(base_prompt: &str, feature: &str) -> Result<String> {
     let store = load_store()?;
     let metrics = calculate_quality_metrics(feature)?;
 
@@ -436,7 +442,9 @@ pub fn build_preference_aware_prompt(
     for pref in &store.preferences {
         context_parts.push(format!(
             "User preference: {} = {} (confidence: {:.0}%)",
-            pref.preference_type, pref.value, pref.confidence * 100.0,
+            pref.preference_type,
+            pref.value,
+            pref.confidence * 100.0,
         ));
     }
 
@@ -516,14 +524,8 @@ mod tests {
 
     #[test]
     fn test_correction_categories() {
-        assert_eq!(
-            CorrectionCategory::Syntax.to_string(),
-            "Syntax"
-        );
-        assert_eq!(
-            CorrectionCategory::Security.to_string(),
-            "Security"
-        );
+        assert_eq!(CorrectionCategory::Syntax.to_string(), "Syntax");
+        assert_eq!(CorrectionCategory::Security.to_string(), "Security");
     }
 
     #[test]

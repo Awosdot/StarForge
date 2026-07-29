@@ -15,7 +15,7 @@
 //! ```
 
 use crate::utils::mutation::{
-    self, CiPath, MutantOutcome, Mutant, MutationConfig, MutationOperator, MutationReport,
+    self, CiPath, Mutant, MutantOutcome, MutationConfig, MutationOperator, MutationReport,
     TestExecutor,
 };
 use crate::utils::print as p;
@@ -191,10 +191,7 @@ fn handle_run(args: RunArgs) -> Result<()> {
     let source = read_source(&args.source)?;
     let cfg = build_config(args.operators.as_deref(), args.max_mutants, false)?;
     let file = args.source.to_string_lossy().to_string();
-    let workdir = args
-        .workdir
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("."));
+    let workdir = args.workdir.clone().unwrap_or_else(|| PathBuf::from("."));
 
     p::header("Mutation Testing");
     p::kv("Source", &file);
@@ -616,7 +613,9 @@ mod tests {
         let cfg = build_config(Some("comparison, require-auth"), None, false).expect("parse");
         assert_eq!(cfg.operators.len(), 2);
         assert!(cfg.operators.contains(&MutationOperator::Comparison));
-        assert!(cfg.operators.contains(&MutationOperator::RequireAuthRemoval));
+        assert!(cfg
+            .operators
+            .contains(&MutationOperator::RequireAuthRemoval));
         assert!(cfg.skip_tests);
     }
 

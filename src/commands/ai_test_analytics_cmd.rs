@@ -3,10 +3,7 @@
 //! Provides commands for viewing test execution analytics, flaky test patterns,
 //! and predictive insights.
 
-use crate::utils::{
-    ai_test_analytics::TestAnalyticsService,
-    print as p,
-};
+use crate::utils::{ai_test_analytics::TestAnalyticsService, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 
@@ -40,8 +37,14 @@ async fn handle_summary() -> Result<()> {
     p::kv("Total Tests Run", &analytics.total_tests_run.to_string());
     p::kv("Passed", &analytics.total_passed.to_string());
     p::kv("Failed", &analytics.total_failed.to_string());
-    p::kv("Success Rate", &format!("{:.1}%", analytics.success_rate() * 100.0));
-    p::kv("Total Duration", &format!("{} ms", analytics.total_duration_ms));
+    p::kv(
+        "Success Rate",
+        &format!("{:.1}%", analytics.success_rate() * 100.0),
+    );
+    p::kv(
+        "Total Duration",
+        &format!("{} ms", analytics.total_duration_ms),
+    );
 
     p::separator();
     Ok(())

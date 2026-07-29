@@ -208,15 +208,21 @@ async fn monitor_contract(
     }
 
     notifications::info(&format!("Streaming contract events from {}.", rpc_url));
-    p::kv("Transport", &format!("{:?}", stream.transport()).to_lowercase());
-    if matches!(stream.transport(), EventStreamTransport::Auto | EventStreamTransport::WebSocket) {
+    p::kv(
+        "Transport",
+        &format!("{:?}", stream.transport()).to_lowercase(),
+    );
+    if matches!(
+        stream.transport(),
+        EventStreamTransport::Auto | EventStreamTransport::WebSocket
+    ) {
         p::kv("WebSocket", stream.websocket_url());
     }
 
     let event_store = match persist {
-        Some(path) if path == &PathBuf::from(DEFAULT_PERSIST_SENTINEL) => {
-            Some(EventStore::new(EventStore::default_path(network, contract_id)?))
-        }
+        Some(path) if path == &PathBuf::from(DEFAULT_PERSIST_SENTINEL) => Some(EventStore::new(
+            EventStore::default_path(network, contract_id)?,
+        )),
         Some(path) => Some(EventStore::new(path.clone())),
         None => None,
     };
@@ -341,7 +347,9 @@ fn replay_contract_events(
         println!("{}", analytics.render_dashboard());
     }
     if matched == 0 {
-        notifications::warn("No matching persisted events found for this contract/network/filter set.");
+        notifications::warn(
+            "No matching persisted events found for this contract/network/filter set.",
+        );
     }
     Ok(())
 }
@@ -385,13 +393,8 @@ fn process_contract_event(
         }
     }
 
-    let persisted = PersistedEvent::new(
-        network,
-        contract_id,
-        event.clone(),
-        routes,
-        alerts.clone(),
-    );
+    let persisted =
+        PersistedEvent::new(network, contract_id, event.clone(), routes, alerts.clone());
     if let Some(store) = event_store {
         store.persist(&persisted)?;
     }
@@ -476,7 +479,10 @@ fn matches_monitor_filters(
     if let Some(segments) = &stream_filters.topic_segments {
         for segment in segments.iter().filter(|segment| segment.as_str() != "*") {
             let needle = segment.to_lowercase();
-            let matched = event.topic.iter().any(|topic| topic.to_lowercase().contains(&needle));
+            let matched = event
+                .topic
+                .iter()
+                .any(|topic| topic.to_lowercase().contains(&needle));
             if !matched {
                 return false;
             }

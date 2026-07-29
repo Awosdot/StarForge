@@ -164,10 +164,7 @@ async fn handle_search(args: SearchArgs) -> Result<()> {
 
     if args.use_ai {
         if ollama::is_ollama_running().await {
-            let context = format!(
-                "Project directory: {}",
-                project_dir.display()
-            );
+            let context = format!("Project directory: {}", project_dir.display());
             let prompt = ais::build_search_prompt(&args.query, &context);
             p::info(&format!("Searching with AI ({})...", args.model));
             let response = ollama::generate(
@@ -231,10 +228,7 @@ fn handle_similar(args: SimilarArgs) -> Result<()> {
                 println!("    Line {}-{}", result.line_start, result.line_end);
                 println!("    {}", result.snippet.dimmed());
                 if !result.shared_patterns.is_empty() {
-                    println!(
-                        "    Shared patterns: {}",
-                        result.shared_patterns.join(", ")
-                    );
+                    println!("    Shared patterns: {}", result.shared_patterns.join(", "));
                 }
                 println!();
             }
@@ -457,7 +451,12 @@ fn print_search_result(result: &ais::DiscoveryResult, format: &str) {
                     colored_match,
                     r.relevance_score * 100.0
                 );
-                println!("    {} (lines {}-{})", r.context.dimmed(), r.line_start, r.line_end);
+                println!(
+                    "    {} (lines {}-{})",
+                    r.context.dimmed(),
+                    r.line_start,
+                    r.line_end
+                );
                 println!("    {}", r.snippet.dimmed());
                 println!();
             }

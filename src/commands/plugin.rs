@@ -203,10 +203,10 @@ async fn search(query: Option<String>) -> Result<()> {
     if let Some(ref q) = query {
         p::kv("Query", q);
     }
-    
+
     // Attempt to fetch from official plugin registry, fallback to hardcoded examples for demonstration.
     let registry_url = "https://starforge-protocol.github.io/starforge/plugins/registry.json";
-    
+
     let mut available_plugins = vec![
         MarketplacePlugin {
             name: "starforge-ai-audit".to_string(),
@@ -217,7 +217,7 @@ async fn search(query: Option<String>) -> Result<()> {
             name: "starforge-defi".to_string(),
             description: "DeFi scaffold and AMM tools".to_string(),
             url: "https://github.com/Nanle-code/starforge-defi".to_string(),
-        }
+        },
     ];
 
     if let Ok(resp) = reqwest::get(registry_url).await {
@@ -228,7 +228,9 @@ async fn search(query: Option<String>) -> Result<()> {
 
     if let Some(q) = query {
         let q = q.to_lowercase();
-        available_plugins.retain(|p| p.name.to_lowercase().contains(&q) || p.description.to_lowercase().contains(&q));
+        available_plugins.retain(|p| {
+            p.name.to_lowercase().contains(&q) || p.description.to_lowercase().contains(&q)
+        });
     }
 
     if available_plugins.is_empty() {
@@ -237,11 +239,12 @@ async fn search(query: Option<String>) -> Result<()> {
     }
 
     println!("\n  Found {} plugin(s):\n", available_plugins.len());
-    
-    let rows: Vec<Vec<String>> = available_plugins.into_iter().map(|p| {
-        vec![p.name, p.description, p.url]
-    }).collect();
-    
+
+    let rows: Vec<Vec<String>> = available_plugins
+        .into_iter()
+        .map(|p| vec![p.name, p.description, p.url])
+        .collect();
+
     p::table(&["Name", "Description", "Source URL"], &rows);
     println!("\nTo install a plugin, run: starforge plugin install <name> --source <url>");
 

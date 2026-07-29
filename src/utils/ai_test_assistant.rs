@@ -386,7 +386,8 @@ fn extract_functions_with_signatures(source: &str) -> Vec<FunctionInfo> {
 
 fn parse_function_line(line: &str, line_num: u32) -> Option<FunctionInfo> {
     let is_public = line.starts_with("pub fn ") || line.starts_with("pub async fn ");
-    let is_entry_point = line.contains("#[") && (line.contains("entry") || line.contains("constructor"));
+    let is_entry_point =
+        line.contains("#[") && (line.contains("entry") || line.contains("constructor"));
 
     if !is_public && !is_entry_point {
         return None;
@@ -414,8 +415,16 @@ fn parse_function_line(line: &str, line_num: u32) -> Option<FunctionInfo> {
             if parts.len() < 2 {
                 return None;
             }
-            let name = parts[0].trim().trim_start_matches("mut ").trim().to_string();
-            let param_type = parts[1].trim().trim_start_matches('&').trim_start_matches("mut ").to_string();
+            let name = parts[0]
+                .trim()
+                .trim_start_matches("mut ")
+                .trim()
+                .to_string();
+            let param_type = parts[1]
+                .trim()
+                .trim_start_matches('&')
+                .trim_start_matches("mut ")
+                .to_string();
             Some(ParamInfo {
                 name,
                 param_type,
@@ -452,13 +461,27 @@ fn parse_function_line(line: &str, line_num: u32) -> Option<FunctionInfo> {
 
 fn calculate_complexity(line: &str) -> u32 {
     let mut score = 0u32;
-    if line.contains("if ") { score += 1; }
-    if line.contains("match ") { score += 2; }
-    if line.contains("for ") { score += 1; }
-    if line.contains("while ") { score += 1; }
-    if line.contains("?.") { score += 1; }
-    if line.contains("unwrap_or") { score += 1; }
-    if line.contains("map_err") { score += 1; }
+    if line.contains("if ") {
+        score += 1;
+    }
+    if line.contains("match ") {
+        score += 2;
+    }
+    if line.contains("for ") {
+        score += 1;
+    }
+    if line.contains("while ") {
+        score += 1;
+    }
+    if line.contains("?.") {
+        score += 1;
+    }
+    if line.contains("unwrap_or") {
+        score += 1;
+    }
+    if line.contains("map_err") {
+        score += 1;
+    }
     score
 }
 
@@ -482,7 +505,8 @@ fn extract_external_calls(source: &str) -> Vec<String> {
     let mut calls = Vec::new();
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed.contains("client.") || trimmed.contains("invoke ") || trimmed.contains("deploy ") {
+        if trimmed.contains("client.") || trimmed.contains("invoke ") || trimmed.contains("deploy ")
+        {
             calls.push(trimmed.to_string());
         }
     }
@@ -546,11 +570,20 @@ fn generate_rationale(func: &FunctionInfo) -> String {
     } else if func.is_mutating && func.complexity_score > 3 {
         format!("Complex mutating function '{}' has high risk of bugs and requires thorough edge case testing", func.name)
     } else if func.is_mutating {
-        format!("Mutating function '{}' should be tested for state changes and authorization", func.name)
+        format!(
+            "Mutating function '{}' should be tested for state changes and authorization",
+            func.name
+        )
     } else if func.complexity_score > 5 {
-        format!("Complex read-only function '{}' needs thorough branch coverage", func.name)
+        format!(
+            "Complex read-only function '{}' needs thorough branch coverage",
+            func.name
+        )
     } else {
-        format!("Standard function '{}' should have basic unit test coverage", func.name)
+        format!(
+            "Standard function '{}' should have basic unit test coverage",
+            func.name
+        )
     }
 }
 
@@ -565,12 +598,24 @@ fn estimate_tests_needed(func: &FunctionInfo) -> u32 {
 pub fn calculate_test_quality_score(test_code: &str, source_code: &str) -> TestQualityScore {
     let test_count = test_code.lines().filter(|l| l.contains("#[test]")).count();
     let assertion_count = test_code.lines().filter(|l| l.contains("assert")).count();
-    let has_setup = test_code.contains("fn setup") || test_code.contains("#[ctor]") || test_code.contains("fn before");
-    let has_edge_cases = test_code.contains("edge") || test_code.contains("boundary") || test_code.contains("zero") || test_code.contains("max");
-    let has_security = test_code.contains("unauthorized") || test_code.contains("overflow") || test_code.contains("auth");
-    let has_error_handling = test_code.contains("Err(") || test_code.contains("should_panic") || test_code.contains("unwrap_err");
+    let has_setup = test_code.contains("fn setup")
+        || test_code.contains("#[ctor]")
+        || test_code.contains("fn before");
+    let has_edge_cases = test_code.contains("edge")
+        || test_code.contains("boundary")
+        || test_code.contains("zero")
+        || test_code.contains("max");
+    let has_security = test_code.contains("unauthorized")
+        || test_code.contains("overflow")
+        || test_code.contains("auth");
+    let has_error_handling = test_code.contains("Err(")
+        || test_code.contains("should_panic")
+        || test_code.contains("unwrap_err");
 
-    let function_count = source_code.lines().filter(|l| l.trim().starts_with("pub fn ")).count();
+    let function_count = source_code
+        .lines()
+        .filter(|l| l.trim().starts_with("pub fn "))
+        .count();
     let test_to_func_ratio = if function_count > 0 {
         test_count as f64 / function_count as f64
     } else {
@@ -586,10 +631,18 @@ pub fn calculate_test_quality_score(test_code: &str, source_code: &str) -> TestQ
     let mut score = 0.0;
     score += (test_to_func_ratio.min(3.0) / 3.0) * 30.0;
     score += (assertion_density.min(5.0) / 5.0) * 20.0;
-    if has_setup { score += 10.0; }
-    if has_edge_cases { score += 15.0; }
-    if has_security { score += 15.0; }
-    if has_error_handling { score += 10.0; }
+    if has_setup {
+        score += 10.0;
+    }
+    if has_edge_cases {
+        score += 15.0;
+    }
+    if has_security {
+        score += 15.0;
+    }
+    if has_error_handling {
+        score += 10.0;
+    }
 
     TestQualityScore {
         overall: score.min(100.0),
@@ -696,25 +749,37 @@ pub fn generate_test_data_suggestions(contract_code: &str) -> Vec<TestDataSugges
                         "Self-referencing address".to_string(),
                         "Contract address vs account address".to_string(),
                     ],
-                    description: format!("Address parameter '{}' needs test accounts and contracts", param.name),
+                    description: format!(
+                        "Address parameter '{}' needs test accounts and contracts",
+                        param.name
+                    ),
                 },
-                t if t.contains("u64") || t.contains("i64") || t.contains("u32") || t.contains("i32") => TestDataSuggestion {
-                    field: param.name.clone(),
-                    data_type: "amount".to_string(),
-                    generators: vec![
-                        "0".to_string(),
-                        "1".to_string(),
-                        "u64::MAX".to_string(),
-                        "1_000_000_000".to_string(),
-                    ],
-                    edge_cases: vec![
-                        "Zero (0)".to_string(),
-                        "Maximum value (u64::MAX)".to_string(),
-                        "Minimum value (1 for unsigned)".to_string(),
-                        "Large amount (1_000_000_000)".to_string(),
-                    ],
-                    description: format!("Numeric parameter '{}' needs boundary value testing", param.name),
-                },
+                t if t.contains("u64")
+                    || t.contains("i64")
+                    || t.contains("u32")
+                    || t.contains("i32") =>
+                {
+                    TestDataSuggestion {
+                        field: param.name.clone(),
+                        data_type: "amount".to_string(),
+                        generators: vec![
+                            "0".to_string(),
+                            "1".to_string(),
+                            "u64::MAX".to_string(),
+                            "1_000_000_000".to_string(),
+                        ],
+                        edge_cases: vec![
+                            "Zero (0)".to_string(),
+                            "Maximum value (u64::MAX)".to_string(),
+                            "Minimum value (1 for unsigned)".to_string(),
+                            "Large amount (1_000_000_000)".to_string(),
+                        ],
+                        description: format!(
+                            "Numeric parameter '{}' needs boundary value testing",
+                            param.name
+                        ),
+                    }
+                }
                 t if t.contains("String") || t.contains("string") => TestDataSuggestion {
                     field: param.name.clone(),
                     data_type: "string".to_string(),
@@ -729,14 +794,20 @@ pub fn generate_test_data_suggestions(contract_code: &str) -> Vec<TestDataSugges
                         "Special characters".to_string(),
                         "Unicode characters".to_string(),
                     ],
-                    description: format!("String parameter '{}' needs length and content edge case testing", param.name),
+                    description: format!(
+                        "String parameter '{}' needs length and content edge case testing",
+                        param.name
+                    ),
                 },
                 _ => TestDataSuggestion {
                     field: param.name.clone(),
                     data_type: "custom".to_string(),
                     generators: vec!["Default::default()".to_string()],
                     edge_cases: vec!["Default value".to_string()],
-                    description: format!("Custom type parameter '{}' needs tailored test data", param.name),
+                    description: format!(
+                        "Custom type parameter '{}' needs tailored test data",
+                        param.name
+                    ),
                 },
             };
             suggestions.push(suggestion);
@@ -760,9 +831,13 @@ pub struct TestDataSuggestion {
 pub fn build_generation_prompt(request: &TestGenerationRequest) -> String {
     let test_type_desc = match request.test_type {
         TestType::Unit => "unit tests that verify individual function behavior",
-        TestType::Integration => "integration tests that verify contract interactions and workflows",
+        TestType::Integration => {
+            "integration tests that verify contract interactions and workflows"
+        }
         TestType::EdgeCase => "edge case tests that verify boundary conditions and error handling",
-        TestType::Security => "security tests that verify authorization and protection against exploits",
+        TestType::Security => {
+            "security tests that verify authorization and protection against exploits"
+        }
         TestType::All => "comprehensive tests covering unit, integration, edge cases, and security",
     };
 
@@ -777,9 +852,12 @@ pub fn build_generation_prompt(request: &TestGenerationRequest) -> String {
             "\nCurrent coverage: {:.1}% (functions: {}/{}, lines: {}/{}, branches: {}/{}). \
              Focus on uncovered functions: {}.",
             (cov.functions_covered as f64 / cov.functions_total as f64 * 100.0),
-            cov.functions_covered, cov.functions_total,
-            cov.lines_covered, cov.lines_total,
-            cov.branches_covered, cov.branches_total,
+            cov.functions_covered,
+            cov.functions_total,
+            cov.lines_covered,
+            cov.lines_total,
+            cov.branches_covered,
+            cov.branches_total,
             cov.uncovered_functions.join(", ")
         )
     } else {
@@ -787,7 +865,10 @@ pub fn build_generation_prompt(request: &TestGenerationRequest) -> String {
     };
 
     let existing_tests_hint = if let Some(ref tests) = request.existing_tests {
-        format!("\n\nExisting tests to avoid duplication:\n```rust\n{}\n```", tests)
+        format!(
+            "\n\nExisting tests to avoid duplication:\n```rust\n{}\n```",
+            tests
+        )
     } else {
         String::new()
     };
@@ -815,14 +896,18 @@ pub fn build_generation_prompt(request: &TestGenerationRequest) -> String {
 }
 
 pub fn build_optimization_prompt(request: &TestOptimizationRequest) -> String {
-    let goals_desc: Vec<&str> = request.optimization_goals.iter().map(|g| match g {
-        OptimizationGoal::ReduceDuplication => "reduce code duplication",
-        OptimizationGoal::ImprovePerformance => "improve test execution performance",
-        OptimizationGoal::IncreaseCoverage => "increase code coverage",
-        OptimizationGoal::BetterAssertions => "add more specific and meaningful assertions",
-        OptimizationGoal::SimplifySetup => "simplify test setup and fixture management",
-        OptimizationGoal::All => "optimize all aspects",
-    }).collect();
+    let goals_desc: Vec<&str> = request
+        .optimization_goals
+        .iter()
+        .map(|g| match g {
+            OptimizationGoal::ReduceDuplication => "reduce code duplication",
+            OptimizationGoal::ImprovePerformance => "improve test execution performance",
+            OptimizationGoal::IncreaseCoverage => "increase code coverage",
+            OptimizationGoal::BetterAssertions => "add more specific and meaningful assertions",
+            OptimizationGoal::SimplifySetup => "simplify test setup and fixture management",
+            OptimizationGoal::All => "optimize all aspects",
+        })
+        .collect();
 
     format!(
         "Optimize the following Soroban contract test suite.\n\n\
@@ -845,7 +930,9 @@ pub fn build_optimization_prompt(request: &TestOptimizationRequest) -> String {
 
 pub fn build_coverage_improvement_prompt(request: &CoverageAnalysisRequest) -> String {
     let coverage_pct = if request.coverage_data.functions_total > 0 {
-        request.coverage_data.functions_covered as f64 / request.coverage_data.functions_total as f64 * 100.0
+        request.coverage_data.functions_covered as f64
+            / request.coverage_data.functions_total as f64
+            * 100.0
     } else {
         0.0
     };
@@ -869,9 +956,12 @@ pub fn build_coverage_improvement_prompt(request: &CoverageAnalysisRequest) -> S
         request.source_code,
         request.test_code,
         coverage_pct,
-        request.coverage_data.functions_covered, request.coverage_data.functions_total,
-        request.coverage_data.lines_covered, request.coverage_data.lines_total,
-        request.coverage_data.branches_covered, request.coverage_data.branches_total,
+        request.coverage_data.functions_covered,
+        request.coverage_data.functions_total,
+        request.coverage_data.lines_covered,
+        request.coverage_data.lines_total,
+        request.coverage_data.branches_covered,
+        request.coverage_data.branches_total,
         request.coverage_data.uncovered_functions.join(", ")
     )
 }
@@ -900,14 +990,18 @@ pub fn build_maintenance_prompt(request: &TestMaintenanceRequest) -> String {
 }
 
 pub fn build_mock_generation_prompt(request: &MockGenerationRequest) -> String {
-    let types_desc: Vec<&str> = request.mock_types.iter().map(|t| match t {
-        MockType::Address => "Stellar address mocks",
-        MockType::Storage => "Storage mocks",
-        MockType::Contract => "Contract client mocks",
-        MockType::Env => "Environment mocks",
-        MockType::Events => "Event emitter mocks",
-        MockType::All => "all mock types",
-    }).collect();
+    let types_desc: Vec<&str> = request
+        .mock_types
+        .iter()
+        .map(|t| match t {
+            MockType::Address => "Stellar address mocks",
+            MockType::Storage => "Storage mocks",
+            MockType::Contract => "Contract client mocks",
+            MockType::Env => "Environment mocks",
+            MockType::Events => "Event emitter mocks",
+            MockType::All => "all mock types",
+        })
+        .collect();
 
     format!(
         "Generate mock objects for testing a Soroban smart contract.\n\n\
@@ -929,16 +1023,20 @@ pub fn build_mock_generation_prompt(request: &MockGenerationRequest) -> String {
 }
 
 pub fn build_test_data_prompt(request: &TestDataGenerationRequest) -> String {
-    let types_desc: Vec<&str> = request.data_types.iter().map(|t| match t {
-        DataType::Address => "Stellar addresses",
-        DataType::Amount => "token amounts and balances",
-        DataType::String => "string inputs",
-        DataType::Bytes => "byte arrays",
-        DataType::Timestamp => "timestamps",
-        DataType::Boolean => "boolean flags",
-        DataType::Custom(name) => name,
-        DataType::All => "all types",
-    }).collect();
+    let types_desc: Vec<&str> = request
+        .data_types
+        .iter()
+        .map(|t| match t {
+            DataType::Address => "Stellar addresses",
+            DataType::Amount => "token amounts and balances",
+            DataType::String => "string inputs",
+            DataType::Bytes => "byte arrays",
+            DataType::Timestamp => "timestamps",
+            DataType::Boolean => "boolean flags",
+            DataType::Custom(name) => name,
+            DataType::All => "all types",
+        })
+        .collect();
 
     format!(
         "Generate test data for a Soroban smart contract.\n\n\
@@ -955,7 +1053,9 @@ pub fn build_test_data_prompt(request: &TestDataGenerationRequest) -> String {
         request.contract_code,
         types_desc.join(", "),
         request.count_per_type,
-        request.constraints.iter()
+        request
+            .constraints
+            .iter()
             .map(|c| format!("{}: {} = {:?}", c.field, c.constraint_type, c.value))
             .collect::<Vec<_>>()
             .join(", ")
@@ -980,8 +1080,7 @@ pub fn read_source_file(path: &Path) -> Result<String> {
 
         anyhow::bail!("No src/lib.rs or src/main.rs found in {}", path.display());
     } else if path.is_file() {
-        fs::read_to_string(path)
-            .with_context(|| format!("Failed to read {}", path.display()))
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))
     } else {
         anyhow::bail!("Path does not exist: {}", path.display())
     }
@@ -1150,7 +1249,12 @@ mod tests {
                     is_public: true,
                     is_entry_point: true,
                     is_mutating: false,
-                    params: vec![ParamInfo { name: "admin".to_string(), param_type: "Address".to_string(), is_ref: false, is_mut: false }],
+                    params: vec![ParamInfo {
+                        name: "admin".to_string(),
+                        param_type: "Address".to_string(),
+                        is_ref: false,
+                        is_mut: false,
+                    }],
                     return_type: None,
                     complexity_score: 1,
                     line_start: 1,
@@ -1158,14 +1262,30 @@ mod tests {
                 },
                 FunctionInfo {
                     name: "transfer".to_string(),
-                    signature: "pub fn transfer(env: Env, from: Address, to: Address, amount: i64)".to_string(),
+                    signature: "pub fn transfer(env: Env, from: Address, to: Address, amount: i64)"
+                        .to_string(),
                     is_public: true,
                     is_entry_point: false,
                     is_mutating: true,
                     params: vec![
-                        ParamInfo { name: "from".to_string(), param_type: "Address".to_string(), is_ref: false, is_mut: false },
-                        ParamInfo { name: "to".to_string(), param_type: "Address".to_string(), is_ref: false, is_mut: false },
-                        ParamInfo { name: "amount".to_string(), param_type: "i64".to_string(), is_ref: false, is_mut: false },
+                        ParamInfo {
+                            name: "from".to_string(),
+                            param_type: "Address".to_string(),
+                            is_ref: false,
+                            is_mut: false,
+                        },
+                        ParamInfo {
+                            name: "to".to_string(),
+                            param_type: "Address".to_string(),
+                            is_ref: false,
+                            is_mut: false,
+                        },
+                        ParamInfo {
+                            name: "amount".to_string(),
+                            param_type: "i64".to_string(),
+                            is_ref: false,
+                            is_mut: false,
+                        },
                     ],
                     return_type: None,
                     complexity_score: 2,
@@ -1180,11 +1300,19 @@ mod tests {
         let priorities = generate_test_priorities(&analysis);
         assert_eq!(priorities.len(), 2);
 
-        let init_priority = priorities.iter().find(|p| p.function_name == "initialize").unwrap();
+        let init_priority = priorities
+            .iter()
+            .find(|p| p.function_name == "initialize")
+            .unwrap();
         assert_eq!(init_priority.priority, TestPriority::Critical);
 
-        let transfer_priority = priorities.iter().find(|p| p.function_name == "transfer").unwrap();
-        assert!(transfer_priority.test_types.contains(&"security".to_string()));
+        let transfer_priority = priorities
+            .iter()
+            .find(|p| p.function_name == "transfer")
+            .unwrap();
+        assert!(transfer_priority
+            .test_types
+            .contains(&"security".to_string()));
     }
 
     #[test]

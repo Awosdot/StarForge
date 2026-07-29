@@ -289,8 +289,7 @@ impl IncidentResponse {
         let mut records = IncidentStore::load_all()?;
         if let Some(rec) = records.iter_mut().find(|r| r.id == incident.id) {
             rec.playbook = Some(playbook);
-            rec.actions_taken
-                .push("Response playbook assigned".into());
+            rec.actions_taken.push("Response playbook assigned".into());
             rec.status = IncidentStatus::Investigating;
         }
         IncidentStore::save_all(&records)?;
@@ -441,10 +440,7 @@ impl IncidentResponse {
         summary.push_str(&format!("Status: {:?}\n", incident.status));
         summary.push_str(&format!("Contract: {}\n", incident.contract_id));
         summary.push_str(&format!("Created: {}\n", incident.created_at));
-        summary.push_str(&format!(
-            "Last updated: {}\n\n",
-            incident.updated_at
-        ));
+        summary.push_str(&format!("Last updated: {}\n\n", incident.updated_at));
 
         summary.push_str("Actions Taken:\n");
         for action in &incident.actions_taken {
@@ -452,7 +448,10 @@ impl IncidentResponse {
         }
 
         if !incident.evidence.is_empty() {
-            summary.push_str(&format!("\nEvidence Collected: {}\n", incident.evidence.len()));
+            summary.push_str(&format!(
+                "\nEvidence Collected: {}\n",
+                incident.evidence.len()
+            ));
             for e in &incident.evidence {
                 summary.push_str(&format!(
                     "  [{}] {} — {}\n",
@@ -470,10 +469,7 @@ impl IncidentResponse {
         }
 
         if let Some(ref analysis) = incident.post_incident_analysis {
-            summary.push_str(&format!(
-                "\nRoot Cause: {}\n",
-                analysis.root_cause
-            ));
+            summary.push_str(&format!("\nRoot Cause: {}\n", analysis.root_cause));
             if !analysis.lessons_learned.is_empty() {
                 summary.push_str("Lessons Learned:\n");
                 for lesson in &analysis.lessons_learned {
