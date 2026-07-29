@@ -604,9 +604,7 @@ fn pattern_compilation_error() -> DebugFinding {
             "Use `cargo check` for faster iteration than a full build.".into(),
             "Run `rustc --explain EXXXX` for a detailed explanation of any error code.".into(),
         ],
-        references: vec![
-            "https://doc.rust-lang.org/error_codes/error-index.html".into(),
-        ],
+        references: vec!["https://doc.rust-lang.org/error_codes/error-index.html".into()],
     }
 }
 
@@ -639,9 +637,7 @@ fn pattern_configuration_error() -> DebugFinding {
             "Inspect `~/.starforge/config.toml` for syntax errors.".into(),
             "Check for required environment variables referenced in the error message.".into(),
         ],
-        references: vec![
-            "https://developers.stellar.org/docs/networks".into(),
-        ],
+        references: vec!["https://developers.stellar.org/docs/networks".into()],
     }
 }
 

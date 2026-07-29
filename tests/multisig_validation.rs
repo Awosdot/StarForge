@@ -38,7 +38,10 @@ mod multisig_validation_tests {
         let p = make_proposal(3, vec!["alice", "bob", "carol"]);
         let report = validate_proposal(&p);
         assert!(report.valid, "unanimous threshold is valid — just warned");
-        assert!(!report.warnings.is_empty(), "should warn about unanimous consent");
+        assert!(
+            !report.warnings.is_empty(),
+            "should warn about unanimous consent"
+        );
     }
 
     // ── Boundary cases ────────────────────────────────────────────────────────
@@ -69,7 +72,10 @@ mod multisig_validation_tests {
         let report = validate_proposal(&p);
         assert!(report.valid);
         assert!(
-            report.warnings.iter().any(|w| w.contains("minority") || w.contains("50%")),
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("minority") || w.contains("50%")),
             "minority threshold should produce a warning"
         );
     }
@@ -94,7 +100,10 @@ mod multisig_validation_tests {
         let report = validate_proposal(&p);
         assert!(!report.valid);
         assert!(
-            report.errors.iter().any(|e| e.code == "IMPOSSIBLE_THRESHOLD"),
+            report
+                .errors
+                .iter()
+                .any(|e| e.code == "IMPOSSIBLE_THRESHOLD"),
             "expected IMPOSSIBLE_THRESHOLD error"
         );
     }
@@ -152,7 +161,10 @@ mod multisig_validation_tests {
         let report = validate_proposal(&p);
         assert!(!report.valid);
         assert!(
-            report.errors.iter().any(|e| e.code == "UNAUTHORIZED_SIGNATURE"),
+            report
+                .errors
+                .iter()
+                .any(|e| e.code == "UNAUTHORIZED_SIGNATURE"),
             "expected UNAUTHORIZED_SIGNATURE error"
         );
     }

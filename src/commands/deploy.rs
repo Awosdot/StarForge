@@ -201,7 +201,8 @@ async fn run_dry_run(
     p::kv("        SHA-256 (code hash)", wasm_hash);
 
     let policy = wasm_preflight::WasmPolicy::default();
-    let preflight = wasm_preflight::validate_wasm_bytes(wasm_bytes, &wasm_path.to_string_lossy(), &policy);
+    let preflight =
+        wasm_preflight::validate_wasm_bytes(wasm_bytes, &wasm_path.to_string_lossy(), &policy);
 
     if !preflight.is_valid_wasm {
         for v in &preflight.violations {
@@ -221,10 +222,7 @@ async fn run_dry_run(
         warnings.push(w.clone());
     }
     if !preflight.exports.is_empty() {
-        p::kv(
-            "        Exports",
-            &preflight.exports.join(", "),
-        );
+        p::kv("        Exports", &preflight.exports.join(", "));
     }
     println!();
 
@@ -328,44 +326,37 @@ async fn run_dry_run(
         "Op 1:".cyan().bold(),
         "InvokeHostFunction —".dimmed()
     );
-    println!(
-        "         Code hash  : {}",
-        wasm_hash.cyan()
-    );
+    println!("         Code hash  : {}", wasm_hash.cyan());
     println!(
         "         Size       : {:.1} KB ({} bytes)",
         wasm_size_kb,
         wasm_bytes.len()
     );
-    println!(
-        "         Authorized : {}",
-        wallet.public_key
-    );
+    println!("         Authorized : {}", wallet.public_key);
     println!();
     println!(
         "  {} {} Create contract instance",
         "Op 2:".cyan().bold(),
         "InvokeHostFunction —".dimmed()
     );
-    println!(
-        "         Constructor: default (no __constructor export detected)"
-    );
-    println!(
-        "         Storage    : Persistent (new ContractData ledger entry)"
-    );
-    println!(
-        "         Authorized : {}",
-        wallet.public_key
-    );
+    println!("         Constructor: default (no __constructor export detected)");
+    println!("         Storage    : Persistent (new ContractData ledger entry)");
+    println!("         Authorized : {}", wallet.public_key);
     println!();
-    println!("  {} No existing contract state will be modified.", "Note:".dimmed());
+    println!(
+        "  {} No existing contract state will be modified.",
+        "Note:".dimmed()
+    );
     println!("  {} This is a fresh deployment.", "Note:".dimmed());
     println!();
 
     // ── Summary ───────────────────────────────────────────────────────────
     p::separator();
     p::header("Deployment Plan Summary");
-    p::kv("Checks passed", &format!("{}/{}", checks_passed, checks_total));
+    p::kv(
+        "Checks passed",
+        &format!("{}/{}", checks_passed, checks_total),
+    );
     p::kv("Network", network);
     p::kv("Wallet", &wallet.name);
     p::kv("Account public key", &wallet.public_key);
@@ -620,11 +611,11 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
     // ── WASM pre-flight policy check (always runs, blocks on violations) ───
     {
         let policy = wasm_preflight::WasmPolicy::default();
-        let report = wasm_preflight::validate_wasm_bytes(&wasm_bytes, &wasm_path.to_string_lossy(), &policy);
+        let report =
+            wasm_preflight::validate_wasm_bytes(&wasm_bytes, &wasm_path.to_string_lossy(), &policy);
         if !report.is_ok() {
             for v in &report.violations {
                 p::warn(&format!("[{}] {}", v.code, v.message));
->>>>>>> origin/master
             }
             anyhow::bail!(
                 "WASM pre-flight check failed with {} violation(s). \

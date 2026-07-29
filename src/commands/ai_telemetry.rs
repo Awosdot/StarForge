@@ -71,7 +71,10 @@ fn handle_status() -> Result<()> {
             "disabled (default, local-only)".to_string()
         },
     );
-    p::kv("Retention (days)", &cfg.ai_telemetry.retention_days.to_string());
+    p::kv(
+        "Retention (days)",
+        &cfg.ai_telemetry.retention_days.to_string(),
+    );
     if let Ok(val) = std::env::var("STARFORGE_AI_TELEMETRY") {
         p::kv("Env override (STARFORGE_AI_TELEMETRY)", &val);
     }
@@ -115,10 +118,7 @@ fn handle_stats(args: StatsArgs, cost_focus: bool) -> Result<()> {
 
     if !cost_focus {
         println!();
-        p::kv_accent(
-            "Latency p50",
-            &format!("{} ms", summary.latency.p50_ms),
-        );
+        p::kv_accent("Latency p50", &format!("{} ms", summary.latency.p50_ms));
         p::kv_accent("Latency p95", &format!("{} ms", summary.latency.p95_ms));
         p::kv_accent("Latency p99", &format!("{} ms", summary.latency.p99_ms));
     }
@@ -128,7 +128,9 @@ fn handle_stats(args: StatsArgs, cost_focus: bool) -> Result<()> {
     p::kv("Total tokens out", &summary.total_tokens_out.to_string());
     p::kv_accent(
         "Estimated total cost",
-        &format!("${:.4}", summary.total_cost_usd).green().to_string(),
+        &format!("${:.4}", summary.total_cost_usd)
+            .green()
+            .to_string(),
     );
 
     if !summary.by_provider.is_empty() {

@@ -319,7 +319,14 @@ async fn deep_explain_via_ai(error_message: &str) -> Result<Option<String>> {
         Ok(r) => r,
         Err(e) => {
             ai_telemetry::record_call(
-                "openai", &model, "error-explain", None, None, elapsed_ms, false, Some("network"),
+                "openai",
+                &model,
+                "error-explain",
+                None,
+                None,
+                elapsed_ms,
+                false,
+                Some("network"),
             );
             return Err(anyhow::anyhow!("Deep-explain request failed: {}", e));
         }
@@ -335,7 +342,11 @@ async fn deep_explain_via_ai(error_message: &str) -> Result<Option<String>> {
             None,
             elapsed_ms,
             false,
-            Some(if status.as_u16() == 429 { "rate_limit" } else { "auth" }),
+            Some(if status.as_u16() == 429 {
+                "rate_limit"
+            } else {
+                "auth"
+            }),
         );
         anyhow::bail!("AI provider returned error status {}", status);
     }
@@ -345,7 +356,9 @@ async fn deep_explain_via_ai(error_message: &str) -> Result<Option<String>> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to parse AI response: {}", e))?;
 
-    let tokens_in = parsed.pointer("/usage/prompt_tokens").and_then(|v| v.as_u64());
+    let tokens_in = parsed
+        .pointer("/usage/prompt_tokens")
+        .and_then(|v| v.as_u64());
     let tokens_out = parsed
         .pointer("/usage/completion_tokens")
         .and_then(|v| v.as_u64());
@@ -415,9 +428,18 @@ async fn handle_learned(args: LearnedArgs) -> Result<()> {
     p::header("AI Debugger — Learned From Common Errors");
     p::separator();
     p::kv("Total feedback entries", &stats.total_feedback.to_string());
-    p::kv("Positive rate", &format!("{:.1}%", stats.positive_rate * 100.0));
-    p::kv("Negative rate", &format!("{:.1}%", stats.negative_rate * 100.0));
-    p::kv("Avg quality score", &format!("{:.2}", stats.avg_quality_score));
+    p::kv(
+        "Positive rate",
+        &format!("{:.1}%", stats.positive_rate * 100.0),
+    );
+    p::kv(
+        "Negative rate",
+        &format!("{:.1}%", stats.negative_rate * 100.0),
+    );
+    p::kv(
+        "Avg quality score",
+        &format!("{:.2}", stats.avg_quality_score),
+    );
     p::separator();
     Ok(())
 }

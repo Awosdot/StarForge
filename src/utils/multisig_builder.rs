@@ -160,6 +160,11 @@ impl Proposal {
         self.signatures.iter().map(|s| s.signer.clone()).collect()
     }
 
+    pub fn is_expired(&self) -> bool {
+        is_proposal_expired(self)
+    }
+}
+
 // ── Proposal validation (#691) ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,10 +225,7 @@ pub fn validate_proposal(proposal: &Proposal) -> ValidationReport {
         if normalized.is_empty() {
             errors.push(ValidationError {
                 code: "EMPTY_SIGNER".to_string(),
-                message: format!(
-                    "Signer key {:?} is empty or whitespace-only.",
-                    signer
-                ),
+                message: format!("Signer key {:?} is empty or whitespace-only.", signer),
             });
         } else if !seen.insert(normalized) {
             errors.push(ValidationError {
@@ -254,9 +256,7 @@ pub fn validate_proposal(proposal: &Proposal) -> ValidationReport {
                 .to_string(),
         );
     }
-    if proposal.signers.len() > 1
-        && proposal.threshold == proposal.signers.len() as u32
-    {
+    if proposal.signers.len() > 1 && proposal.threshold == proposal.signers.len() as u32 {
         warnings.push(format!(
             "{}-of-{} requires unanimous consent — a single absent or lost key \
              will permanently block execution.",
@@ -286,6 +286,13 @@ pub fn validate_proposal(proposal: &Proposal) -> ValidationReport {
 pub fn generate_signature(wallet: &str) -> Result<String> {
     use hex;
     use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(wallet.as_bytes());
+    let result = hasher.finalize();
+
+    Ok(hex::encode(result))
+}
 
 pub fn is_proposal_expired(proposal: &Proposal) -> bool {
     let Some(expires_at) = &proposal.expires_at else {

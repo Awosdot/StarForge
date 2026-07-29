@@ -24,7 +24,10 @@ fn rejects_empty_wasm_input() {
 
 #[test]
 fn rejects_unsupported_environment() {
-    let err = compute_wasm_hash(&minimal_wasm_bytes(), BuildEnvironment::Unsupported("freebsd".into()))
-        .unwrap_err();
+    let err = compute_wasm_hash(
+        &minimal_wasm_bytes(),
+        BuildEnvironment::Unsupported("freebsd".into()),
+    )
+    .unwrap_err();
     assert!(matches!(err, WasmHashError::UnsupportedEnvironment(_)));
 }

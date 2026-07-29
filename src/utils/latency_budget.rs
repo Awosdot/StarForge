@@ -220,10 +220,7 @@ impl BudgetCheckResult {
 /// that a measurement that is simultaneously over budget AND noisy is
 /// correctly reported as a failure rather than being masked by the noise
 /// warning.
-pub fn check_measurement(
-    measurement: &LatencyMeasurement,
-    budget: &LatencyBudget,
-) -> BudgetStatus {
+pub fn check_measurement(measurement: &LatencyMeasurement, budget: &LatencyBudget) -> BudgetStatus {
     // Inactive budget → skip.
     if !budget.active {
         return BudgetStatus::Skipped;
@@ -270,10 +267,8 @@ pub fn check_latency_budget(
     let mut checks = Vec::new();
 
     // Build a lookup map from measurements.
-    let measurement_map: HashMap<&str, &LatencyMeasurement> = measurements
-        .iter()
-        .map(|m| (m.label.as_str(), m))
-        .collect();
+    let measurement_map: HashMap<&str, &LatencyMeasurement> =
+        measurements.iter().map(|m| (m.label.as_str(), m)).collect();
 
     for budget in budgets.active() {
         let measurement = measurement_map.get(budget.label);
@@ -375,7 +370,12 @@ pub fn print_budget_summary(result: &BudgetCheckResult) {
             ),
         };
 
-        println!("  {}  {}  {}", status_str, check.budget_label.bold(), detail);
+        println!(
+            "  {}  {}  {}",
+            status_str,
+            check.budget_label.bold(),
+            detail
+        );
     }
 
     println!();
@@ -385,8 +385,7 @@ pub fn print_budget_summary(result: &BudgetCheckResult) {
     if result.any_noisy {
         println!(
             "  {}",
-            "~ Some measurements were too noisy to trust. Re-run or increase sample size."
-                .yellow()
+            "~ Some measurements were too noisy to trust. Re-run or increase sample size.".yellow()
         );
     }
     if result.any_fail {
@@ -626,10 +625,10 @@ mod tests {
 
         // No measurements at all.
         let result = check_latency_budget(&[], &budgets);
-        assert!(result.checks.iter().any(|c| matches!(
-            c.status,
-            BudgetStatus::Error(_)
-        )));
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| matches!(c.status, BudgetStatus::Error(_))));
     }
 
     #[test]
@@ -668,7 +667,7 @@ mod tests {
         let baseline = Duration::from_millis(100);
         let new = Duration::from_millis(120);
         let cv = 0.10; // sd = 10 ms
-        // threshold = 2 * 10 = 20 ms → 120 > 100 + 20? No.
+                       // threshold = 2 * 10 = 20 ms → 120 > 100 + 20? No.
         assert!(!is_significant_regression(baseline, new, cv, 2.0));
     }
 
@@ -677,7 +676,7 @@ mod tests {
         let baseline = Duration::from_millis(100);
         let new = Duration::from_millis(150);
         let cv = 0.10; // sd = 10 ms
-        // threshold = 2 * 10 = 20 ms → 150 > 100 + 20? Yes.
+                       // threshold = 2 * 10 = 20 ms → 150 > 100 + 20? Yes.
         assert!(is_significant_regression(baseline, new, cv, 2.0));
     }
 

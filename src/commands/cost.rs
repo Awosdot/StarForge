@@ -6,11 +6,7 @@
 //! this command reports, forecasts, and enforces budgets against.
 
 use crate::utils::{
-    config,
-    cost_estimation as ce,
-    cost_management as cm,
-    print as p,
-    simulation_resources as sr,
+    config, cost_estimation as ce, cost_management as cm, print as p, simulation_resources as sr,
 };
 use anyhow::Result;
 use clap::Subcommand;
@@ -193,7 +189,8 @@ fn resources(
         )
     })?;
 
-    let resources = sr::parse_simulation_response_str(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let resources =
+        sr::parse_simulation_response_str(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
     let plan =
         sr::plan_fee(&resources, margin, inclusion_fee).map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -527,8 +524,7 @@ mod resource_budget_tests {
 
     #[test]
     fn reports_within_budget_for_a_small_fee() {
-        let checks =
-            check_resource_fee_against(0.001, "testnet", &[budget("testnet", 1.0)], &[]);
+        let checks = check_resource_fee_against(0.001, "testnet", &[budget("testnet", 1.0)], &[]);
         assert_eq!(checks.len(), 1);
         assert!(!checks[0].would_exceed);
         assert!((checks[0].projected_spent_xlm - 0.001).abs() < f64::EPSILON);
@@ -536,8 +532,7 @@ mod resource_budget_tests {
 
     #[test]
     fn ignores_budgets_for_other_networks() {
-        let checks =
-            check_resource_fee_against(5.0, "mainnet", &[budget("testnet", 1.0)], &[]);
+        let checks = check_resource_fee_against(5.0, "mainnet", &[budget("testnet", 1.0)], &[]);
         assert!(checks.is_empty());
     }
 

@@ -17,9 +17,7 @@ use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as Stel
 // The backup document types and their parsers live in `utils::wallet_import`,
 // where they can be unit-tested, property-tested, and fuzzed without going
 // through prompting or the filesystem.
-use crate::utils::wallet_import::{
-    self, WalletBackup, WalletBackupEntry, WALLET_BACKUP_VERSION,
-};
+use crate::utils::wallet_import::{self, WalletBackup, WalletBackupEntry, WALLET_BACKUP_VERSION};
 
 fn kdf_options(
     mem: Option<u32>,
@@ -1357,10 +1355,7 @@ fn wallet_history(name: String, reveal: bool) -> Result<()> {
 fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf, strict: bool) -> Result<()> {
     let cfg = config::load()?;
     let wallets_to_export: Vec<WalletBackupEntry> = if all {
-        cfg.wallets
-            .iter()
-            .map(backup_entry_from)
-            .collect()
+        cfg.wallets.iter().map(backup_entry_from).collect()
     } else {
         let name = name_opt
             .as_ref()
@@ -1630,8 +1625,9 @@ fn import_wallets(file: PathBuf) -> Result<()> {
     // after an Argon2 derivation.
     let contents = match wallet_import::classify_payload(&raw_contents) {
         wallet_import::PayloadKind::Encrypted => {
-            wallet_import::parse_encrypted_envelope(&raw_contents)
-                .map_err(|e| anyhow::anyhow!("Backup file is not a readable encrypted bundle: {}", e))?;
+            wallet_import::parse_encrypted_envelope(&raw_contents).map_err(|e| {
+                anyhow::anyhow!("Backup file is not a readable encrypted bundle: {}", e)
+            })?;
             let passphrase = crypto::prompt_password("Enter passphrase to decrypt backup", false)?;
             crypto::decrypt_secret(&passphrase, raw_contents.trim())?
         }

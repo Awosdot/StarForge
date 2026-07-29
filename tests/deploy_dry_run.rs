@@ -6,7 +6,9 @@
 #[cfg(test)]
 mod deploy_dry_run_tests {
     use sha2::{Digest, Sha256};
-    use starforge::utils::wasm_preflight::{validate_wasm_bytes, WasmPolicy, WASM_SIZE_LIMIT_BYTES};
+    use starforge::utils::wasm_preflight::{
+        validate_wasm_bytes, WasmPolicy, WASM_SIZE_LIMIT_BYTES,
+    };
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -105,7 +107,10 @@ mod deploy_dry_run_tests {
     #[test]
     fn dry_run_plan_lists_authorization_requirements() {
         let plan = DeployPlan::from_wasm(minimal_wasm(), "testnet", "deployer", PUBKEY);
-        assert!(!plan.authorization.is_empty(), "authorization list must not be empty");
+        assert!(
+            !plan.authorization.is_empty(),
+            "authorization list must not be empty"
+        );
         assert!(
             plan.authorization.contains(&PUBKEY.to_string()),
             "authorizing signer must be the deployer's public key"

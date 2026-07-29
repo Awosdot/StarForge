@@ -502,7 +502,8 @@ impl AIServiceManager {
     }
 
     pub async fn generate_text(&self, request: &AIRequest) -> Result<AIResponse> {
-        self.generate_text_for_feature(request, "generate_text").await
+        self.generate_text_for_feature(request, "generate_text")
+            .await
     }
 
     pub async fn generate_text_for_feature(
@@ -568,10 +569,7 @@ impl AIServiceManager {
                         false,
                         Some(classify_error_kind(&e)),
                     );
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
-                    );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }
@@ -649,10 +647,7 @@ impl AIServiceManager {
                         false,
                         Some(classify_error_kind(&e)),
                     );
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
-                    );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }
@@ -729,10 +724,7 @@ impl AIServiceManager {
                         false,
                         Some(classify_error_kind(&e)),
                     );
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
-                    );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }

@@ -890,7 +890,11 @@ async fn resource_report(args: ResourcesArgs) -> Result<()> {
         (Some(path), _) => {
             crate::utils::config::validate_file_path(path, Some("json"))?;
             let raw = std::fs::read_to_string(path).map_err(|e| {
-                anyhow::anyhow!("Failed to read simulation response {}: {}", path.display(), e)
+                anyhow::anyhow!(
+                    "Failed to read simulation response {}: {}",
+                    path.display(),
+                    e
+                )
             })?;
             simulation_resources::parse_simulation_response_str(&raw)
                 .map_err(|e| anyhow::anyhow!("{}", e))?
@@ -1146,7 +1150,10 @@ mod resource_arg_tests {
         assert!(validate_resources_args(&a).is_ok());
 
         a.margin = simulation_resources::MAX_FEE_MARGIN_PERCENT + 1;
-        assert!(validate_resources_args(&a).unwrap_err().to_string().contains("--margin"));
+        assert!(validate_resources_args(&a)
+            .unwrap_err()
+            .to_string()
+            .contains("--margin"));
     }
 
     #[test]
