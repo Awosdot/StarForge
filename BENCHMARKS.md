@@ -70,6 +70,9 @@ the next baseline so pull requests can compare performance consistently.
 |---|---|
 | `simulate_ops_10k` | Baseline wrapping-add loop — regression guard |
 | `cli_arg_parsing` | Argument tokenisation cost for common subcommands |
+| `cli_cold_start` | Cold-start latency: `info`, `--help`, `--version` |
+| `cli_command_latency` | Command dispatch latency for wallet, network, config, template, deploy |
+| `latency_budget` | Latency budget check engine overhead |
 | `template_registry_deserialise` | JSON deserialisation at 10 / 50 / 200 / 1000 entries |
 | `template_registry_search` | Linear search over registry at 10 / 100 / 500 entries |
 | `wallet_entry_format` | KV formatting and JSON serialisation for wallet lists |
@@ -125,3 +128,17 @@ To catch performance regressions in pull requests, compare the Criterion
 
 Criterion's `--output-format bencher` emits a machine-readable format compatible
 with [github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark).
+
+### Latency budget enforcement
+
+A dedicated [latency budget](CLI_LATENCY_BUDGETS.md) CI workflow
+(`benchmark-latency.yml`) runs cold-start and command-latency benchmarks on
+every push / PR and **fails the pipeline** if any budget is exceeded:
+
+```yaml
+- name: Run latency benchmarks
+  run: cargo bench --locked -- cli_cold_start cli_command_latency latency_budget
+```
+
+See [`CLI_LATENCY_BUDGETS.md`](./CLI_LATENCY_BUDGETS.md) for the full list of
+budgets, environment variable overrides, and how to add new budgets.
