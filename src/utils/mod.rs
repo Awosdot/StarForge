@@ -139,3 +139,11 @@ pub mod tutorial_engine;
 pub mod tx_batch;
 pub mod wallet_signer;
 pub mod workflow_guidance;
+
+#[cfg(test)]
+pub(crate) fn lock_home_env() -> std::sync::MutexGuard<'static, ()> {
+    static HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}

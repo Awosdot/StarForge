@@ -88,6 +88,7 @@ csv = "1.0"
 minijinja = "1.0"
 serde_yaml = "0.9.34"
 async-trait = "0.1"
+futures = "0.3.33"
 
 [features]
 hardware-wallet = ["dep:hidapi", "dep:trezor-client"]

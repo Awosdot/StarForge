@@ -22,7 +22,8 @@ use colored::*;
     name = "starforge",
     about = "⚡ Stellar & Soroban developer productivity CLI",
     long_about = "starforge is an open-source CLI toolkit for developers building on the Stellar network.\nManage wallets, deploy Soroban contracts, and scaffold new projects — all from your terminal.",
-    version = "0.1.0"
+    version = "0.1.0",
+    disable_help_subcommand = true
 )]
 struct Cli {
     #[command(subcommand)]
@@ -339,7 +340,6 @@ async fn main() {
         Commands::Project(_) => "project",
         Commands::Template(_) => "template",
         Commands::Registry(_) => "registry",
-        Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -366,7 +366,6 @@ async fn main() {
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
         Commands::Collab(_) => "collab",
-        Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
         Commands::Verify(_) => "verify",
         Commands::Help(_) => "help",
