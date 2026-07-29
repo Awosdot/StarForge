@@ -12,6 +12,8 @@ pub mod ai_search;
 pub mod ai_test_gen;
 pub mod ai_test_analytics_cmd;
 pub mod ai_tutorial_cmd;
+pub mod ai_telemetry;
+pub mod ai_security_training;
 pub mod analytics;
 pub mod approval;
 pub mod audit;

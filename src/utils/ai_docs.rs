@@ -1118,6 +1118,7 @@ fn try_llm_enrichment(
     let base_url = std::env::var("STARFORGE_AI_BASE_URL")
         .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
     let model = std::env::var("STARFORGE_AI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    let model_for_telemetry = model.clone();
 
     let summary = serde_json::json!({
         "description": description,
@@ -1161,6 +1162,7 @@ fn try_llm_enrichment(
     // when the async client cannot be blocked safely.
     // Run the async HTTP call on a dedicated runtime thread so this works both
     // inside and outside an existing tokio context without nested block_on panics.
+    let start = std::time::Instant::now();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let result = (|| {
@@ -1181,14 +1183,69 @@ fn try_llm_enrichment(
                     .json::<serde_json::Value>()
                     .await
                     .context("Failed to parse LLM response")?;
-                parse_llm_content(resp)
+                let tokens_in = resp
+                    .pointer("/usage/prompt_tokens")
+                    .and_then(|v| v.as_u64());
+                let tokens_out = resp
+                    .pointer("/usage/completion_tokens")
+                    .and_then(|v| v.as_u64());
+                let enrichment = parse_llm_content(resp);
+                Ok::<_, anyhow::Error>((enrichment, tokens_in, tokens_out))
             })
         })();
         let _ = tx.send(result);
     });
 
-    rx.recv()
-        .context("LLM enrichment worker exited unexpectedly")?
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+    let outcome = rx
+        .recv()
+        .context("LLM enrichment worker exited unexpectedly")?;
+
+    match outcome {
+        Ok((enrichment, tokens_in, tokens_out)) => {
+            crate::utils::ai_telemetry::record_call(
+                "openai",
+                &model_for_telemetry,
+                "docs-generate",
+                tokens_in,
+                tokens_out,
+                elapsed_ms,
+                true,
+                None,
+            );
+            enrichment
+        }
+        Err(e) => {
+            crate::utils::ai_telemetry::record_call(
+                "openai",
+                &model_for_telemetry,
+                "docs-generate",
+                None,
+                None,
+                elapsed_ms,
+                false,
+                Some(classify_docs_error(&e)),
+            );
+            Err(e)
+        }
+    }
+}
+
+fn classify_docs_error(err: &anyhow::Error) -> &'static str {
+    let msg = err.to_string().to_lowercase();
+    if msg.contains("timeout") || msg.contains("timed out") {
+        "timeout"
+    } else if msg.contains("429") || msg.contains("rate limit") {
+        "rate_limit"
+    } else if msg.contains("401") || msg.contains("403") || msg.contains("error status") {
+        "auth"
+    } else if msg.contains("request failed") || msg.contains("connection") {
+        "network"
+    } else if msg.contains("parse") || msg.contains("json") {
+        "invalid_response"
+    } else {
+        "unknown"
+    }
 }
 
 fn parse_llm_content(resp: serde_json::Value) -> Result<Option<LlmEnrichment>> {

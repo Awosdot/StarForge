@@ -283,6 +283,18 @@ enum Commands {
     Verify(commands::verify::VerifyCommands),
     /// AI Contextual Help: command, workflow, error, and best-practice guidance
     Help(commands::help::HelpArgs),
+
+    /// AI usage telemetry and analytics: calls, tokens, latency, cost, opt-out
+    #[command(subcommand)]
+    AiTelemetry(commands::ai_telemetry::AiTelemetryCommands),
+
+    /// Analyse and optimize compiled WASM / Rust contract source for gas and size
+    #[command(subcommand)]
+    Optimize(commands::optimize::OptimizeCommands),
+
+    /// AI-driven security training: lessons, exercises, progress tracking
+    #[command(subcommand)]
+    AiSecurityTraining(commands::ai_security_training::AiSecurityTrainingCommands),
 }
 
 #[tokio::main]
@@ -366,6 +378,9 @@ async fn main() {
         Commands::Verify(_) => "verify",
         Commands::External(_) => "external",
         Commands::Help(_) => "help",
+        Commands::AiTelemetry(_) => "ai-telemetry",
+        Commands::Optimize(_) => "optimize",
+        Commands::AiSecurityTraining(_) => "ai-security-training",
     }
     .to_string();
 
@@ -446,6 +461,9 @@ async fn main() {
         Commands::Verify(cmd) => commands::verify::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
         Commands::Help(args) => commands::help::handle(args).await,
+        Commands::AiTelemetry(cmd) => commands::ai_telemetry::handle(cmd).await,
+        Commands::Optimize(cmd) => commands::optimize::handle(cmd).await,
+        Commands::AiSecurityTraining(cmd) => commands::ai_security_training::handle(cmd).await,
     };
     let duration = start.elapsed();
 

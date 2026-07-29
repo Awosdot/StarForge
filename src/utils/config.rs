@@ -267,6 +267,47 @@ pub struct Config {
     /// Feature flag system configuration.
     #[serde(default)]
     pub feature_flags: FeatureFlagsConfig,
+    /// AI telemetry (usage analytics) configuration.
+    #[serde(default)]
+    pub ai_telemetry: AiTelemetryConfig,
+}
+
+/// Local knobs for the AI usage-telemetry system (issue #482).
+///
+/// This is separate from the generic CLI `telemetry_enabled` flag: disabling
+/// generic telemetry also disables AI telemetry, but AI telemetry can be
+/// opted out of independently while generic command telemetry stays on.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct AiTelemetryConfig {
+    /// Whether AI call metrics (provider/model/tokens/latency/cost) are
+    /// recorded locally. Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Whether local AI telemetry may additionally be aggregated to a
+    /// remote endpoint. Always opt-in, defaults to `false`.
+    #[serde(default)]
+    pub cloud_aggregation_enabled: bool,
+    /// Optional endpoint used when `cloud_aggregation_enabled` is true.
+    #[serde(default)]
+    pub cloud_endpoint: Option<String>,
+    /// How many days of local AI telemetry records are kept before pruning.
+    #[serde(default = "default_ai_telemetry_retention_days")]
+    pub retention_days: u32,
+}
+
+impl Default for AiTelemetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cloud_aggregation_enabled: false,
+            cloud_endpoint: None,
+            retention_days: 90,
+        }
+    }
+}
+
+fn default_ai_telemetry_retention_days() -> u32 {
+    90
 }
 
 /// Top-level knobs for the local feature-flag system.
@@ -506,6 +547,7 @@ impl Default for Config {
             wallet_encryption: None,
             install_id: None,
             feature_flags: FeatureFlagsConfig::default(),
+            ai_telemetry: AiTelemetryConfig::default(),
         }
     }
 }
