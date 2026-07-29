@@ -711,6 +711,222 @@ fn extract_rpc_error_message(error: &serde_json::Value) -> String {
         .to_string()
 }
 
+// ── Transaction status polling (#689) ─────────────────────────────────────────
+
+/// Terminal or observable status of a Soroban transaction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TxStatus {
+    /// Transaction is in the mempool or awaiting ledger inclusion.
+    Pending,
+    /// The same transaction hash was already submitted.
+    Duplicate,
+    /// Transaction was applied but failed (contract error, auth failure, etc.).
+    Error,
+    /// Transaction was not found — either expired TTL or never accepted.
+    NotFound,
+    /// Transaction was applied successfully to a ledger.
+    Success,
+}
+
+impl std::fmt::Display for TxStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TxStatus::Pending => "PENDING",
+            TxStatus::Duplicate => "DUPLICATE",
+            TxStatus::Error => "ERROR",
+            TxStatus::NotFound => "NOT_FOUND",
+            TxStatus::Success => "SUCCESS",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+/// Result of polling `getTransaction` to a terminal state (or budget exhaustion).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TxStatusResult {
+    pub hash: String,
+    pub status: TxStatus,
+    /// Ledger number the transaction was included in, if known.
+    pub ledger: Option<u32>,
+    /// Return value from the contract call, if successful.
+    pub return_value: Option<String>,
+    /// Human-readable error message for non-success statuses.
+    pub error_message: Option<String>,
+    /// Total number of `getTransaction` RPC calls made.
+    pub polls: u32,
+}
+
+/// Controls how long `poll_transaction_status` keeps trying.
+#[derive(Debug, Clone)]
+pub struct PollConfig {
+    /// Maximum number of `getTransaction` RPC calls (default: 30).
+    pub max_polls: u32,
+    /// Milliseconds to wait between calls (default: 2 000 ms).
+    pub poll_interval_ms: u64,
+}
+
+impl Default for PollConfig {
+    fn default() -> Self {
+        Self {
+            max_polls: 30,
+            poll_interval_ms: 2_000,
+        }
+    }
+}
+
+/// Poll `getTransaction` until the transaction reaches a terminal state
+/// (`Success`, `Error`, `Duplicate`, or `NotFound`/expired) or the poll
+/// budget defined by `config` is exhausted.
+///
+/// Returns `Err` only on network/RPC protocol failures. All terminal statuses
+/// (including `Error` and `NotFound`) are surfaced as `Ok(TxStatusResult)` so
+/// callers can display the right message to the user.
+pub async fn poll_transaction_status(
+    hash: &str,
+    network: &str,
+    config: &PollConfig,
+) -> Result<TxStatusResult> {
+    let rpc_url = get_rpc_url(network)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("Failed to build HTTP client for transaction polling")?;
+
+    let mut not_found_streak = 0u32;
+
+    for poll_number in 1..=config.max_polls {
+        let request = SorobanRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: poll_number as u64,
+            method: "getTransaction".to_string(),
+            params: serde_json::json!({ "hash": hash }),
+        };
+
+        let response: SorobanRpcResponse<serde_json::Value> = client
+            .post(&rpc_url)
+            .json(&request)
+            .send()
+            .await
+            .with_context(|| {
+                format!(
+                    "Poll {}/{} failed for hash {}",
+                    poll_number, config.max_polls, hash
+                )
+            })?
+            .json()
+            .await
+            .context("Failed to decode getTransaction response")?;
+
+        if let Some(rpc_error) = response.error {
+            anyhow::bail!(
+                "Soroban RPC getTransaction error: {}",
+                extract_rpc_error_message(&rpc_error)
+            );
+        }
+
+        let result = response.result.ok_or_else(|| {
+            anyhow::anyhow!("getTransaction returned no result for hash {}", hash)
+        })?;
+
+        let status_str = result
+            .get("status")
+            .and_then(|s| s.as_str())
+            .unwrap_or("PENDING");
+
+        match status_str {
+            "SUCCESS" => {
+                return Ok(TxStatusResult {
+                    hash: hash.to_string(),
+                    status: TxStatus::Success,
+                    ledger: result
+                        .get("ledger")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as u32),
+                    return_value: result
+                        .get("returnValue")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    error_message: None,
+                    polls: poll_number,
+                });
+            }
+            "FAILED" | "ERROR" => {
+                let err_msg = result
+                    .get("resultXdr")
+                    .or_else(|| result.get("errorResult"))
+                    .map(|v| v.to_string());
+                return Ok(TxStatusResult {
+                    hash: hash.to_string(),
+                    status: TxStatus::Error,
+                    ledger: result
+                        .get("ledger")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as u32),
+                    return_value: None,
+                    error_message: err_msg,
+                    polls: poll_number,
+                });
+            }
+            "DUPLICATE" => {
+                return Ok(TxStatusResult {
+                    hash: hash.to_string(),
+                    status: TxStatus::Duplicate,
+                    ledger: None,
+                    return_value: None,
+                    error_message: Some(
+                        "Duplicate transaction: this hash was already submitted.".to_string(),
+                    ),
+                    polls: poll_number,
+                });
+            }
+            "NOT_FOUND" => {
+                // NOT_FOUND on the very first poll is normal propagation lag —
+                // wait for a few consecutive NOT_FOUNDs before declaring expiry.
+                not_found_streak += 1;
+                if not_found_streak >= 3 {
+                    return Ok(TxStatusResult {
+                        hash: hash.to_string(),
+                        status: TxStatus::NotFound,
+                        ledger: None,
+                        return_value: None,
+                        error_message: Some(
+                            "Transaction not found — it may have expired or was never accepted \
+                             by the network. Check the sequence number and retry."
+                                .to_string(),
+                        ),
+                        polls: poll_number,
+                    });
+                }
+            }
+            _ => {
+                // PENDING or any unknown status — reset the not-found streak
+                not_found_streak = 0;
+            }
+        }
+
+        if poll_number < config.max_polls {
+            tokio::time::sleep(std::time::Duration::from_millis(config.poll_interval_ms)).await;
+        }
+    }
+
+    // Budget exhausted while still pending.
+    Ok(TxStatusResult {
+        hash: hash.to_string(),
+        status: TxStatus::Pending,
+        ledger: None,
+        return_value: None,
+        error_message: Some(format!(
+            "Transaction still pending after {} polls ({} s total). \
+             Check later with: starforge tx {}",
+            config.max_polls,
+            config.max_polls as u64 * config.poll_interval_ms / 1000,
+            hash
+        )),
+        polls: config.max_polls,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -107,21 +107,4 @@ pub mod test_runner;
 pub mod testnet_integration;
 pub mod tutorial_engine;
 pub mod tx_batch;
-pub mod wallet_signer;
-pub mod workflow_guidance;
-
-// AI Deployment Planner
-pub mod ai_deployment_planner;
-
-// AI Service Abstraction Layer (#479)
-pub mod ai;
-// AI Response Validation (#486)
-pub mod ai_validation;
-// AI Context Management (#487)
-pub mod ai_context;
-// AI Rate Limiting (#489)
-pub mod ai_rate_limiter;
-// AI Request Caching (#483)
-pub mod ai_cache;
-// AI Test Analytics (#570)
-pub mod ai_test_analytics;
+pub mod wasm_preflight;
