@@ -308,3 +308,8 @@ pub struct WorkloadArgs {
     #[arg(long)]
     pub project: Option<String>,
 }
+
+pub async fn handle(_cmd: ProjectCommands) -> Result<()> {
+    println!("Project command is under construction.");
+    Ok(())
+}

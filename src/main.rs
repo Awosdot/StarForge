@@ -338,6 +338,7 @@ async fn main() {
         Commands::Privacy(_) => "privacy",
         Commands::Project(_) => "project",
         Commands::Template(_) => "template",
+        Commands::Registry(_) => "registry",
         Commands::Telemetry(_) => "telemetry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
@@ -448,6 +449,9 @@ async fn main() {
         Commands::Collab(cmd) => commands::collab::handle(cmd).await,
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::Verify(cmd) => commands::verify::handle(cmd).await,
+        Commands::Cost(cmd) => commands::cost::handle(cmd).await,
+        Commands::Project(cmd) => commands::project::handle(cmd).await,
+        Commands::FeatureFlags(args) => commands::feature_flags_cmd::handle(args).await,
         Commands::External(args) => handle_external_plugin(args),
         Commands::Help(args) => commands::help::handle(args).await,
     };
