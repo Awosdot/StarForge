@@ -581,14 +581,12 @@ fn handle_show_report(args: ShowReportArgs) -> Result<()> {
         "Timestamp",
         &report.timestamp.get(..19).unwrap_or(&report.timestamp),
     );
-    p::kv(
-        "Status",
-        if report.all_passed {
-            format!("{}", "PASSED".green()).as_str()
-        } else {
-            format!("{}", "FAILED".red()).as_str()
-        },
-    );
+    let status_str = if report.all_passed {
+        format!("{}", "PASSED".green())
+    } else {
+        format!("{}", "FAILED".red())
+    };
+    p::kv("Status", &status_str);
     p::kv("Blocking issues", &report.blocking_count.to_string());
     p::kv("Warnings", &report.warning_count.to_string());
 
