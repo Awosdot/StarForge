@@ -283,17 +283,6 @@ pub fn validate_proposal(proposal: &Proposal) -> ValidationReport {
     }
 }
 
-pub fn generate_signature(wallet: &str) -> Result<String> {
-    use hex;
-    use sha2::{Digest, Sha256};
-
-    let mut hasher = Sha256::new();
-    hasher.update(wallet.as_bytes());
-    let result = hasher.finalize();
-
-    Ok(hex::encode(result))
-}
-
 pub fn is_proposal_expired(proposal: &Proposal) -> bool {
     let Some(expires_at) = &proposal.expires_at else {
         return false;

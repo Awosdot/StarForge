@@ -8,6 +8,7 @@ use crate::utils::{
     deployment_monitor, horizon, notifications, optimizer, print as p, simulation_resources,
     soroban, wallet_signer,
     wasm_hash::{compute_wasm_hash, BuildEnvironment},
+    wasm_preflight,
 };
 
 use crate::utils::hardware_wallet::HardwareWalletKind;
