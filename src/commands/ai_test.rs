@@ -1165,7 +1165,7 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
 
     let mut all_outdated: Vec<ata::OutdatedTest> = Vec::new();
     let all_broken: Vec<ata::BrokenTest> = Vec::new();
-    let all_missing: Vec<ata::MissingTest> = Vec::new();
+    let mut all_missing: Vec<ata::MissingTest> = Vec::new();
     let all_recommendations: Vec<String> = Vec::new();
 
     for test_file in &test_files {

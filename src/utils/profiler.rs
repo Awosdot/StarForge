@@ -143,12 +143,6 @@ impl MemoryTracker {
     }
 }
 
-#[cfg(feature = "memory-profiling")]
-impl MemoryTracker {
-    fn record_sample(&mut self, label: String, _time: Duration) {
-        self.samples.push((label, Instant::now(), 0, 0, 0, 0));
-    }
-}
 
 #[cfg(not(feature = "memory-profiling"))]
 #[derive(Debug)]
