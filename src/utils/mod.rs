@@ -1,5 +1,9 @@
 pub mod ai_conversation;
 pub mod ai_debugger;
+pub mod ai_debug_enhancement;
+pub mod ai_documentation_assistant;
+pub mod ai_navigation;
+pub mod ai_quality_gates;
 pub mod ai_telemetry;
 pub mod ai_security_training;
 pub mod ai_docs;

@@ -47,6 +47,14 @@ enum Commands {
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
 
+    /// AI-driven definitions, references, code graphs, dependencies, and contextual search
+    #[command(subcommand)]
+    AiNavigate(commands::ai_navigate::AiNavigateCommands),
+
+    /// Configurable code quality, security, performance, coverage, docs, and license gates
+    #[command(subcommand)]
+    AiQualityGate(commands::ai_quality_gate::AiQualityGateCommands),
+
     /// Local LLM assistant for Soroban contracts (audit, explain, test, optimise, profile)
     #[command(subcommand)]
     Ai(commands::ai::AiCommands),
@@ -314,6 +322,8 @@ async fn main() {
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
+        Commands::AiNavigate(_) => "ai-navigate",
+        Commands::AiQualityGate(_) => "ai-quality-gate",
         Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
         Commands::New(_) => "new",
@@ -387,6 +397,8 @@ async fn main() {
     let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
+        Commands::AiNavigate(cmd) => commands::ai_navigate::handle(cmd),
+        Commands::AiQualityGate(cmd) => commands::ai_quality_gate::handle(cmd),
         Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
