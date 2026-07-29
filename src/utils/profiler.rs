@@ -143,7 +143,6 @@ impl MemoryTracker {
     }
 }
 
-
 #[cfg(not(feature = "memory-profiling"))]
 #[derive(Debug)]
 struct MemoryTracker;
