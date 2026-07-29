@@ -409,7 +409,6 @@ patterns.\n\n```rust\n{}\n```",
         )
     }
 
-
     /// Prompt for generating a test suite for a contract.
     pub fn test_prompt(contract_code: &str) -> String {
         format!(

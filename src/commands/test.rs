@@ -673,7 +673,8 @@ pub async fn handle(args: TestArgs) -> Result<()> {
 
             if args.optimize_html {
                 let html_path = PathBuf::from("ai_test_optimization_report.html");
-                let html = crate::utils::test_optimizer::render_optimization_html_report(&opt_report);
+                let html =
+                    crate::utils::test_optimizer::render_optimization_html_report(&opt_report);
                 std::fs::write(&html_path, html)?;
                 p::kv("HTML report", &html_path.display().to_string());
             }

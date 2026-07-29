@@ -81,7 +81,13 @@ impl DeploymentTracker {
         rec
     }
 
-    pub fn update_progress(&self, id: &str, step: &str, pct: u8, status: DeploymentStatus) -> Option<DeploymentTrackRecord> {
+    pub fn update_progress(
+        &self,
+        id: &str,
+        step: &str,
+        pct: u8,
+        status: DeploymentStatus,
+    ) -> Option<DeploymentTrackRecord> {
         if let Ok(mut guard) = self.records.lock() {
             if let Some(rec) = guard.get_mut(id) {
                 rec.current_step = step.to_string();
@@ -166,7 +172,11 @@ pub struct HealthCheckItem {
 pub struct DeploymentHealthChecker;
 
 impl DeploymentHealthChecker {
-    pub fn check_network_health(network: &str, contract_id: Option<&str>, wallet: Option<&str>) -> Vec<HealthCheckItem> {
+    pub fn check_network_health(
+        network: &str,
+        contract_id: Option<&str>,
+        wallet: Option<&str>,
+    ) -> Vec<HealthCheckItem> {
         let mut checks = Vec::new();
 
         // 1. RPC Responsiveness check
@@ -190,7 +200,10 @@ impl DeploymentHealthChecker {
             checks.push(HealthCheckItem {
                 name: "Wallet Balance Adequacy".to_string(),
                 status: HealthStatus::Healthy,
-                message: format!("Wallet '{}' has sufficient XLM balance for deployment fees", w),
+                message: format!(
+                    "Wallet '{}' has sufficient XLM balance for deployment fees",
+                    w
+                ),
                 latency_ms: 80,
             });
         }
@@ -232,7 +245,8 @@ impl DeploymentFailureDetector {
             (
                 FailureKind::OutOfGas,
                 "Gas or CPU execution budget was exceeded during deployment.".to_string(),
-                "Increase gas limit or optimize contract execution before re-submitting.".to_string(),
+                "Increase gas limit or optimize contract execution before re-submitting."
+                    .to_string(),
             )
         } else if err_lower.contains("size limit") || err_lower.contains("wasm too large") {
             (
@@ -319,7 +333,10 @@ impl DeploymentAlertEngine {
         let mut alerts = Vec::new();
         let now = Utc::now().to_rfc3339();
 
-        let failed_count = tracks.iter().filter(|t| t.status == DeploymentStatus::Failed).count();
+        let failed_count = tracks
+            .iter()
+            .filter(|t| t.status == DeploymentStatus::Failed)
+            .count();
         if failed_count > 0 {
             alerts.push(DeploymentAlertItem {
                 severity: AlertSeverity::High,
@@ -336,7 +353,8 @@ impl DeploymentAlertEngine {
                     severity: AlertSeverity::Warning,
                     title: format!("Health Warning: {}", hc.name),
                     detail: hc.message.clone(),
-                    recommendation: "Monitor RPC response latency and network throughput.".to_string(),
+                    recommendation: "Monitor RPC response latency and network throughput."
+                        .to_string(),
                     timestamp: now.clone(),
                 });
             } else if hc.status == HealthStatus::Unhealthy {
@@ -344,7 +362,8 @@ impl DeploymentAlertEngine {
                     severity: AlertSeverity::Critical,
                     title: format!("Critical Health Failure: {}", hc.name),
                     detail: hc.message.clone(),
-                    recommendation: "Pause active rollouts until network endpoint recovers.".to_string(),
+                    recommendation: "Pause active rollouts until network endpoint recovers."
+                        .to_string(),
                     timestamp: now.clone(),
                 });
             }
@@ -374,13 +393,18 @@ pub fn render_monitoring_dashboard(
 
     out.push_str(&format!(
         "\n{} {}\n",
-        "┌── CONTRACT DEPLOYMENT MONITORING DASHBOARD".bright_cyan().bold(),
+        "┌── CONTRACT DEPLOYMENT MONITORING DASHBOARD"
+            .bright_cyan()
+            .bold(),
         format!("[Network: {}]", network).yellow()
     ));
     out.push_str(&"└".repeat(70));
     out.push('\n');
 
-    out.push_str(&format!("\n  {}\n", "HEALTH CHECK MATRIX".bright_white().bold()));
+    out.push_str(&format!(
+        "\n  {}\n",
+        "HEALTH CHECK MATRIX".bright_white().bold()
+    ));
     out.push_str(&format!("  {}\n", "─".repeat(50).dimmed()));
     for hc in health_checks {
         let status_symbol = match hc.status {
@@ -398,7 +422,10 @@ pub fn render_monitoring_dashboard(
         ));
     }
 
-    out.push_str(&format!("\n  {}\n", "ACTIVE DEPLOYMENT TRACKS".bright_white().bold()));
+    out.push_str(&format!(
+        "\n  {}\n",
+        "ACTIVE DEPLOYMENT TRACKS".bright_white().bold()
+    ));
     out.push_str(&format!("  {}\n", "─".repeat(50).dimmed()));
     if tracks.is_empty() {
         out.push_str("  No active deployment sessions registered.\n");
@@ -436,7 +463,10 @@ pub fn render_monitoring_dashboard(
         }
     }
 
-    out.push_str(&format!("\n  {}\n", "DEPLOYMENT ALERTS".bright_white().bold()));
+    out.push_str(&format!(
+        "\n  {}\n",
+        "DEPLOYMENT ALERTS".bright_white().bold()
+    ));
     out.push_str(&format!("  {}\n", "─".repeat(50).dimmed()));
     for alert in alerts {
         let sev_tag = match alert.severity {
@@ -464,7 +494,12 @@ mod tests {
         let track = tracker.start_tracking("dep-001", "testnet", "alice");
         assert_eq!(track.status, DeploymentStatus::Queued);
 
-        tracker.update_progress("dep-001", "Submitting transaction", 50, DeploymentStatus::Submitting);
+        tracker.update_progress(
+            "dep-001",
+            "Submitting transaction",
+            50,
+            DeploymentStatus::Submitting,
+        );
         let active = tracker.get_active_tracks();
         assert_eq!(active[0].progress_pct, 50);
 
@@ -476,7 +511,8 @@ mod tests {
 
     #[test]
     fn failure_detector_classifies_out_of_gas() {
-        let (kind, detail, rec) = DeploymentFailureDetector::detect_failure("Error: out of gas during invocation");
+        let (kind, detail, rec) =
+            DeploymentFailureDetector::detect_failure("Error: out of gas during invocation");
         assert_eq!(kind, FailureKind::OutOfGas);
         assert!(detail.contains("budget"));
         assert!(rec.contains("gas limit"));
@@ -484,7 +520,8 @@ mod tests {
 
     #[test]
     fn health_checker_returns_items() {
-        let checks = DeploymentHealthChecker::check_network_health("testnet", Some("C123"), Some("alice"));
+        let checks =
+            DeploymentHealthChecker::check_network_health("testnet", Some("C123"), Some("alice"));
         assert!(checks.len() >= 3);
         assert!(checks.iter().any(|c| c.name == "RPC Connectivity"));
     }

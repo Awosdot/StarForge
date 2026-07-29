@@ -63,7 +63,10 @@ pub enum MigrateCommands {
 #[derive(Args)]
 pub struct SnapshotArgs {
     /// Contract ID for the snapshot
-    #[arg(long, default_value = "C0000000000000000000000000000000000000000000000000000000")]
+    #[arg(
+        long,
+        default_value = "C0000000000000000000000000000000000000000000000000000000"
+    )]
     pub contract_id: String,
     /// Version label for the snapshot
     #[arg(long, default_value = "v1")]
@@ -619,9 +622,15 @@ fn handle_snapshot(args: SnapshotArgs) -> Result<()> {
             .with_context(|| format!("Failed to parse JSON entries string: {}", raw_json))?
     } else {
         let mut default_entries = BTreeMap::new();
-        default_entries.insert("schema_version".to_string(), Value::String(args.version.clone()));
+        default_entries.insert(
+            "schema_version".to_string(),
+            Value::String(args.version.clone()),
+        );
         default_entries.insert("balance".to_string(), Value::String("1000".to_string()));
-        default_entries.insert("owner".to_string(), Value::String("G0000000000000000000000000000000000000000000000000000000".to_string()));
+        default_entries.insert(
+            "owner".to_string(),
+            Value::String("G0000000000000000000000000000000000000000000000000000000".to_string()),
+        );
         default_entries
     };
 
@@ -776,7 +785,10 @@ fn handle_generate(args: GenerateArgs) -> Result<()> {
         forbidden_keys: report.removed.iter().map(|e| e.key.clone()).collect(),
     };
 
-    fs::write(&args.output, serde_json::to_string_pretty(&migration_rules)?)?;
+    fs::write(
+        &args.output,
+        serde_json::to_string_pretty(&migration_rules)?,
+    )?;
 
     p::success(&format!(
         "Wrote generated migration rules to {}",
@@ -933,14 +945,12 @@ fn handle_validate(args: ValidateArgs) -> Result<()> {
         let mut inv_rules = Vec::new();
 
         for key in &rules.required_keys {
-            inv_rules.push(state_transition::TransitionInvariantRule::RequiredKey {
-                key: key.clone(),
-            });
+            inv_rules
+                .push(state_transition::TransitionInvariantRule::RequiredKey { key: key.clone() });
         }
         for key in &rules.forbidden_keys {
-            inv_rules.push(state_transition::TransitionInvariantRule::ForbiddenKey {
-                key: key.clone(),
-            });
+            inv_rules
+                .push(state_transition::TransitionInvariantRule::ForbiddenKey { key: key.clone() });
         }
 
         let options = state_transition::TransitionValidationOptions {
@@ -1640,7 +1650,10 @@ mod tests {
         save_snapshot(&snap, &snap_file).unwrap();
 
         let loaded = load_snapshot(&snap_file).unwrap();
-        assert_eq!(loaded.entries.get("key1"), Some(&Value::String("val1".into())));
+        assert_eq!(
+            loaded.entries.get("key1"),
+            Some(&Value::String("val1".into()))
+        );
 
         save_snapshot(&loaded, &restored_file).unwrap();
         let restored = load_snapshot(&restored_file).unwrap();

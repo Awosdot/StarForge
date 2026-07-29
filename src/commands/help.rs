@@ -184,11 +184,7 @@ async fn handle_command(cmd: &str, args: &HelpArgs) -> Result<()> {
         let en_str = enabled.join(", ");
         p::kv(
             "Enabled categories",
-            if enabled.is_empty() {
-                "(all)"
-            } else {
-                &en_str
-            },
+            if enabled.is_empty() { "(all)" } else { &en_str },
         );
         let dis_str = disabled.join(", ");
         p::kv(

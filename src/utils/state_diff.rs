@@ -195,7 +195,11 @@ pub fn diff_snapshots(
         count_unchanged: unchanged.len(),
         count_type_changed: type_changed.len(),
         count_renamed: renamed.len(),
-        total_changes: added.len() + removed.len() + modified.len() + type_changed.len() + renamed.len(),
+        total_changes: added.len()
+            + removed.len()
+            + modified.len()
+            + type_changed.len()
+            + renamed.len(),
     };
 
     StateDiffReport {
@@ -316,11 +320,7 @@ pub fn render_diff_console(report: &StateDiffReport) -> String {
         out.push_str(&format!("  {}\n", "-".repeat(40)));
         for entry in &report.renamed {
             let from_k = entry.renamed_from.as_deref().unwrap_or("?");
-            out.push_str(&format!(
-                "  -> {} -> {}\n",
-                from_k.red(),
-                entry.key.green()
-            ));
+            out.push_str(&format!("  -> {} -> {}\n", from_k.red(), entry.key.green()));
         }
     }
 

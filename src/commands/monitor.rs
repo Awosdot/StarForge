@@ -189,7 +189,9 @@ async fn monitor_contract(
     let alert_engine = AlertEngine::from_specs(alerts)?;
     let triggers = EventTrigger::from_specs(trigger_specs)?;
     if !triggers.is_empty() && !allow_triggers {
-        anyhow::bail!("event triggers execute shell commands; rerun with --allow-triggers to enable them");
+        anyhow::bail!(
+            "event triggers execute shell commands; rerun with --allow-triggers to enable them"
+        );
     }
 
     if let Some(replay_path) = replay {

@@ -5,12 +5,7 @@
 //! command first (or with `--save`, the default) to build up the history
 //! this command reports, forecasts, and enforces budgets against.
 
-use crate::utils::{
-    config,
-    cost_estimation as ce,
-    cost_management as cm,
-    print as p,
-};
+use crate::utils::{config, cost_estimation as ce, cost_management as cm, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 use colored::*;
@@ -166,10 +161,7 @@ fn budget(action: BudgetAction) -> Result<()> {
                 p::kv("Period", &status.budget.period.to_string());
                 p::kv("Limit", &format!("{:.7} XLM", status.budget.limit_xlm));
                 p::kv("Spent", &format!("{:.7} XLM", status.spent_xlm));
-                p::kv(
-                    "Remaining",
-                    &format!("{:.7} XLM", status.remaining_xlm),
-                );
+                p::kv("Remaining", &format!("{:.7} XLM", status.remaining_xlm));
                 p::kv("Used", &format!("{:.1}%", status.percent_used));
                 p::kv(
                     "Deployments in period",
@@ -269,7 +261,10 @@ fn forecast(network: String, periods: usize) -> Result<()> {
             forecast.trend_xlm_per_deployment
         ),
     );
-    p::kv("Confidence", &format!("{:?}", forecast.confidence).to_lowercase());
+    p::kv(
+        "Confidence",
+        &format!("{:?}", forecast.confidence).to_lowercase(),
+    );
 
     println!();
     p::info("Projected costs:");
@@ -304,7 +299,12 @@ fn compare_networks(wasm: PathBuf, networks: String) -> Result<()> {
 
     let comparisons = cm::compare_networks(&wasm, &network_list)?;
 
-    let headers = &["Network", "Multiplier", "Adjusted Fee (stroops)", "Adjusted Fee (XLM)"];
+    let headers = &[
+        "Network",
+        "Multiplier",
+        "Adjusted Fee (stroops)",
+        "Adjusted Fee (XLM)",
+    ];
     let rows: Vec<Vec<String>> = comparisons
         .iter()
         .map(|c| {

@@ -3,6 +3,7 @@
 //! Provides interactive chat interface with multi-turn conversation support,
 //! context retention, and workflow guidance.
 
+use crate::utils::ai_cache;
 use crate::utils::{
     ai_conversation::{
         AssistantPersonality, ConversationManager, ExpertiseLevel, UserPreferences, VerbosityLevel,
@@ -15,7 +16,6 @@ use clap::Subcommand;
 use rustyline::{DefaultEditor, Editor};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use crate::utils::ai_cache;
 
 #[derive(Subcommand)]
 pub enum AiChatCommands {

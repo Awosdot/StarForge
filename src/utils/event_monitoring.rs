@@ -583,13 +583,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("events.jsonl");
         let store = EventStore::new(path.clone());
-        let persisted = PersistedEvent::new(
-            "testnet",
-            "C123",
-            sample_event(),
-            Vec::new(),
-            Vec::new(),
-        );
+        let persisted =
+            PersistedEvent::new("testnet", "C123", sample_event(), Vec::new(), Vec::new());
         store.persist(&persisted).unwrap();
         store.persist(&persisted).unwrap();
         std::fs::OpenOptions::new()

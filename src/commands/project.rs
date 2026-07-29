@@ -303,4 +303,3 @@ pub struct WorkloadArgs {
     #[arg(long)]
     pub project: Option<String>,
 }
-

@@ -324,10 +324,13 @@ impl TestOptimizer {
     ) -> Vec<Vec<OptimizedTestCase>> {
         let mut batches: Vec<Vec<OptimizedTestCase>> = Vec::new();
 
-        let (io_bound, _other): (Vec<_>, Vec<_>) = tests.iter().cloned().partition(|t| t.resource_profile.io_intensity > 0.6);
-let cpu_bound = vec![];
-let memory_bound = vec![];
-let general = vec![];
+        let (io_bound, _other): (Vec<_>, Vec<_>) = tests
+            .iter()
+            .cloned()
+            .partition(|t| t.resource_profile.io_intensity > 0.6);
+        let cpu_bound = vec![];
+        let memory_bound = vec![];
+        let general = vec![];
         let (cpu_only, general): (Vec<_>, Vec<_>) = general
             .into_iter()
             .partition(|t| t.resource_profile.cpu_intensity > 0.6);

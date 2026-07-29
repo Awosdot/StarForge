@@ -266,7 +266,6 @@ pub struct UninstallOptions {
     pub assume_yes: bool,
 }
 
-
 /// Report returned after uninstalling a plugin.
 #[derive(Debug, Clone)]
 pub struct UninstallReport {

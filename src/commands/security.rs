@@ -593,7 +593,10 @@ fn handle_audit(args: AuditArgs) -> Result<()> {
     }
 
     if let Some(path) = &args.ci_workflow_out {
-        let workflow = crate::utils::security::generate_github_actions_workflow(&args.path, min_score.unwrap_or(80.0));
+        let workflow = crate::utils::security::generate_github_actions_workflow(
+            &args.path,
+            min_score.unwrap_or(80.0),
+        );
         fs::write(path, workflow)?;
         p::kv("CI workflow", &path.display().to_string());
     }

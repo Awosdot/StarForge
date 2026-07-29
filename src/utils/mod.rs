@@ -1,5 +1,3 @@
-
-
 // AI Context Management (#487)
 // AI Deployment Planner
 // AI Rate Limiting (#489)
@@ -86,6 +84,7 @@ pub mod horizon;
 pub mod http_client;
 pub mod logging;
 pub mod migration_ai;
+pub mod migration_testing;
 pub mod mnemonic;
 pub mod mock_soroban;
 pub mod multi_network_deploy;
@@ -118,7 +117,6 @@ pub mod social;
 pub mod soroban;
 pub mod state_diff;
 pub mod state_transition;
-pub mod migration_testing;
 pub mod stream;
 pub mod telemetry;
 pub mod template;
