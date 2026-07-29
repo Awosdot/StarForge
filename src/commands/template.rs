@@ -1047,7 +1047,7 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
             md.push_str(&format!("- **Auditor:** {}\n", auditor));
             md.push_str(&format!("- **Audited at:** {}\n", date));
         }
-        if let Some(findings) = sr.findings {
+        if let Some(findings) = &sr.findings {
             md.push_str(&format!("- **Findings:** {}\n", findings));
         }
         if let Some(score) = sr.score {

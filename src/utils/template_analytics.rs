@@ -600,7 +600,7 @@ fn build_issue_detection(entries: &[TemplateEntry], feedback: &[FeedbackEntry]) 
             reasons.push("Missing documentation".to_string());
         }
         if let Some(sr) = &e.security_review {
-            if let Some(findings) = sr.findings {
+            if let Some(findings) = &sr.findings {
                 if findings.len() > 0 {
                     reasons.push(format!("{} unresolved security finding(s)", findings));
                 }

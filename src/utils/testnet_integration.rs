@@ -203,6 +203,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
     let body_string = body.clone();
     let url_owned = url.to_string();
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+    let value = body.clone();
     let text = rt.block_on(async move {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -210,7 +211,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
         let res = client
             .post(&url_owned)
             .header("Content-Type", "application/json")
-            .json(&body)
+            .json(&value)
             .send()
             .await
             .context("RPC request failed")?;

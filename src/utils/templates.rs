@@ -1733,7 +1733,7 @@ async fn install_from_git_url(
             .to_string()
     });
 
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1806,7 +1806,7 @@ async fn install_from_local_path(
             .to_string()
     });
 
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1938,7 +1938,7 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
 
             fetch_git_template(url, branch.as_deref(), &dest)?;
 
-            let registry = load_registry().await?;
+            let mut registry = load_registry().await?;
             if let Some(t) = registry.templates.iter_mut().find(|t| t.name == name) {
                 t.path = Some(dest.to_string_lossy().to_string());
                 t.updated_at = String::new();

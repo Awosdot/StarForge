@@ -1182,14 +1182,12 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
     println!("  {}", "Predictions".bright_white().bold());
     println!();
     let pred = &analysis.predictions;
-    p::kv(
-        "Next deployment success",
-        if pred.next_deployment_likely_success {
-            format!("{}", "Likely ✓".green()).as_str()
-        } else {
-            format!("{}", "At risk ✗".red()).as_str()
-        },
-    );
+    let deploy_str = if pred.next_deployment_likely_success {
+        format!("{}", "Likely ✓".green())
+    } else {
+        format!("{}", "At risk ✗".red())
+    };
+    p::kv("Next deployment success", &deploy_str);
     p::kv(
         "Predicted fee range",
         &format!(

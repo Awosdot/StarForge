@@ -346,14 +346,12 @@ fn handle_check(args: CheckArgs) -> Result<()> {
         };
         p::kv("Overall Risk Level", &risk_color);
         p::kv("Risk Score", &format!("{}/100", risk.overall_score));
-        p::kv(
-            "Approved for Deployment",
-            if risk.approved_for_deployment {
-                format!("{}", "yes".green()).as_str()
-            } else {
-                format!("{}", "no".red()).as_str()
-            },
-        );
+        let approved_str = if risk.approved_for_deployment {
+            format!("{}", "yes".green())
+        } else {
+            format!("{}", "no".red())
+        };
+        p::kv("Approved for Deployment", &approved_str);
 
         if !risk.factors.is_empty() {
             println!();
@@ -753,14 +751,12 @@ fn handle_risk(args: RiskArgs) -> Result<()> {
         };
         p::kv_accent("Overall Risk Level", &risk_color);
         p::kv("Risk Score", &format!("{}/100", risk.overall_score));
-        p::kv(
-            "Approved for Deployment",
-            if risk.approved_for_deployment {
-                format!("{}", "yes".green()).as_str()
-            } else {
-                format!("{}", "no".red()).as_str()
-            },
-        );
+        let approved_str = if risk.approved_for_deployment {
+            format!("{}", "yes".green())
+        } else {
+            format!("{}", "no".red())
+        };
+        p::kv("Approved for Deployment", &approved_str);
 
         println!();
         p::separator();
