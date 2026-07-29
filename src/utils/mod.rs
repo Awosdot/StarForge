@@ -41,3 +41,4 @@ pub mod test_generator;
 pub mod test_runner;
 pub mod tutorial_engine;
 pub mod tx_batch;
+pub mod wasm_preflight;
