@@ -324,7 +324,7 @@ impl TestOptimizer {
     ) -> Vec<Vec<OptimizedTestCase>> {
         let mut batches: Vec<Vec<OptimizedTestCase>> = Vec::new();
 
-        let (io_bound, _other): (Vec<_>, Vec<_>) = tests
+        let (io_bound, _other): (Vec<OptimizedTestCase>, Vec<OptimizedTestCase>) = tests
             .iter()
             .cloned()
             .partition(|t| t.resource_profile.io_intensity > 0.6);
@@ -591,12 +591,18 @@ impl TestOptimizer {
     }
 
     fn prune_cache(&mut self) {
-        let mut entries: Vec<(String, &TestCacheEntry)> =
-            self.cache.iter().map(|(k, v)| (k.clone(), v)).collect();
-        entries.sort_by(|a, b| a.1.cached_at.cmp(&b.1.cached_at));
+        let keys_to_remove: Vec<String> = {
+            let mut entries: Vec<(String, &TestCacheEntry)> =
+                self.cache.iter().map(|(k, v)| (k.clone(), v)).collect();
+            entries.sort_by(|a, b| a.1.cached_at.cmp(&b.1.cached_at));
 
-        let remove_count = (entries.len() as f64 * 0.2) as usize;
-        let keys_to_remove: Vec<String> = entries.iter().take(remove_count).map(|(k, _)| k.clone()).collect();
+            let remove_count = (entries.len() as f64 * 0.2) as usize;
+            entries
+                .into_iter()
+                .take(remove_count)
+                .map(|(k, _)| k)
+                .collect()
+        };
         for key in keys_to_remove {
             self.cache.remove(&key);
         }

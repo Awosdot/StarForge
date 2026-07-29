@@ -1028,7 +1028,9 @@ fn commands(name: Option<String>) -> Result<()> {
 
     let entries: Vec<_> = match &name {
         Some(n) => {
-            let found: Vec<_> = reg.plugins.clone()
+            let found: Vec<_> = reg
+                .plugins
+                .clone()
                 .into_iter()
                 .filter(|entry| entry.name == *n)
                 .collect();

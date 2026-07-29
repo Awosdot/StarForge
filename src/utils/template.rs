@@ -444,7 +444,10 @@ async fn search(
         .filter(|s| !s.is_empty())
         .collect();
 
-    let filters = templates::SearchFilters { categories: vec![], featured_only: false, hide_spam: false, 
+    let filters = templates::SearchFilters {
+        categories: vec![],
+        featured_only: false,
+        hide_spam: false,
         tags: tag_list,
         verified_only: verified,
         min_quality,
@@ -1002,7 +1005,8 @@ async fn template_audit(name: Option<String>) -> Result<()> {
         let (status, findings, score) = match &entry.security_review {
             Some(sr) => (
                 sr.status.as_str(),
-                sr.findings.clone()
+                sr.findings
+                    .clone()
                     .map(|f| f.to_string())
                     .unwrap_or_else(|| "—".to_string()),
                 sr.score

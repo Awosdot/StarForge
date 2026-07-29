@@ -846,7 +846,12 @@ async fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-async fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
+async fn fetch(
+    source: String,
+    name: Option<String>,
+    version: Option<String>,
+    force: bool,
+) -> Result<()> {
     p::header("Template Install");
     p::kv("Source", &source);
     if let Some(ref n) = name {
@@ -1123,7 +1128,8 @@ async fn template_audit(name: Option<String>) -> Result<()> {
         let (status, findings, score) = match &entry.security_review {
             Some(sr) => (
                 sr.status.as_str(),
-                sr.findings.clone()
+                sr.findings
+                    .clone()
                     .map(|f| f.to_string())
                     .unwrap_or_else(|| "—".to_string()),
                 sr.score

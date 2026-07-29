@@ -1,4 +1,3 @@
-use colored::Colorize;
 use crate::utils::compliance::{
     self, build_default_policies, delete_policy, generate_compliance_statistics,
     generate_compliance_summary, get_policy, get_recent_reports, get_reports_by_contract,
@@ -8,6 +7,7 @@ use crate::utils::compliance::{
 use crate::utils::print as p;
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use colored::Colorize;
 use colored::*;
 use std::collections::HashMap;
 

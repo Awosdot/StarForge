@@ -1,23 +1,23 @@
-use colored::Colorize;
-/// AI-driven code refactoring for Soroban contracts.
-/// 
-/// Uses a local Ollama LLM to automatically improve code quality,
-/// maintainability, and adherence to best practices. Supports:
-/// 
-/// - Extract functions
-/// - Rename variables
-/// - Simplify logic
-/// - Improve structure
-/// - Add documentation
-/// - Optimize performance
-/// 
-/// Every refactoring is tracked for before/after comparison and rollback.
+//! AI-driven code refactoring for Soroban contracts.
+//!
+//! Uses a local Ollama LLM to automatically improve code quality,
+//! maintainability, and adherence to best practices. Supports:
+//!
+//! - Extract functions
+//! - Rename variables
+//! - Simplify logic
+//! - Improve structure
+//! - Add documentation
+//! - Optimize performance
+//!
+//! Every refactoring is tracked for before/after comparison and rollback.
 
 use crate::utils::ollama;
 use crate::utils::print as p;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::Subcommand;
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

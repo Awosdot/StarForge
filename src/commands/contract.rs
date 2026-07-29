@@ -824,4 +824,6 @@ fn handle_deps(args: DepsArgs) -> Result<()> {
     Ok(())
 }
 
-async fn handle_version(_args: crate::commands::contract::VersionArgs) -> Result<()> { Ok(()) }
+async fn handle_version(_args: crate::commands::contract::VersionArgs) -> Result<()> {
+    Ok(())
+}

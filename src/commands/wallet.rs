@@ -386,17 +386,20 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
             iterations,
             parallelism,
             backup,
-        } => rotate_wallet(
-            name,
-            fund,
-            network,
-            encrypt,
-            strict,
-            mem,
-            iterations,
-            parallelism,
-            backup,
-        ).await,
+        } => {
+            rotate_wallet(
+                name,
+                fund,
+                network,
+                encrypt,
+                strict,
+                mem,
+                iterations,
+                parallelism,
+                backup,
+            )
+            .await
+        }
         WalletCommands::Export {
             name,
             all,

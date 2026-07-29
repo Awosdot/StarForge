@@ -1,8 +1,8 @@
-use colored::Colorize;
 use crate::utils::{config, print as p};
 use anyhow::Result;
 use chrono::Utc;
 use clap::{Args, Subcommand};
+use colored::Colorize;
 use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
