@@ -223,6 +223,10 @@ pub enum AiCommands {
     /// Manage AI request cache (stats, clear, export, etc.)
     #[command(subcommand)]
     Cache(crate::commands::ai_cache_cmd::AiCacheCommands),
+
+    /// Test analytics
+    #[command(subcommand)]
+    Analytics(crate::commands::ai_test_analytics_cmd::AiTestAnalyticsCommands),
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
@@ -272,6 +276,9 @@ pub async fn handle(cmd: AiCommands) -> Result<()> {
         }
         AiCommands::PatternFeedback { pattern_id, verdict, file, note } => {
             handle_pattern_feedback(&pattern_id, &verdict, file.as_deref(), note.as_deref())
+        }
+        AiCommands::Analytics(analytics_cmd) => {
+            crate::commands::ai_test_analytics_cmd::handle(analytics_cmd).await
         }
     }
 }
