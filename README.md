@@ -536,6 +536,11 @@ StarForge has comprehensive documentation covering all aspects of the project:
 ### ?? Feature Documentation
 - **[TEMPLATE_MARKETPLACE.md](TEMPLATE_MARKETPLACE.md)** - Template marketplace feature
 - **[QUICK_START_TEMPLATES.md](QUICK_START_TEMPLATES.md)** - Template quick start guide
+- **[docs/SIMULATION_RESOURCES.md](docs/SIMULATION_RESOURCES.md)** - CPU, memory, footprint, and minimum resource fees from simulation
+- **[docs/CORRELATION_IDS.md](docs/CORRELATION_IDS.md)** - Correlating structured logs across one invocation
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Config parsing, overlay merging, and validation rules
+- **[docs/WALLET_IMPORT_SECURITY.md](docs/WALLET_IMPORT_SECURITY.md)** - Limits enforced on untrusted wallet backups
+- **[FUZZING_GUIDE.md](FUZZING_GUIDE.md)** - Property-based tests, fuzz targets, mutation testing
 
 ### ?? Navigation
 - **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Complete documentation index
