@@ -131,8 +131,9 @@ impl TutorialManager {
         };
 
         // Initialize with default tutorials
+        let manager_clone = manager.clone();
         tokio::spawn(async move {
-            if let Err(e) = manager.initialize_default_tutorials().await {
+            if let Err(e) = manager_clone.initialize_default_tutorials().await {
                 eprintln!("Failed to initialize tutorials: {}", e);
             }
         });

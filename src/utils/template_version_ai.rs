@@ -88,9 +88,9 @@ pub async fn suggest_update(template_path: &Path) -> Result<UpdateSuggestion> {
         .versions
         .iter()
         .max_by(|a, b| {
-            Version::parse(&a.version)
-                .into_iter()
-                .cmp(&Version::parse(&b.version))
+            let a_v = Version::parse(&a.version).unwrap_or(Version::new(0, 0, 0));
+            let b_v = Version::parse(&b.version).unwrap_or(Version::new(0, 0, 0));
+            a_v.cmp(&b_v)
         })
         .context("No versions found")?;
 

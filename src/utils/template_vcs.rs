@@ -498,7 +498,7 @@ pub fn generate_ai_review_suggestions(
                     title: format!("Address TODO/FIXME items in {}", relative),
                     summary: "The template still contains unresolved placeholders that should be clarified before sharing it with collaborators.".to_string(),
                     severity: "medium".to_string(),
-                    file_path: Some(relative),
+                    file_path: Some(relative.clone()),
                 });
             }
 
@@ -510,7 +510,7 @@ pub fn generate_ai_review_suggestions(
                     title: format!("Add documentation guidance for {}", relative),
                     summary: "The documentation should explain how to install, customize, and test the template.".to_string(),
                     severity: "low".to_string(),
-                    file_path: Some(relative),
+                    file_path: Some(relative.clone()),
                 });
             }
         }

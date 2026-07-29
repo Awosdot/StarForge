@@ -837,7 +837,7 @@ pub fn render_html_ui(pipeline: &DeploymentPipeline) -> String {
                 .as_ref()
                 .map(|t| {
                     format!(
-                        "<p class=\"meta\">Tests: {} executed, {} failed</p>",
+                        "<p class=\"meta\">Tests: {} executed, {} failed</p>",,
                         t.cases_executed, t.failures
                     )
                 })

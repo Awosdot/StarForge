@@ -76,9 +76,19 @@ impl MaintenanceStatus {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Debug, Clone, Serialize, Deserialize)]
+pub struct ChangelogEntry {
+    pub version: String,
+    pub date: String,
+    pub notes: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateEntry {
     pub name: String,
+    pub repository: Option<String>,
+    pub security_review: Option<String>,
+    pub changelog: Option<Vec<ChangelogEntry>>,
     pub description: String,
     pub version: String,
     pub source: TemplateSource,
