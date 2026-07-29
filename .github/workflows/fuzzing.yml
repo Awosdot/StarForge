@@ -27,6 +27,8 @@ on:
         description: 'Number of proptest cases per property'
         required: false
         default: '1000'
+  schedule:
+    - cron: '30 2 * * 1'
 
 # Cancel in-progress runs when a new commit is pushed to the same branch.
 concurrency:

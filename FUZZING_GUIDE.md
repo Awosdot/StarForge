@@ -20,6 +20,24 @@ Additional tooling:
 
 ## Quick Start
 
+### Soroban contract example
+
+Keep contract invariants in a normal integration test so they run locally and
+in CI. The same test suite is used by mutation testing and coverage reporting:
+
+```rust
+#[test]
+fn transfer_preserves_total_supply() {
+    let before = balance(&alice()) + balance(&bob());
+    transfer(alice(), bob(), 10);
+    assert_eq!(balance(&alice()) + balance(&bob()), before);
+}
+```
+
+For randomized contract inputs, express the invariant with `proptest` and run
+it with `cargo test --test property_tests`. Contract-specific tests can live
+in the contract crate and use the same `PROPTEST_CASES` setting as this guide.
+
 ### Property-based tests (no extra tooling needed)
 
 ```bash
