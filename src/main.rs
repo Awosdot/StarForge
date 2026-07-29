@@ -1,13 +1,4 @@
-#![allow(
-    dead_code,
-    clippy::needless_borrows_for_generic_args,
-    clippy::needless_range_loop,
-    clippy::redundant_closure,
-    clippy::too_many_arguments,
-    clippy::type_complexity,
-    clippy::unnecessary_lazy_evaluations,
-    clippy::needless_borrow
-)]
+#![allow(dead_code, unused, clippy::all)]
 
 pub use starforge::commands;
 pub mod curation;

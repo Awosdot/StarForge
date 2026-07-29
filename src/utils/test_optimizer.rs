@@ -173,7 +173,7 @@ pub struct FailurePatternReport {
 
 pub struct TestOptimizer {
     config_dir: PathBuf,
-    history: HashMap<String, TestHistory>,
+    pub history: HashMap<String, TestHistory>,
     cache: HashMap<String, TestCacheEntry>,
 }
 
