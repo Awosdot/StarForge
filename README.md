@@ -43,7 +43,9 @@ starforge template publish ./my-template
 ### 🚀 Contract Deployment
 Validate, size-check, and deploy compiled Soroban `.wasm` files to Testnet or Mainnet. Verifies account balance on-chain, calculates the Soroban WASM hash as a SHA-256 digest of the raw file bytes, and generates the exact `stellar contract deploy` command to complete the deployment.
 
-The local hash shown by `starforge deploy` is intended to match the value reported by `stellar contract inspect --wasm <file>` for the same bytecode.
+The local hash shown by `starforge deploy` is intended to match the value reported by `stellar contract inspect --wasm <file>` for the same bytecode. StarForge now computes that hash through a shared helper that validates the WASM payload, rejects empty or malformed input, and fails explicitly on unsupported build environments instead of silently producing a different result.
+
+For contributors, the hash is intentionally defined as the SHA-256 digest of the raw `.wasm` bytecode. The implementation currently supports Linux, Windows, and macOS hosts; other environments are rejected with a clear error so reproducibility checks do not silently drift.
 
 ---
 

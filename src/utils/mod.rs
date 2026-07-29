@@ -106,6 +106,7 @@ pub mod testnet_integration;
 pub mod tutorial_engine;
 pub mod tx_batch;
 pub mod wallet_signer;
+pub mod wasm_hash;
 pub mod workflow_guidance;
 
 // AI Deployment Planner
