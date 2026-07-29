@@ -61,6 +61,9 @@ for label in "${!BUDGETS[@]}"; do
     fi
 done
 
+# Fix locale for bc so it always uses '.' as decimal separator.
+export LC_NUMERIC=C
+
 # ---- Read input ------------------------------------------------------------
 if [ -n "$INPUT_FILE" ]; then
     RAW=$(cat "$INPUT_FILE")

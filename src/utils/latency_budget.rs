@@ -205,11 +205,21 @@ impl BudgetCheckResult {
 
 /// Check a single [`LatencyMeasurement`] against its matching [`LatencyBudget`].
 ///
+/// Check a single [`LatencyMeasurement`] against its matching [`LatencyBudget`].
+///
 /// Returns [`BudgetStatus::Skipped`] if the budget is inactive.
 /// Returns [`BudgetStatus::Error`] if the measurement has zero sample size.
-/// Returns [`BudgetStatus::Noisy`] if CV exceeds the budget threshold.
 /// Returns [`BudgetStatus::Fail`] if the median exceeds the budget.
+/// Returns [`BudgetStatus::Noisy`] if the median is within budget but the
+/// CV exceeds the threshold (measurement too noisy to trust).
 /// Returns [`BudgetStatus::Pass`] otherwise.
+///
+/// # Priority
+///
+/// Budget violations (`Fail`) are checked **before** noise (`Noisy`) so
+/// that a measurement that is simultaneously over budget AND noisy is
+/// correctly reported as a failure rather than being masked by the noise
+/// warning.
 pub fn check_measurement(
     measurement: &LatencyMeasurement,
     budget: &LatencyBudget,
@@ -229,15 +239,19 @@ pub fn check_measurement(
     let sd_ns = measurement.std_dev.as_nanos() as f64;
     let cv = sd_ns / mean_ns;
 
-    // Check for excessive noise.
-    if let Some(max_cv) = budget.max_cv {
-        if cv > max_cv {
-            return BudgetStatus::Noisy;
+    // Check budget FIRST (Fail takes priority over Noisy).
+    let over_budget = measurement.median > budget.max_median;
+
+    // Check for excessive noise only when the measurement is within budget.
+    if !over_budget {
+        if let Some(max_cv) = budget.max_cv {
+            if cv > max_cv {
+                return BudgetStatus::Noisy;
+            }
         }
     }
 
-    // Check budget.
-    if measurement.median > budget.max_median {
+    if over_budget {
         BudgetStatus::Fail
     } else {
         BudgetStatus::Pass
@@ -558,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn high_cv_triggers_noisy() {
+    fn high_cv_triggers_noisy_when_under_budget() {
         let budget = LatencyBudget::new_static("test", 1000, Some(0.10), true);
         let m = LatencyMeasurement {
             label: "test".into(),
@@ -568,6 +582,24 @@ mod tests {
             sample_size: 100,
         };
         assert_eq!(check_measurement(&m, &budget), BudgetStatus::Noisy);
+    }
+
+    #[test]
+    fn fail_takes_priority_over_noisy() {
+        // When a measurement is BOTH over budget AND noisy, Fail must win.
+        let budget = LatencyBudget::new_static("test", 100, Some(0.10), true);
+        let m = LatencyMeasurement {
+            label: "test".into(),
+            median: Duration::from_millis(200), // over budget
+            mean: Duration::from_millis(200),
+            std_dev: Duration::from_millis(100), // cv = 0.5 > 0.10
+            sample_size: 100,
+        };
+        assert_eq!(
+            check_measurement(&m, &budget),
+            BudgetStatus::Fail,
+            "Fail must take priority over Noisy"
+        );
     }
 
     #[test]

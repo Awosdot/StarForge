@@ -474,10 +474,10 @@ fn bench_cli_command_latency(c: &mut Criterion) {
 
 // ── 14. Latency budget check integration (runs after Criterion) ──────────────
 
-/// This benchmark group integrates with the latency budget engine.  After
-/// collecting Criterion measurements, the `LatencyBudgets` are checked against
-/// the results and a JSON report is written to `target/criterion/latency-budget-report.json`.
-fn bench_latency_budget_check(c: &mut Criterion) {
+/// Measures the computational overhead of the `check_latency_budget` function
+/// itself.  This is not a budget enforcement check — it merely ensures the
+/// budget engine does not introduce significant overhead.
+fn bench_budget_check_overhead(c: &mut Criterion) {
     let mut group = c.benchmark_group("latency_budget");
     group.measurement_time(Duration::from_secs(5));
 
@@ -544,7 +544,7 @@ criterion_group!(
     bench_cli_arg_parsing,
     bench_cli_cold_start,
     bench_cli_command_latency,
-    bench_latency_budget_check,
+    bench_budget_check_overhead,
     bench_template_registry_deserialise,
     bench_template_registry_search,
     bench_wallet_entry_format,
