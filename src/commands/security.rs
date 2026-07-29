@@ -226,7 +226,7 @@ pub async fn handle(cmd: SecurityCommands) -> Result<()> {
         SecurityCommands::Checklist(args) => handle_checklist(args),
         SecurityCommands::Validate(args) => handle_validate(args),
         SecurityCommands::Report(args) => handle_report(args),
-        SecurityCommands::Monitor(args) => handle_monitor(args).await.await,
+        SecurityCommands::Monitor(args) => handle_monitor(args).await,
         SecurityCommands::Incident(args) => handle_incident(args),
         SecurityCommands::Audit(args) => handle_audit(args),
         SecurityCommands::ThreatDetect(args) => handle_threat_detect(args),

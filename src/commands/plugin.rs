@@ -269,9 +269,9 @@ fn list() -> Result<()> {
         .map(|entry| {
             vec![
                 entry.name.clone(),
-                entry.version.clone(),
+                entry.plugin_version.clone(),
                 entry.trust.label().to_string(),
-                entry.description.clone(),
+                "".to_string(),
             ]
         })
         .collect();
@@ -551,6 +551,7 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                         &pl.source,
                         &pl.starforge_version,
                         &pl.plugin_version,
+                        "",
                         pl.commands.clone(),
                     )?;
                     p::success(&format!("  '{}' updated via cargo install", pl.name));
@@ -591,14 +592,15 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
 
                     if modified > installed_epoch {
                         // Library on disk is newer — refresh the registry entry.
-                        let (cmds, description) = discover_plugin_metadata(&pl.path)
-                            .unwrap_or_else(|_| (pl.commands.clone(), None));
+                        let (cmds, _description) = discover_plugin_metadata(&pl.path)
+                            .unwrap_or_else(|_| (pl.commands.clone(), "".to_string()));
                         registry::install_plugin(
                             &pl.name,
                             std::path::Path::new(&pl.path),
                             &pl.source,
                             &pl.starforge_version,
                             &pl.plugin_version,
+                            "",
                             cmds,
                         )?;
                         p::success(&format!(

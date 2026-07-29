@@ -396,7 +396,7 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
             iterations,
             parallelism,
             backup,
-        ),
+        ).await,
         WalletCommands::Export {
             name,
             all,
@@ -2053,7 +2053,7 @@ fn multisig_sign(
                 )
             })?;
 
-        let signing_request = wallet_signer::SigningRequest::from_options(
+        let signing_request = crate::utils::wallet_signer::SigningRequest::from_options(
             Some(wallet_ref),
             Some(device),
             Some(&hd_path),

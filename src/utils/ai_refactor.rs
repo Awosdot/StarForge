@@ -1,17 +1,17 @@
 use colored::Colorize;
-//! AI-driven code refactoring for Soroban contracts.
-//!
-//! Uses a local Ollama LLM to automatically improve code quality,
-//! maintainability, and adherence to best practices. Supports:
-//!
-//! - Extract functions
-//! - Rename variables
-//! - Simplify logic
-//! - Improve structure
-//! - Add documentation
-//! - Optimize performance
-//!
-//! Every refactoring is tracked for before/after comparison and rollback.
+/// AI-driven code refactoring for Soroban contracts.
+/// 
+/// Uses a local Ollama LLM to automatically improve code quality,
+/// maintainability, and adherence to best practices. Supports:
+/// 
+/// - Extract functions
+/// - Rename variables
+/// - Simplify logic
+/// - Improve structure
+/// - Add documentation
+/// - Optimize performance
+/// 
+/// Every refactoring is tracked for before/after comparison and rollback.
 
 use crate::utils::ollama;
 use crate::utils::print as p;
@@ -579,7 +579,7 @@ fn handle_diff(session_id: String) -> Result<()> {
     if session.original_content.lines().count() > 20 {
         println!(
             "  {} ... ({} more lines)",
-            ".".dim(),
+            ".".dimmed(),
             session.original_content.lines().count() - 20
         );
     }
@@ -592,7 +592,7 @@ fn handle_diff(session_id: String) -> Result<()> {
     if session.refactored_content.lines().count() > 20 {
         println!(
             "  {} ... ({} more lines)",
-            ".".dim(),
+            ".".dimmed(),
             session.refactored_content.lines().count() - 20
         );
     }
@@ -675,10 +675,10 @@ fn handle_sessions() -> Result<()> {
 
     println!(
         "  {:<30}  {:<20}  {:<15}  {}",
-        "ID".dim(),
-        "Type".dim(),
-        "File".dim(),
-        "Timestamp".dim()
+        "ID".dimmed(),
+        "Type".dimmed(),
+        "File".dimmed(),
+        "Timestamp".dimmed()
     );
     println!("  {}", "-".repeat(100).dimmed());
 

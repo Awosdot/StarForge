@@ -48,7 +48,6 @@ pub enum ProjectCommands {
 // ══════════════════════════════════════════════════════════════════
 
 #[derive(Subcommand)]
-#[derive(clap::Subcommand)]
 pub enum RiskCommands {}
 #[derive(clap::Subcommand)]
 pub enum TimelineCommands {}

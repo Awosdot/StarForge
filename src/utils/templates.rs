@@ -77,7 +77,6 @@ impl MaintenanceStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityReview {
     pub status: String,
     pub auditor: Option<String>,
@@ -808,7 +807,7 @@ pub fn fetch_template_cached(entry: &TemplateEntry, force_refresh: bool) -> Resu
 ///
 /// Returns `None` when the template name is not found in the registry.
 pub async fn template_source_content(name: &str, force_refresh: bool) -> Result<Option<String>> {
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     let entry = match registry.templates.into_iter().find(|t| t.name == name) {
         Some(e) => e,
         None => return Ok(None),
@@ -1009,7 +1008,7 @@ pub async fn search_templates_ranked(
     query: &str,
     filters: &SearchFilters,
 ) -> Result<Vec<SearchResult>> {
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     let query_lower = query.trim().to_lowercase();
 
     let mut results: Vec<SearchResult> = registry
@@ -1092,7 +1091,7 @@ pub async fn get_template(name: &str) -> Result<TemplateEntry> {
 }
 
 pub async fn get_templates_by_name(name: &str) -> Result<Vec<TemplateEntry>> {
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     let mut matching: Vec<TemplateEntry> = registry
         .templates
         .into_iter()
@@ -1212,7 +1211,7 @@ fn semver_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 pub async fn add_template(entry: TemplateEntry) -> Result<()> {
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
 
     if let Some(existing) = registry
         .templates
@@ -1231,7 +1230,7 @@ pub async fn add_template(entry: TemplateEntry) -> Result<()> {
 /// Remove a template from the registry.
 /// If `purge` is true, also deletes any cached/downloaded assets.
 pub async fn remove_template(name: &str, purge: bool) -> Result<()> {
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     let before = registry.templates.len();
 
     registry.templates.retain(|t| t.name != name);
@@ -1475,7 +1474,7 @@ pub async fn publish_template_versioned(
     let storage_root = template_storage_dir()?.join(&name);
     let dest = storage_root.join(&version);
 
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     let same_version_exists = registry
         .templates
         .iter()
@@ -1730,7 +1729,7 @@ async fn install_from_git_url(
             .to_string()
     });
 
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1800,7 +1799,7 @@ async fn install_from_local_path(
             .to_string()
     });
 
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1929,7 +1928,7 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
 
             fetch_git_template(url, branch.as_deref(), &dest)?;
 
-            let registry = load_registry().await?;
+            let mut registry = load_registry().await?;
             if let Some(t) = registry.templates.iter_mut().find(|t| t.name == name) {
                 t.path = Some(dest.to_string_lossy().to_string());
                 t.updated_at = String::new();
@@ -1960,7 +1959,7 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
 /// Update all git-sourced templates. Returns a list of (name, result) pairs.
 pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<TemplateUpdateReport>)>>
 {
-    let registry = load_registry().await?;
+    let mut registry = load_registry().await?;
     let git_names: Vec<String> = registry
         .templates
         .iter()

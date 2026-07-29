@@ -444,7 +444,7 @@ async fn search(
         .filter(|s| !s.is_empty())
         .collect();
 
-    let filters = templates::SearchFilters { categories: None, featured_only: false, hide_spam: false, 
+    let filters = templates::SearchFilters { categories: vec![], featured_only: false, hide_spam: false, 
         tags: tag_list,
         verified_only: verified,
         min_quality,
@@ -942,8 +942,8 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
         md.push_str("## Changelog\n\n");
         for entry in &entry.changelog {
             md.push_str(&format!(
-                "### {} — {}\n\n{}\n\n",
-                entry.version, entry.date, entry.notes
+                "### {} — {}\n\n",
+                entry.version, entry.date
             ));
         }
     }
@@ -1000,7 +1000,7 @@ async fn template_audit(name: Option<String>) -> Result<()> {
         let (status, findings, score) = match &entry.security_review {
             Some(sr) => (
                 sr.status.as_str(),
-                sr.findings
+                sr.findings.clone()
                     .map(|f| f.to_string())
                     .unwrap_or_else(|| "—".to_string()),
                 sr.score

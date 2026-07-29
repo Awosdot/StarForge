@@ -281,7 +281,7 @@ async fn template_assist(
     let template_path = if direct.is_dir() {
         direct
     } else {
-        let entry = templates::get_template(&template).await.context(|| {
+        let entry = templates::get_template(&template).await.with_context(|| {
             format!(
                 "Template '{}' was not found. Pass a directory or run `starforge template list`.",
                 template
@@ -1063,8 +1063,8 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
         md.push_str("## Changelog\n\n");
         for entry in &entry.changelog {
             md.push_str(&format!(
-                "### {} — {}\n\n{}\n\n",
-                entry.version, entry.date, entry.notes
+                "### {} — {}\n\n",
+                entry.version, entry.date
             ));
         }
     }
