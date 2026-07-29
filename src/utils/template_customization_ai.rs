@@ -1,5 +1,5 @@
 
-use crate::utils::ollama;
+use crate::utils::{ollama, template_vcs};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -52,8 +52,28 @@ pub async fn customize_template(
     // 4. Validate the customized template
     let validation_report = validate_customization(template_path)?;
 
-    // 5. Save to history
+    // 5. Save to history and commit to VCS
     save_customization_history(template_path, requirements, &response.response)?;
+    
+    // Ensure VCS is initialized and commit
+    if !template_path.join(".starforge-vcs").exists() {
+        let _ = template_vcs::init_vcs(template_path, template_path.file_name().unwrap_or_default().to_str().unwrap_or("template"));
+        let _ = template_vcs::commit_version(
+            template_path,
+            "1.0.0",
+            "Initial template state before customizations",
+            "StarForge System"
+        );
+    }
+    
+    let history = get_customization_history(template_path).await.unwrap_or(CustomizationHistory { entries: vec![] });
+    let version = format!("1.0.{}", history.entries.len());
+    let _ = template_vcs::commit_version(
+        template_path,
+        &version,
+        &format!("AI Customization: {}", requirements),
+        "StarForge AI"
+    );
 
     Ok(CustomizationResult {
         success: validation_report.contains("Success"),
@@ -106,12 +126,15 @@ Please provide your response in the following format:\n\
 ---\n\
 CHANGES:\n\
 - [file_path]: [modification_type]\n\
-  [code_change]\n\
+  ```rust\n\
+  [entire_new_file_content_here]\n\
+  ```\n\
 - ...\n\
 ---\n\
 EXPLANATION:\n\
 [short explanation of changes]\n\
----",
+---\n\
+Make sure you provide the ENTIRE new file content in the code block, not just a patch or diff. This is required because the code will be overwritten entirely.",
         ollama::prompts::SYSTEM_CONTEXT,
         requirements,
         structure
@@ -141,21 +164,34 @@ fn apply_ai_modifications(template_path: &Path, ai_response: &str) -> Result<Vec
                             }
                             i += 1;
                         }
+                        // Extract content from code block if present
+                        let clean_code = if let Some(start) = code_change.find("```") {
+                            if let Some(end) = code_change[start + 3..].find("```") {
+                                let inner = &code_change[start + 3..start + 3 + end];
+                                // strip the language identifier like `rust`
+                                if let Some(first_newline) = inner.find('\n') {
+                                    inner[first_newline + 1..].trim()
+                                } else {
+                                    inner.trim()
+                                }
+                            } else {
+                                code_change.trim()
+                            }
+                        } else {
+                            code_change.trim()
+                        };
+                        
                         // Apply the change to the file
                         let full_path = template_path.join(file_path.trim());
                         if full_path.exists() {
-                            if let Ok(original) = fs::read_to_string(&full_path) {
-                                // For now, we'll just replace the entire file with the AI's suggestion
-                                // In a real implementation, we'd use diff/patch or more sophisticated logic
-                                fs::write(&full_path, code_change.trim()).ok();
-                                changes.push(format!("Modified: {}", file_path));
-                            }
+                            fs::write(&full_path, clean_code).ok();
+                            changes.push(format!("Modified: {}", file_path));
                         } else {
                             // Create new file
                             if let Some(parent) = full_path.parent() {
                                 fs::create_dir_all(parent).ok();
                             }
-                            fs::write(&full_path, code_change.trim()).ok();
+                            fs::write(&full_path, clean_code).ok();
                             changes.push(format!("Created: {}", file_path));
                         }
                         continue;
@@ -240,7 +276,7 @@ pub async fn rollback_customization(template_path: &Path, index: Option<usize>) 
     }
 
     let content = fs::read_to_string(&history_file)?;
-    let history: CustomizationHistory = serde_json::from_str(&content)?;
+    let mut history: CustomizationHistory = serde_json::from_str(&content)?;
 
     let target_index = if let Some(i) = index {
         if i >= history.entries.len() {
@@ -249,16 +285,45 @@ pub async fn rollback_customization(template_path: &Path, index: Option<usize>) 
         i
     } else {
         // Rollback to previous state (before last customization)
-        if history.entries.len() < 2 {
+        if history.entries.is_empty() {
             anyhow::bail!("Not enough history to rollback");
         }
-        history.entries.len() - 2
+        history.entries.len().saturating_sub(1)
     };
 
     println!("Rolling back to state before: {}", history.entries[target_index].timestamp);
 
-    // For now, just log the rollback
-    // In a real implementation, we'd use git or snapshots to restore
+    // Rollback using git if available
+    if template_path.join(".git").exists() {
+        // If target_index is the last customization, it's HEAD~1 or based on tag
+        // Since we created tags like "v1.0.X", we can just find the appropriate tag
+        // target_index means we want to discard everything from target_index onwards.
+        // So we rollback to `target_index` (which was the state before the target customization, if we consider index 0 as first customization).
+        // Actually, if we just want to reset to a previous tag, let's just use `git checkout`.
+        // Let's get the version to rollback to.
+        let version_tag = format!("v1.0.{}", target_index);
+        
+        let output = std::process::Command::new("git")
+            .current_dir(template_path)
+            .args(["reset", "--hard", &version_tag])
+            .output()
+            .context("Failed to rollback via git reset")?;
+
+        if !output.status.success() {
+            anyhow::bail!(
+                "Failed to rollback using git: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        
+        // Truncate history
+        history.entries.truncate(target_index);
+        let json_content = serde_json::to_string_pretty(&history)?;
+        fs::write(&history_file, json_content)?;
+    } else {
+        anyhow::bail!("Git repository not found. Cannot perform rollback.");
+    }
+
     Ok(())
 }
 
