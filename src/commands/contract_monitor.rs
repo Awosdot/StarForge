@@ -15,8 +15,7 @@ use crate::utils::{
     contract_health_monitor::{
         self, AlertLevel, ContractHealthReport, ContractMonitorReport, SecurityEventSeverity,
     },
-    notifications,
-    print as p,
+    notifications, print as p,
 };
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -116,7 +115,10 @@ pub struct NotifyListArgs {
 #[derive(Args)]
 pub struct NotifyTestArgs {
     /// Contract ID to use in the test payload
-    #[arg(long, default_value = "CTEST00000000000000000000000000000000000000000000000000000")]
+    #[arg(
+        long,
+        default_value = "CTEST00000000000000000000000000000000000000000000000000000"
+    )]
     pub contract: String,
 }
 
@@ -172,9 +174,15 @@ fn handle_health(args: ContractArgs) -> Result<()> {
     println!();
 
     let overall = match report.overall_status {
-        contract_health_monitor::ContractHealthStatus::Healthy => "HEALTHY".green().bold().to_string(),
-        contract_health_monitor::ContractHealthStatus::Degraded => "DEGRADED".yellow().bold().to_string(),
-        contract_health_monitor::ContractHealthStatus::Unhealthy => "UNHEALTHY".red().bold().to_string(),
+        contract_health_monitor::ContractHealthStatus::Healthy => {
+            "HEALTHY".green().bold().to_string()
+        }
+        contract_health_monitor::ContractHealthStatus::Degraded => {
+            "DEGRADED".yellow().bold().to_string()
+        }
+        contract_health_monitor::ContractHealthStatus::Unhealthy => {
+            "UNHEALTHY".red().bold().to_string()
+        }
         contract_health_monitor::ContractHealthStatus::Unknown => "UNKNOWN".dimmed().to_string(),
     };
     println!("  Overall health : {}", overall);
@@ -182,9 +190,15 @@ fn handle_health(args: ContractArgs) -> Result<()> {
 
     for probe in &report.probes {
         let sym = match probe.status {
-            contract_health_monitor::ContractHealthStatus::Healthy => "✓".green().bold().to_string(),
-            contract_health_monitor::ContractHealthStatus::Degraded => "▲".yellow().bold().to_string(),
-            contract_health_monitor::ContractHealthStatus::Unhealthy => "✗".red().bold().to_string(),
+            contract_health_monitor::ContractHealthStatus::Healthy => {
+                "✓".green().bold().to_string()
+            }
+            contract_health_monitor::ContractHealthStatus::Degraded => {
+                "▲".yellow().bold().to_string()
+            }
+            contract_health_monitor::ContractHealthStatus::Unhealthy => {
+                "✗".red().bold().to_string()
+            }
             contract_health_monitor::ContractHealthStatus::Unknown => "?".dimmed().to_string(),
         };
         println!("  {} {:<34}  {} ms", sym, probe.name, probe.latency_ms);
@@ -212,8 +226,14 @@ fn handle_perf(args: ContractArgs) -> Result<()> {
     println!();
     p::kv("Total deployments", &snap.total_invocations.to_string());
     p::kv("Success rate", &format!("{:.1}%", snap.success_rate_pct));
-    p::kv("Avg duration", &format!("{:.0} ms", snap.avg_deploy_duration_ms));
-    p::kv("p95 duration", &format!("{:.0} ms", snap.p95_deploy_duration_ms));
+    p::kv(
+        "Avg duration",
+        &format!("{:.0} ms", snap.avg_deploy_duration_ms),
+    );
+    p::kv(
+        "p95 duration",
+        &format!("{:.0} ms", snap.p95_deploy_duration_ms),
+    );
     p::kv("Total fees", &format!("{} stroops", snap.total_fee_stroops));
     p::kv("Avg fees", &format!("{:.0} stroops", snap.avg_fee_stroops));
     p::kv("Performance trend", &snap.trend.to_string());
@@ -242,12 +262,17 @@ fn handle_security(args: ContractArgs) -> Result<()> {
     for ev in &events {
         let tag = match ev.severity {
             SecurityEventSeverity::Critical => "[CRITICAL]".red().bold().to_string(),
-            SecurityEventSeverity::High    => "[HIGH]".red().to_string(),
-            SecurityEventSeverity::Medium  => "[MEDIUM]".yellow().to_string(),
-            SecurityEventSeverity::Low     => "[LOW]".cyan().to_string(),
-            SecurityEventSeverity::Info    => "[INFO]".dimmed().to_string(),
+            SecurityEventSeverity::High => "[HIGH]".red().to_string(),
+            SecurityEventSeverity::Medium => "[MEDIUM]".yellow().to_string(),
+            SecurityEventSeverity::Low => "[LOW]".cyan().to_string(),
+            SecurityEventSeverity::Info => "[INFO]".dimmed().to_string(),
         };
-        println!("  {} {} — {}", tag, ev.kind.to_string().white(), ev.description);
+        println!(
+            "  {} {} — {}",
+            tag,
+            ev.kind.to_string().white(),
+            ev.description
+        );
         println!("     → {}", ev.recommendation.green());
         println!();
     }
@@ -276,9 +301,9 @@ fn handle_alerts(args: ContractArgs) -> Result<()> {
     for alert in &report.alerts {
         let tag = match alert.level {
             AlertLevel::Critical => "[CRITICAL]".red().bold().to_string(),
-            AlertLevel::High     => "[HIGH]".red().to_string(),
-            AlertLevel::Warning  => "[WARNING]".yellow().to_string(),
-            AlertLevel::Info     => "[INFO]".cyan().to_string(),
+            AlertLevel::High => "[HIGH]".red().to_string(),
+            AlertLevel::Warning => "[WARNING]".yellow().to_string(),
+            AlertLevel::Info => "[INFO]".cyan().to_string(),
         };
         println!("  {} {}", tag, alert.title.white().bold());
         println!("     Detail : {}", alert.detail.dimmed());
@@ -344,8 +369,17 @@ fn handle_notify_list(args: NotifyListArgs) -> Result<()> {
     }
     p::separator();
     for ch in &channels {
-        let status = if ch.enabled { "enabled".green() } else { "disabled".dimmed() };
-        println!("  {} {} → {}", status, ch.channel_type.white().bold(), ch.destination.dimmed());
+        let status = if ch.enabled {
+            "enabled".green()
+        } else {
+            "disabled".dimmed()
+        };
+        println!(
+            "  {} {} → {}",
+            status,
+            ch.channel_type.white().bold(),
+            ch.destination.dimmed()
+        );
     }
     p::separator();
     Ok(())
@@ -357,10 +391,22 @@ fn handle_notify_test(args: NotifyTestArgs) -> Result<()> {
     data.insert("contract_id".to_string(), args.contract.clone());
     data.insert("alert_id".to_string(), "test-alert-001".to_string());
     data.insert("level".to_string(), "WARNING".to_string());
-    data.insert("title".to_string(), "Test notification from StarForge contract monitor".to_string());
-    data.insert("detail".to_string(), "This is a test notification. Disregard.".to_string());
-    data.insert("message".to_string(), format!("[WARNING] Test notification for contract {}", args.contract));
-    data.insert("recommendation".to_string(), "No action required — this is a test".to_string());
+    data.insert(
+        "title".to_string(),
+        "Test notification from StarForge contract monitor".to_string(),
+    );
+    data.insert(
+        "detail".to_string(),
+        "This is a test notification. Disregard.".to_string(),
+    );
+    data.insert(
+        "message".to_string(),
+        format!("[WARNING] Test notification for contract {}", args.contract),
+    );
+    data.insert(
+        "recommendation".to_string(),
+        "No action required — this is a test".to_string(),
+    );
 
     notifications::send_notification("contract_monitor_alert", &data, "medium")?;
     p::success("Test notification dispatched to all enabled channels");

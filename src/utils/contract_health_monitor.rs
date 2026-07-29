@@ -89,8 +89,16 @@ fn run_health_probes(contract_id: &str, network: &str) -> Vec<HealthProbe> {
     let id_ok = contract_id.starts_with('C') && contract_id.len() == 56;
     probes.push(HealthProbe::new(
         "contract_id_format",
-        if id_ok { ContractHealthStatus::Healthy } else { ContractHealthStatus::Unhealthy },
-        if id_ok { "Contract ID format is valid (C… strkey)" } else { "Contract ID format is invalid" },
+        if id_ok {
+            ContractHealthStatus::Healthy
+        } else {
+            ContractHealthStatus::Unhealthy
+        },
+        if id_ok {
+            "Contract ID format is valid (C… strkey)"
+        } else {
+            "Contract ID format is invalid"
+        },
         0,
     ));
 
@@ -101,7 +109,11 @@ fn run_health_probes(contract_id: &str, network: &str) -> Vec<HealthProbe> {
         .any(|r| r.contract_id.as_deref() == Some(contract_id) && r.network == network);
     probes.push(HealthProbe::new(
         "deployment_record",
-        if deploy_ok { ContractHealthStatus::Healthy } else { ContractHealthStatus::Unknown },
+        if deploy_ok {
+            ContractHealthStatus::Healthy
+        } else {
+            ContractHealthStatus::Unknown
+        },
         if deploy_ok {
             "Deployment record found in local history"
         } else {
@@ -125,28 +137,54 @@ fn run_health_probes(contract_id: &str, network: &str) -> Vec<HealthProbe> {
         .filter(|r| r.contract_id.as_deref() == Some(contract_id) && r.network == network)
         .last();
     let (deploy_status, deploy_msg) = match &last_deploy {
-        Some(r) if r.status == deploy_history::DeployStatus::Success => {
-            (ContractHealthStatus::Healthy, format!("Last deployment succeeded at {}", r.timestamp))
-        }
-        Some(r) if r.status == deploy_history::DeployStatus::Failed => {
-            (ContractHealthStatus::Unhealthy, format!("Last deployment FAILED at {}: {}", r.timestamp, r.error.as_deref().unwrap_or("unknown error")))
-        }
-        Some(r) => (ContractHealthStatus::Degraded, format!("Last deployment status: {}", r.status)),
-        None => (ContractHealthStatus::Unknown, "No deployment history found for this contract".to_string()),
+        Some(r) if r.status == deploy_history::DeployStatus::Success => (
+            ContractHealthStatus::Healthy,
+            format!("Last deployment succeeded at {}", r.timestamp),
+        ),
+        Some(r) if r.status == deploy_history::DeployStatus::Failed => (
+            ContractHealthStatus::Unhealthy,
+            format!(
+                "Last deployment FAILED at {}: {}",
+                r.timestamp,
+                r.error.as_deref().unwrap_or("unknown error")
+            ),
+        ),
+        Some(r) => (
+            ContractHealthStatus::Degraded,
+            format!("Last deployment status: {}", r.status),
+        ),
+        None => (
+            ContractHealthStatus::Unknown,
+            "No deployment history found for this contract".to_string(),
+        ),
     };
-    probes.push(HealthProbe::new("last_deployment_status", deploy_status, &deploy_msg, 2));
+    probes.push(HealthProbe::new(
+        "last_deployment_status",
+        deploy_status,
+        &deploy_msg,
+        2,
+    ));
 
     probes
 }
 
 fn aggregate_health(probes: &[HealthProbe]) -> ContractHealthStatus {
-    if probes.iter().any(|p| p.status == ContractHealthStatus::Unhealthy) {
+    if probes
+        .iter()
+        .any(|p| p.status == ContractHealthStatus::Unhealthy)
+    {
         return ContractHealthStatus::Unhealthy;
     }
-    if probes.iter().any(|p| p.status == ContractHealthStatus::Degraded) {
+    if probes
+        .iter()
+        .any(|p| p.status == ContractHealthStatus::Degraded)
+    {
         return ContractHealthStatus::Degraded;
     }
-    if probes.iter().any(|p| p.status == ContractHealthStatus::Unknown) {
+    if probes
+        .iter()
+        .any(|p| p.status == ContractHealthStatus::Unknown)
+    {
         return ContractHealthStatus::Unknown;
     }
     ContractHealthStatus::Healthy
@@ -205,7 +243,11 @@ pub fn build_performance_snapshot(contract_id: &str, network: &str) -> Result<Pe
         .iter()
         .filter(|r| r.status == deploy_history::DeployStatus::Success)
         .count();
-    let success_rate = if total == 0 { 0.0 } else { successes as f64 / total as f64 * 100.0 };
+    let success_rate = if total == 0 {
+        0.0
+    } else {
+        successes as f64 / total as f64 * 100.0
+    };
 
     let mut durations: Vec<f64> = contract_records
         .iter()
@@ -213,7 +255,11 @@ pub fn build_performance_snapshot(contract_id: &str, network: &str) -> Result<Pe
         .collect();
     durations.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    let avg_duration = if durations.is_empty() { 0.0 } else { durations.iter().sum::<f64>() / durations.len() as f64 };
+    let avg_duration = if durations.is_empty() {
+        0.0
+    } else {
+        durations.iter().sum::<f64>() / durations.len() as f64
+    };
     let p95 = if durations.is_empty() {
         0.0
     } else {
@@ -222,7 +268,11 @@ pub fn build_performance_snapshot(contract_id: &str, network: &str) -> Result<Pe
     };
 
     let total_fees: u64 = contract_records.iter().filter_map(|r| r.fee_stroops).sum();
-    let avg_fees = if total == 0 { 0.0 } else { total_fees as f64 / total as f64 };
+    let avg_fees = if total == 0 {
+        0.0
+    } else {
+        total_fees as f64 / total as f64
+    };
 
     // Simple trend: compare first-half vs second-half average duration
     let trend = if durations.len() < 4 {
@@ -232,9 +282,13 @@ pub fn build_performance_snapshot(contract_id: &str, network: &str) -> Result<Pe
         let first_avg: f64 = durations[..mid].iter().sum::<f64>() / mid as f64;
         let second_avg: f64 = durations[mid..].iter().sum::<f64>() / (durations.len() - mid) as f64;
         let delta_pct = (second_avg - first_avg) / first_avg.max(1.0) * 100.0;
-        if delta_pct > 15.0 { PerformanceTrend::Degrading }
-        else if delta_pct < -15.0 { PerformanceTrend::Improving }
-        else { PerformanceTrend::Stable }
+        if delta_pct > 15.0 {
+            PerformanceTrend::Degrading
+        } else if delta_pct < -15.0 {
+            PerformanceTrend::Improving
+        } else {
+            PerformanceTrend::Stable
+        }
     };
 
     Ok(PerformanceSnapshot {
@@ -375,10 +429,13 @@ pub fn scan_security_events(contract_id: &str, network: &str) -> Result<Vec<Secu
 
     // Check 2: Signature mismatch (failed deployments with auth-related error)
     let sig_fail = contract_records.iter().any(|r| {
-        r.error.as_deref().map(|e| {
-            let el = e.to_lowercase();
-            el.contains("signature") || el.contains("bad auth")
-        }).unwrap_or(false)
+        r.error
+            .as_deref()
+            .map(|e| {
+                let el = e.to_lowercase();
+                el.contains("signature") || el.contains("bad auth")
+            })
+            .unwrap_or(false)
     });
     if sig_fail {
         events.push(SecurityEvent::new(
@@ -402,7 +459,9 @@ pub fn scan_security_events(contract_id: &str, network: &str) -> Result<Vec<Secu
     }
 
     // Check 4: Suspicious upgrade (status flips from success → rolled-back)
-    let rollback_present = contract_records.iter().any(|r| r.status == deploy_history::DeployStatus::RolledBack);
+    let rollback_present = contract_records
+        .iter()
+        .any(|r| r.status == deploy_history::DeployStatus::RolledBack);
     if rollback_present {
         events.push(SecurityEvent::new(
             contract_id, network,
@@ -414,7 +473,9 @@ pub fn scan_security_events(contract_id: &str, network: &str) -> Result<Vec<Secu
     }
 
     // Check 5: Abnormal fee spend (any single deploy used > 1 000 000 stroops)
-    let high_fee = contract_records.iter().any(|r| r.fee_stroops.map(|f| f > 1_000_000).unwrap_or(false));
+    let high_fee = contract_records
+        .iter()
+        .any(|r| r.fee_stroops.map(|f| f > 1_000_000).unwrap_or(false));
     if high_fee {
         events.push(SecurityEvent::new(
             contract_id, network,
@@ -477,7 +538,13 @@ pub struct MonitorAlert {
 }
 
 impl MonitorAlert {
-    fn new(level: AlertLevel, title: &str, detail: &str, recommendation: &str, source: &str) -> Self {
+    fn new(
+        level: AlertLevel,
+        title: &str,
+        detail: &str,
+        recommendation: &str,
+        source: &str,
+    ) -> Self {
         Self {
             id: format!("alert-{}", Utc::now().timestamp_millis()),
             level,
@@ -504,7 +571,14 @@ pub fn evaluate_alerts(
             alerts.push(MonitorAlert::new(
                 AlertLevel::Critical,
                 "Contract health is UNHEALTHY",
-                &format!("{} health probe(s) are failing", health.probes.iter().filter(|p| p.status == ContractHealthStatus::Unhealthy).count()),
+                &format!(
+                    "{} health probe(s) are failing",
+                    health
+                        .probes
+                        .iter()
+                        .filter(|p| p.status == ContractHealthStatus::Unhealthy)
+                        .count()
+                ),
                 "Investigate failing probes immediately and consider pausing contract interactions",
                 "health_monitor",
             ));
@@ -526,7 +600,10 @@ pub fn evaluate_alerts(
         alerts.push(MonitorAlert::new(
             AlertLevel::Warning,
             "Deploy latency is elevated",
-            &format!("Average deployment duration is {:.0} ms (threshold: 15 000 ms)", perf.avg_deploy_duration_ms),
+            &format!(
+                "Average deployment duration is {:.0} ms (threshold: 15 000 ms)",
+                perf.avg_deploy_duration_ms
+            ),
             "Optimise WASM artifact size and review signing overhead",
             "performance_tracker",
         ));
@@ -535,7 +612,10 @@ pub fn evaluate_alerts(
         alerts.push(MonitorAlert::new(
             AlertLevel::High,
             "Deployment success rate is below 70 %",
-            &format!("Success rate is {:.1}% over {} deployments", perf.success_rate_pct, perf.total_invocations),
+            &format!(
+                "Success rate is {:.1}% over {} deployments",
+                perf.success_rate_pct, perf.total_invocations
+            ),
             "Audit recent failure causes and ensure pre-flight checks pass before the next rollout",
             "performance_tracker",
         ));
@@ -562,7 +642,9 @@ pub fn evaluate_alerts(
             ));
         }
     }
-    let critical_sec = security_events.iter().any(|s| s.severity == SecurityEventSeverity::Critical);
+    let critical_sec = security_events
+        .iter()
+        .any(|s| s.severity == SecurityEventSeverity::Critical);
     if critical_sec {
         alerts.push(MonitorAlert::new(
             AlertLevel::Critical,
@@ -601,7 +683,10 @@ pub fn dispatch_alert_notifications(contract_id: &str, alerts: &[MonitorAlert]) 
         data.insert("title".to_string(), alert.title.clone());
         data.insert("detail".to_string(), alert.detail.clone());
         data.insert("recommendation".to_string(), alert.recommendation.clone());
-        data.insert("message".to_string(), format!("[{}] {} — {}", alert.level, alert.title, alert.detail));
+        data.insert(
+            "message".to_string(),
+            format!("[{}] {} — {}", alert.level, alert.title, alert.detail),
+        );
 
         let severity = match alert.level {
             AlertLevel::Critical => "critical",
@@ -610,7 +695,8 @@ pub fn dispatch_alert_notifications(contract_id: &str, alerts: &[MonitorAlert]) 
             AlertLevel::Info => "info",
         };
 
-        if let Err(e) = notifications::send_notification("contract_monitor_alert", &data, severity) {
+        if let Err(e) = notifications::send_notification("contract_monitor_alert", &data, severity)
+        {
             tracing::warn!(contract_id = %contract_id, alert_id = %alert.id, error = %e, "failed to dispatch alert notification");
         }
     }
@@ -658,9 +744,16 @@ pub fn render_dashboard(report: &ContractMonitorReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
 
-    let _ = writeln!(out, "\n{} {}",
+    let _ = writeln!(
+        out,
+        "\n{} {}",
         "┌── CONTRACT MONITORING DASHBOARD".bright_cyan().bold(),
-        format!("[{}] [Network: {}]", &report.contract_id[..8.min(report.contract_id.len())], report.network).yellow()
+        format!(
+            "[{}] [Network: {}]",
+            &report.contract_id[..8.min(report.contract_id.len())],
+            report.network
+        )
+        .yellow()
     );
     let _ = writeln!(out, "{}", "└".repeat(72));
 
@@ -681,7 +774,14 @@ pub fn render_dashboard(report: &ContractMonitorReport) -> String {
             ContractHealthStatus::Unhealthy => "✗".red().bold(),
             ContractHealthStatus::Unknown => "?".dimmed(),
         };
-        let _ = writeln!(out, "  {} {:<32} {:>5} ms  {}", sym, probe.name.white(), probe.latency_ms, probe.message.dimmed());
+        let _ = writeln!(
+            out,
+            "  {} {:<32} {:>5} ms  {}",
+            sym,
+            probe.name.white(),
+            probe.latency_ms,
+            probe.message.dimmed()
+        );
     }
 
     // --- Performance section ---
@@ -690,10 +790,26 @@ pub fn render_dashboard(report: &ContractMonitorReport) -> String {
     let perf = &report.performance;
     let _ = writeln!(out, "  Total invocations   : {}", perf.total_invocations);
     let _ = writeln!(out, "  Success rate        : {:.1}%", perf.success_rate_pct);
-    let _ = writeln!(out, "  Avg deploy duration : {:.0} ms", perf.avg_deploy_duration_ms);
-    let _ = writeln!(out, "  p95 deploy duration : {:.0} ms", perf.p95_deploy_duration_ms);
-    let _ = writeln!(out, "  Total fees          : {} stroops", perf.total_fee_stroops);
-    let _ = writeln!(out, "  Avg fees            : {:.0} stroops", perf.avg_fee_stroops);
+    let _ = writeln!(
+        out,
+        "  Avg deploy duration : {:.0} ms",
+        perf.avg_deploy_duration_ms
+    );
+    let _ = writeln!(
+        out,
+        "  p95 deploy duration : {:.0} ms",
+        perf.p95_deploy_duration_ms
+    );
+    let _ = writeln!(
+        out,
+        "  Total fees          : {} stroops",
+        perf.total_fee_stroops
+    );
+    let _ = writeln!(
+        out,
+        "  Avg fees            : {:.0} stroops",
+        perf.avg_fee_stroops
+    );
     let trend_colored = match perf.trend {
         PerformanceTrend::Improving => "↑ improving".green(),
         PerformanceTrend::Stable => "→ stable".cyan(),
@@ -713,7 +829,13 @@ pub fn render_dashboard(report: &ContractMonitorReport) -> String {
             SecurityEventSeverity::Low => "[LOW]".cyan(),
             SecurityEventSeverity::Info => "[INFO]".dimmed(),
         };
-        let _ = writeln!(out, "  {} {} — {}", sev_tag, ev.kind.to_string().white(), ev.description.dimmed());
+        let _ = writeln!(
+            out,
+            "  {} {} — {}",
+            sev_tag,
+            ev.kind.to_string().white(),
+            ev.description.dimmed()
+        );
         let _ = writeln!(out, "     → {}", ev.recommendation.green());
     }
 
@@ -747,7 +869,10 @@ mod tests {
 
     #[test]
     fn health_report_unknown_contract_is_not_unhealthy() {
-        let report = ContractHealthReport::run("CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "testnet");
+        let report = ContractHealthReport::run(
+            "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "testnet",
+        );
         // Unknown contract id won't trigger Unhealthy — only Unknown/Healthy
         assert_ne!(report.overall_status, ContractHealthStatus::Unhealthy);
     }
@@ -756,7 +881,11 @@ mod tests {
     fn invalid_contract_id_produces_unhealthy_probe() {
         let report = ContractHealthReport::run("INVALID", "testnet");
         assert_eq!(report.overall_status, ContractHealthStatus::Unhealthy);
-        let id_probe = report.probes.iter().find(|p| p.name == "contract_id_format").unwrap();
+        let id_probe = report
+            .probes
+            .iter()
+            .find(|p| p.name == "contract_id_format")
+            .unwrap();
         assert_eq!(id_probe.status, ContractHealthStatus::Unhealthy);
     }
 
@@ -765,7 +894,8 @@ mod tests {
         let snap = build_performance_snapshot(
             "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "testnet",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(snap.total_invocations, 0);
         assert_eq!(snap.success_rate_pct, 0.0);
         assert_eq!(snap.trend, PerformanceTrend::Insufficient);
@@ -776,7 +906,8 @@ mod tests {
         let events = scan_security_events(
             "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "testnet",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(!events.is_empty());
         assert!(events.iter().any(|e| e.kind == SecurityEventKind::Info));
     }
@@ -790,15 +921,19 @@ mod tests {
         let perf = build_performance_snapshot(
             "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "testnet",
-        ).unwrap();
+        )
+        .unwrap();
         let sec = scan_security_events(
             "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "testnet",
-        ).unwrap();
+        )
+        .unwrap();
         let alerts = evaluate_alerts(&health, &perf, &sec);
         assert!(!alerts.is_empty());
         // With no real data the only alert should be Info
-        assert!(alerts.iter().all(|a| a.level == AlertLevel::Info || a.level == AlertLevel::Warning));
+        assert!(alerts
+            .iter()
+            .all(|a| a.level == AlertLevel::Info || a.level == AlertLevel::Warning));
     }
 
     #[test]
@@ -806,7 +941,8 @@ mod tests {
         let report = ContractMonitorReport::build(
             "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "testnet",
-        ).unwrap();
+        )
+        .unwrap();
         let dash = render_dashboard(&report);
         assert!(dash.contains("CONTRACT MONITORING DASHBOARD"));
         assert!(dash.contains("HEALTH STATUS"));

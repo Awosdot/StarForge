@@ -30,7 +30,6 @@ pub mod backup;
 pub mod benchmark;
 pub mod bridge;
 pub mod collab;
-pub mod collab;
 pub mod command_tree;
 pub mod complete;
 pub mod completions;
