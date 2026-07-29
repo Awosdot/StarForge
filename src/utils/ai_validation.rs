@@ -93,8 +93,14 @@ impl AIResponseValidator {
             layers.push(self.check_content(response));
         }
 
-        let passed = layers.iter().all(|l| l.passed || matches!(l.severity, Severity::Warning));
-        let sanitized = if passed { Some(response.to_string()) } else { None };
+        let passed = layers
+            .iter()
+            .all(|l| l.passed || matches!(l.severity, Severity::Warning));
+        let sanitized = if passed {
+            Some(response.to_string())
+        } else {
+            None
+        };
 
         ValidationResult {
             passed,
@@ -220,7 +226,7 @@ impl AIResponseValidator {
     }
 
     fn check_soroban_compatibility(&self, response: &str) -> LayerResult {
-        let mut warnings = Vec::new();
+        let mut warnings: Vec<String> = Vec::new();
 
         if response.contains("#[no_mangle]") && !response.contains("extern") {
             warnings.push("#[no_mangle] without extern may not be Soroban-compatible".into());
@@ -261,7 +267,8 @@ impl AIResponseValidator {
             };
         }
 
-        let has_code = response.contains("```") || response.contains("fn ") || response.contains("pub ");
+        let has_code =
+            response.contains("```") || response.contains("fn ") || response.contains("pub ");
         if !has_code && response.len() > 500 {
             return LayerResult {
                 name: "format".into(),
@@ -380,7 +387,10 @@ mod tests {
         let code = "pub fn foo() -> u32 { 42";
         let result = validator.validate(code, "rust");
         assert!(!result.passed);
-        assert!(result.layers.iter().any(|l| l.name == "syntax" && !l.passed));
+        assert!(result
+            .layers
+            .iter()
+            .any(|l| l.name == "syntax" && !l.passed));
     }
 
     #[test]

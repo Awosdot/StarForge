@@ -472,7 +472,10 @@ pub fn generate_cost_report_from(
     let min_fee = fees.iter().cloned().fold(f64::INFINITY, f64::min);
     let max_fee = fees.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
 
-    let total_gas: u64 = filtered.iter().map(|e| e.estimate.gas.total_gas_stroops).sum();
+    let total_gas: u64 = filtered
+        .iter()
+        .map(|e| e.estimate.gas.total_gas_stroops)
+        .sum();
     let total_storage: u64 = filtered
         .iter()
         .map(|e| e.estimate.storage.total_storage_stroops)
@@ -489,13 +492,16 @@ pub fn generate_cost_report_from(
             *category_counts.entry(s.category.clone()).or_insert(0) += 1;
         }
     }
-    let mut top_suggestion_categories: Vec<(String, usize)> =
-        category_counts.into_iter().collect();
+    let mut top_suggestion_categories: Vec<(String, usize)> = category_counts.into_iter().collect();
     top_suggestion_categories.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
     let most_expensive = filtered
         .iter()
-        .max_by(|a, b| a.estimate.total_fee_stroops.cmp(&b.estimate.total_fee_stroops))
+        .max_by(|a, b| {
+            a.estimate
+                .total_fee_stroops
+                .cmp(&b.estimate.total_fee_stroops)
+        })
         .map(|e| (*e).clone());
 
     CostReport {
@@ -524,9 +530,15 @@ pub fn generate_cost_report(network: Option<&str>) -> Result<CostReport> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::cost_estimation::{CostOptimizationSuggestion, GasBreakdown, StorageFeeBreakdown};
+    use crate::utils::cost_estimation::{
+        CostOptimizationSuggestion, GasBreakdown, StorageFeeBreakdown,
+    };
 
-    fn make_estimate(network: &str, total_stroops: u64, estimated_at: DateTime<Utc>) -> CostEstimate {
+    fn make_estimate(
+        network: &str,
+        total_stroops: u64,
+        estimated_at: DateTime<Utc>,
+    ) -> CostEstimate {
         CostEstimate {
             network: network.to_string(),
             wasm_path: "dummy.wasm".to_string(),
@@ -560,7 +572,12 @@ mod tests {
         }
     }
 
-    fn make_entry(id: &str, network: &str, total_stroops: u64, estimated_at: DateTime<Utc>) -> CostHistoryEntry {
+    fn make_entry(
+        id: &str,
+        network: &str,
+        total_stroops: u64,
+        estimated_at: DateTime<Utc>,
+    ) -> CostHistoryEntry {
         CostHistoryEntry {
             id: id.to_string(),
             estimate: make_estimate(network, total_stroops, estimated_at),
@@ -573,7 +590,10 @@ mod tests {
     fn budget_period_parses_common_spellings() {
         assert_eq!(BudgetPeriod::parse("daily").unwrap(), BudgetPeriod::Daily);
         assert_eq!(BudgetPeriod::parse("Week").unwrap(), BudgetPeriod::Weekly);
-        assert_eq!(BudgetPeriod::parse("MONTHLY").unwrap(), BudgetPeriod::Monthly);
+        assert_eq!(
+            BudgetPeriod::parse("MONTHLY").unwrap(),
+            BudgetPeriod::Monthly
+        );
         assert!(BudgetPeriod::parse("fortnightly").is_err());
     }
 
@@ -681,7 +701,10 @@ mod tests {
 
         let forecast = forecast_from(&history, "testnet", 2).unwrap();
         assert_eq!(forecast.sample_size, 5);
-        assert!(forecast.trend_xlm_per_deployment > 0.0, "cost is rising, trend should be positive");
+        assert!(
+            forecast.trend_xlm_per_deployment > 0.0,
+            "cost is rising, trend should be positive"
+        );
         assert_eq!(forecast.projected.len(), 2);
         // Projections should continue the upward trend beyond the last sample.
         assert!(forecast.projected[0].projected_fee_xlm > forecast.avg_fee_xlm);

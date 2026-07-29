@@ -734,99 +734,126 @@ mod tests {
         assert_eq!(summary.success_rate, 100.0);
     }
 
+    fn run_with_temp_home<F>(test: F)
+    where
+        F: FnOnce(),
+    {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", tmp.path());
+        std::env::set_var("USERPROFILE", tmp.path());
+        test();
+    }
+
     #[test]
     fn test_analyze_bottlenecks() {
-        let _home_guard = crate::utils::lock_home_env();
-        let contract_id = format!("TEST_{}", chrono::Utc::now().timestamp_millis());
-        let base_time = chrono::Utc::now();
+        run_with_temp_home(|| {
+            let contract_id = format!(
+                "TEST_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                rand::random::<u64>()
+            );
+            let base_time = chrono::Utc::now();
 
-        for i in 0..10 {
-            let record = GasUsageRecord {
-                contract_id: contract_id.clone(),
-                operation: if i % 3 == 0 {
-                    "transfer".to_string()
-                } else {
-                    "query".to_string()
-                },
-                gas_used: (i * 1000 + 500) as u64,
-                timestamp: (base_time + chrono::Duration::seconds(i as i64)).to_rfc3339(),
-                success: i % 5 != 0,
-                execution_time_ms: (i * 100 + 100) as u64,
-                memory_used: None,
-                network: "testnet".to_string(),
-            };
-            record_gas_usage(&record).unwrap();
-        }
+            for i in 0..10 {
+                let record = GasUsageRecord {
+                    contract_id: contract_id.clone(),
+                    operation: if i % 3 == 0 {
+                        "transfer".to_string()
+                    } else {
+                        "query".to_string()
+                    },
+                    gas_used: (i * 1000 + 500) as u64,
+                    timestamp: (base_time + chrono::Duration::seconds(i as i64)).to_rfc3339(),
+                    success: i % 5 != 0,
+                    execution_time_ms: (i * 100 + 100) as u64,
+                    memory_used: None,
+                    network: "testnet".to_string(),
+                };
+                record_gas_usage(&record).unwrap();
+            }
 
-        let loaded = get_gas_history(&contract_id).unwrap();
-        assert_eq!(loaded.len(), 10);
+            let loaded = get_gas_history(&contract_id).unwrap();
+            assert_eq!(loaded.len(), 10);
 
-        let analysis = analyze_bottlenecks(&contract_id).unwrap();
-        assert!(analysis.overall_score >= 0.0);
-        assert!(!analysis.bottleneck_operations.is_empty());
+            let analysis = analyze_bottlenecks(&contract_id).unwrap();
+            assert!(analysis.overall_score >= 0.0);
+            assert!(!analysis.bottleneck_operations.is_empty());
+        });
     }
 
     #[test]
     fn test_detect_regression() {
-        let _home_guard = crate::utils::lock_home_env();
-        let contract_id = format!("REGRESSION_{}", chrono::Utc::now().timestamp_millis());
-        let base_time = chrono::Utc::now();
+        run_with_temp_home(|| {
+            let contract_id = format!(
+                "REGRESSION_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                rand::random::<u64>()
+            );
+            let base_time = chrono::Utc::now();
 
-        for i in 0..10 {
-            let record = GasUsageRecord {
-                contract_id: contract_id.clone(),
-                operation: "operation".to_string(),
-                gas_used: if i < 5 {
-                    10000 + i as u64 * 500
-                } else {
-                    15000 + i as u64 * 500
-                },
-                timestamp: (base_time + chrono::Duration::seconds(i as i64)).to_rfc3339(),
-                success: true,
-                execution_time_ms: if i < 5 {
-                    500 + i as u64 * 50
-                } else {
-                    1000 + i as u64 * 50
-                },
-                memory_used: None,
-                network: "testnet".to_string(),
-            };
-            record_gas_usage(&record).unwrap();
-        }
+            for i in 0..10 {
+                let record = GasUsageRecord {
+                    contract_id: contract_id.clone(),
+                    operation: "operation".to_string(),
+                    gas_used: if i < 5 {
+                        10000 + i as u64 * 500
+                    } else {
+                        15000 + i as u64 * 500
+                    },
+                    timestamp: (base_time + chrono::Duration::seconds(i as i64)).to_rfc3339(),
+                    success: true,
+                    execution_time_ms: if i < 5 {
+                        500 + i as u64 * 50
+                    } else {
+                        1000 + i as u64 * 50
+                    },
+                    memory_used: None,
+                    network: "testnet".to_string(),
+                };
+                record_gas_usage(&record).unwrap();
+            }
 
-        let loaded = get_gas_history(&contract_id).unwrap();
-        assert_eq!(loaded.len(), 10);
+            let loaded = get_gas_history(&contract_id).unwrap();
+            assert_eq!(loaded.len(), 10);
 
-        let report = detect_regression(&contract_id, 24).unwrap();
-        assert!(!report.regression_points.is_empty());
-        assert!(!report.trends.is_empty());
+            let report = detect_regression(&contract_id, 24).unwrap();
+            assert!(!report.regression_points.is_empty());
+            assert!(!report.trends.is_empty());
+        });
     }
 
     #[test]
     fn test_compare_profiles() {
-        let _home_guard = crate::utils::lock_home_env();
-        let contract_id = format!("COMPARE_{}", chrono::Utc::now().timestamp_millis());
-        let base_time = chrono::Utc::now();
+        run_with_temp_home(|| {
+            let contract_id = format!(
+                "COMPARE_{}_{}",
+                chrono::Utc::now().timestamp_millis(),
+                rand::random::<u64>()
+            );
+            let base_time = chrono::Utc::now();
 
-        for i in 0..8 {
-            let record = GasUsageRecord {
-                contract_id: contract_id.clone(),
-                operation: "test_op".to_string(),
-                gas_used: 10000 + i as u64 * 1000,
-                timestamp: (base_time - chrono::Duration::seconds((8 - i) as i64)).to_rfc3339(),
-                success: true,
-                execution_time_ms: 500 + i * 50,
-                memory_used: None,
-                network: "testnet".to_string(),
-            };
-            record_gas_usage(&record).unwrap();
-        }
+            for i in 0..8 {
+                let record = GasUsageRecord {
+                    contract_id: contract_id.clone(),
+                    operation: "test_op".to_string(),
+                    gas_used: 10000 + i as u64 * 1000,
+                    timestamp: (base_time - chrono::Duration::seconds((8 - i) as i64)).to_rfc3339(),
+                    success: true,
+                    execution_time_ms: 500 + i * 50,
+                    memory_used: None,
+                    network: "testnet".to_string(),
+                };
+                record_gas_usage(&record).unwrap();
+            }
 
-        let loaded = get_gas_history(&contract_id).unwrap();
-        assert_eq!(loaded.len(), 8);
+            let loaded = get_gas_history(&contract_id).unwrap();
+            assert_eq!(loaded.len(), 8);
 
-        let report = compare_profiles(&contract_id, 24).unwrap();
-        assert_eq!(report.snapshots.len(), 8);
-        assert!(!report.performance_differences.is_empty() || report.recommendations.is_empty());
+            let report = compare_profiles(&contract_id, 24).unwrap();
+            assert_eq!(report.snapshots.len(), 8);
+            assert!(
+                !report.performance_differences.is_empty() || report.recommendations.is_empty()
+            );
+        });
     }
 }

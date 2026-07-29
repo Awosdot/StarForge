@@ -357,7 +357,12 @@ pub fn reset_progress() -> Result<()> {
 
 /// Records an exercise attempt, marks the parent lesson complete once at
 /// least one exercise for it has been answered correctly, and persists.
-pub fn record_answer(progress: &mut TrainingProgress, lesson_id: &str, exercise_id: &str, correct: bool) {
+pub fn record_answer(
+    progress: &mut TrainingProgress,
+    lesson_id: &str,
+    exercise_id: &str,
+    correct: bool,
+) {
     let entry = progress
         .exercise_results
         .entry(exercise_id.to_string())
@@ -441,7 +446,10 @@ mod tests {
         let lesson = find_lesson("vulnerability-patterns-101").unwrap();
         if let Exercise::SpotTheVulnerability { code, category, .. } = &lesson.exercises[0] {
             assert!(grade_spot_the_vulnerability(code, category));
-            assert!(!grade_spot_the_vulnerability(code, &VulnerabilityCategory::AccessControl));
+            assert!(!grade_spot_the_vulnerability(
+                code,
+                &VulnerabilityCategory::AccessControl
+            ));
         } else {
             panic!("expected SpotTheVulnerability exercise");
         }
@@ -450,16 +458,30 @@ mod tests {
     #[test]
     fn record_answer_marks_lesson_complete_on_correct() {
         let mut progress = TrainingProgress::default();
-        record_answer(&mut progress, "secure-coding-101", "secure-coding-101-q1", true);
-        assert!(progress.completed_lessons.contains(&"secure-coding-101".to_string()));
+        record_answer(
+            &mut progress,
+            "secure-coding-101",
+            "secure-coding-101-q1",
+            true,
+        );
+        assert!(progress
+            .completed_lessons
+            .contains(&"secure-coding-101".to_string()));
         assert_eq!(progress.exercise_results.len(), 1);
     }
 
     #[test]
     fn record_answer_does_not_complete_lesson_on_incorrect() {
         let mut progress = TrainingProgress::default();
-        record_answer(&mut progress, "secure-coding-101", "secure-coding-101-q1", false);
-        assert!(!progress.completed_lessons.contains(&"secure-coding-101".to_string()));
+        record_answer(
+            &mut progress,
+            "secure-coding-101",
+            "secure-coding-101-q1",
+            false,
+        );
+        assert!(!progress
+            .completed_lessons
+            .contains(&"secure-coding-101".to_string()));
     }
 
     #[test]
@@ -471,7 +493,9 @@ mod tests {
     #[test]
     fn recommend_next_lesson_skips_completed() {
         let mut progress = TrainingProgress::default();
-        progress.completed_lessons.push("secure-coding-101".to_string());
+        progress
+            .completed_lessons
+            .push("secure-coding-101".to_string());
         let next = recommend_next_lesson(&progress);
         assert!(next.is_some());
         assert_ne!(next.unwrap().id, "secure-coding-101");

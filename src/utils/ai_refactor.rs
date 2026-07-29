@@ -17,6 +17,7 @@ use crate::utils::print as p;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::Subcommand;
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -343,24 +344,66 @@ const SYSTEM_CONTEXT: &str = "You are an expert Soroban smart contract developer
 
 pub async fn handle(cmd: RefactorCommands) -> Result<()> {
     match cmd {
-        RefactorCommands::ExtractFunction { file, name, model, output } => {
-            handle_refactor(file, &model, &name.as_deref().unwrap_or("extracted"), TaskType::ExtractFunction, output).await
+        RefactorCommands::ExtractFunction {
+            file,
+            name,
+            model,
+            output,
+        } => {
+            handle_refactor(
+                &file,
+                &model,
+                &name.as_deref().unwrap_or("extracted"),
+                TaskType::ExtractFunction,
+                output,
+            )
+            .await
         }
-        RefactorCommands::RenameVariables { file, old, new, model, output } => {
-            handle_refactor(file, &model, &format!("{old}->{new}"), TaskType::RenameVariables, output).await
+        RefactorCommands::RenameVariables {
+            file,
+            old,
+            new,
+            model,
+            output,
+        } => {
+            handle_refactor(
+                &file,
+                &model,
+                &format!("{old}->{new}"),
+                TaskType::RenameVariables,
+                output,
+            )
+            .await
         }
-        RefactorCommands::Simplify { file, model, output } => {
-            handle_refactor(file, &model, "simplify", TaskType::Simplify, output).await
+        RefactorCommands::Simplify {
+            file,
+            model,
+            output,
+        } => handle_refactor(&file, &model, "simplify", TaskType::Simplify, output).await,
+        RefactorCommands::ImproveStructure {
+            file,
+            model,
+            output,
+        } => {
+            handle_refactor(
+                &file,
+                &model,
+                "improve-structure",
+                TaskType::ImproveStructure,
+                output,
+            )
+            .await
         }
-        RefactorCommands::ImproveStructure { file, model, output } => {
-            handle_refactor(file, &model, "improve-structure", TaskType::ImproveStructure, output).await
-        }
-        RefactorCommands::AddDocs { file, model, output } => {
-            handle_refactor(file, &model, "add-docs", TaskType::AddDocs, output).await
-        }
-        RefactorCommands::Optimize { file, model, output } => {
-            handle_refactor(file, &model, "optimize", TaskType::Optimize, output).await
-        }
+        RefactorCommands::AddDocs {
+            file,
+            model,
+            output,
+        } => handle_refactor(&file, &model, "add-docs", TaskType::AddDocs, output).await,
+        RefactorCommands::Optimize {
+            file,
+            model,
+            output,
+        } => handle_refactor(&file, &model, "optimize", TaskType::Optimize, output).await,
         RefactorCommands::Diff { session } => handle_diff(session),
         RefactorCommands::Rollback { session } => handle_rollback(session),
         RefactorCommands::Sessions => handle_sessions(),
@@ -429,7 +472,10 @@ async fn handle_refactor(
         num_ctx: Some(8192),
     };
 
-    let spinner = p::spinner(&format!("Running {} refactoring...", task_label.to_lowercase()));
+    let spinner = p::spinner(&format!(
+        "Running {} refactoring...",
+        task_label.to_lowercase()
+    ));
     let response = ollama::generate(model, &prompt, Some(opts))
         .await
         .with_context(|| format!("LLM {} refactoring failed", task_label.to_lowercase()))?;
@@ -445,7 +491,10 @@ async fn handle_refactor(
     let session_id = format!(
         "refactor-{}-{}",
         Utc::now().format("%Y%m%d-%H%M%S"),
-        sha256::hash(&refactored).chars().take(8).collect::<String>()
+        sha256::hash(&refactored)
+            .chars()
+            .take(8)
+            .collect::<String>()
     );
 
     // Save session for tracking/rollback
@@ -468,7 +517,7 @@ async fn handle_refactor(
     if out_path == file {
         let backup_path = file.with_extension("rs.bak");
         fs::write(&backup_path, &code)?;
-        p::kv("Backup", backup_path.display().to_string());
+        p::kv("Backup", &backup_path.display().to_string());
     }
 
     fs::write(out_path, refactored)?;
@@ -500,8 +549,14 @@ async fn handle_refactor(
     println!();
     println!("{}", report.diff_summary);
     println!();
-    p::info(&format!("Use `starforge ai refactor diff {}` to see the full before/after.", session_id));
-    p::info(&format!("Use `starforge ai refactor rollback {}` to undo this change.", session_id));
+    p::info(&format!(
+        "Use `starforge ai refactor diff {}` to see the full before/after.",
+        session_id
+    ));
+    p::info(&format!(
+        "Use `starforge ai refactor rollback {}` to undo this change.",
+        session_id
+    ));
     p::separator();
     Ok(())
 }
@@ -522,7 +577,11 @@ fn handle_diff(session_id: String) -> Result<()> {
         println!("  {} {}", "-".red(), line);
     }
     if session.original_content.lines().count() > 20 {
-        println!("  {} ... ({} more lines)", ".".dimmed(), session.original_content.lines().count() - 20);
+        println!(
+            "  {} ... ({} more lines)",
+            ".".dimmed(),
+            session.original_content.lines().count() - 20
+        );
     }
     println!();
 
@@ -531,15 +590,30 @@ fn handle_diff(session_id: String) -> Result<()> {
         println!("  {} {}", "+".green(), line);
     }
     if session.refactored_content.lines().count() > 20 {
-        println!("  {} ... ({} more lines)", ".".dimmed(), session.refactored_content.lines().count() - 20);
+        println!(
+            "  {} ... ({} more lines)",
+            ".".dimmed(),
+            session.refactored_content.lines().count() - 20
+        );
     }
     println!();
 
     p::step(3, 3, "Summary");
-    p::kv("Original lines", &session.original_content.lines().count().to_string());
-    p::kv("Refactored lines", &session.refactored_content.lines().count().to_string());
-    let delta = session.refactored_content.lines().count() as i64 - session.original_content.lines().count() as i64;
-    let delta_str = if delta >= 0 { format!("+{}", delta) } else { delta.to_string() };
+    p::kv(
+        "Original lines",
+        &session.original_content.lines().count().to_string(),
+    );
+    p::kv(
+        "Refactored lines",
+        &session.refactored_content.lines().count().to_string(),
+    );
+    let delta = session.refactored_content.lines().count() as i64
+        - session.original_content.lines().count() as i64;
+    let delta_str = if delta >= 0 {
+        format!("+{}", delta)
+    } else {
+        delta.to_string()
+    };
     p::kv("Line delta", &delta_str);
     p::separator();
     Ok(())
@@ -576,7 +650,10 @@ fn handle_rollback(session_id: String) -> Result<()> {
     session.success = false;
     save_session(&session)?;
 
-    p::success(&format!("Rolled back {} to original state.", session.refactoring_type));
+    p::success(&format!(
+        "Rolled back {} to original state.",
+        session.refactoring_type
+    ));
     p::kv("Restored file", &file_path.display().to_string());
     p::kv("Rollback backup", &rollback_backup.display().to_string());
     p::info("The current refactored version is saved as a rollback backup.");
@@ -596,7 +673,13 @@ fn handle_sessions() -> Result<()> {
         return Ok(());
     }
 
-    println!("  {:<30}  {:<20}  {:<15}  {}", "ID".dimmed(), "Type".dimmed(), "File".dimmed(), "Timestamp".dimmed());
+    println!(
+        "  {:<30}  {:<20}  {:<15}  {}",
+        "ID".dimmed(),
+        "Type".dimmed(),
+        "File".dimmed(),
+        "Timestamp".dimmed()
+    );
     println!("  {}", "-".repeat(100).dimmed());
 
     for session in &sessions {

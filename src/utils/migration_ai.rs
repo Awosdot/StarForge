@@ -139,9 +139,25 @@ pub fn analyze_contract_compatibility(
     let from_ver = config.old_sdk_version.as_deref().unwrap_or("unknown");
     let to_ver = config.new_sdk_version.as_deref().unwrap_or("unknown");
 
-    analyze_function_changes(old_specs, new_specs, &mut breaking_changes, &mut suggestions);
-    analyze_type_changes(old_specs, new_specs, &mut breaking_changes, &mut suggestions);
-    analyze_storage_layout(old_specs, new_specs, &mut storage_changes, &mut breaking_changes, &mut suggestions);
+    analyze_function_changes(
+        old_specs,
+        new_specs,
+        &mut breaking_changes,
+        &mut suggestions,
+    );
+    analyze_type_changes(
+        old_specs,
+        new_specs,
+        &mut breaking_changes,
+        &mut suggestions,
+    );
+    analyze_storage_layout(
+        old_specs,
+        new_specs,
+        &mut storage_changes,
+        &mut breaking_changes,
+        &mut suggestions,
+    );
     analyze_sdk_upgrade(config, &mut breaking_changes, &mut suggestions);
     analyze_protocol_upgrade(config, &mut breaking_changes, &mut suggestions);
 
@@ -212,7 +228,10 @@ fn analyze_function_changes(
                 severity: Severity::Major,
                 title: format!("Function `{}` signature changed", name),
                 description: format!("Old: `{}`\nNew: `{}`", old_fns[name], sig),
-                migration_guide: format!("Update all call sites for `{}` to match the new signature.", name),
+                migration_guide: format!(
+                    "Update all call sites for `{}` to match the new signature.",
+                    name
+                ),
                 affected_items: vec![name.clone()],
             });
         }
@@ -234,8 +253,14 @@ fn analyze_type_changes(
                 category: "type_removed".into(),
                 severity: Severity::Critical,
                 title: format!("Type `{}` removed", name),
-                description: format!("The user-defined type `{}` ({}) has been removed in the new version.", name, def),
-                migration_guide: format!("Replace all usages of `{}` with the new type or inline equivalent.", name),
+                description: format!(
+                    "The user-defined type `{}` ({}) has been removed in the new version.",
+                    name, def
+                ),
+                migration_guide: format!(
+                    "Replace all usages of `{}` with the new type or inline equivalent.",
+                    name
+                ),
                 affected_items: vec![name.clone()],
             });
         } else if new_types.get(name) != Some(def) {
@@ -269,7 +294,10 @@ fn analyze_storage_layout(
                 scope: "instance".into(),
                 old_type: None,
                 new_type: None,
-                description: format!("Storage key `{}` present in old version but missing in new version", key),
+                description: format!(
+                    "Storage key `{}` present in old version but missing in new version",
+                    key
+                ),
             };
             storage_changes.push(change);
 
@@ -277,8 +305,14 @@ fn analyze_storage_layout(
                 category: "storage_key_removed".into(),
                 severity: Severity::Major,
                 title: format!("Storage key `{}` removed", key),
-                description: format!("The storage entry `{}` is no longer used in the new contract version.", key),
-                migration_guide: format!("Add a migration step to remove stale key `{}` from storage.", key),
+                description: format!(
+                    "The storage entry `{}` is no longer used in the new contract version.",
+                    key
+                ),
+                migration_guide: format!(
+                    "Add a migration step to remove stale key `{}` from storage.",
+                    key
+                ),
                 affected_items: vec![key.clone()],
             });
         }
@@ -436,7 +470,9 @@ fn build_migration_steps(
             order: order,
             action: "export_storage".into(),
             description: "Export current contract storage to a snapshot".into(),
-            command: Some("starforge inspect storage --contract <CONTRACT_ID> --json > snapshot.json".into()),
+            command: Some(
+                "starforge inspect storage --contract <CONTRACT_ID> --json > snapshot.json".into(),
+            ),
             code_template: None,
             validation: Some("Verify snapshot.json is valid JSON and contains entries".into()),
         });
@@ -447,10 +483,16 @@ fn build_migration_steps(
             for sc in storage_changes {
                 match sc.change_type.as_str() {
                     "removed" => {
-                        ops.push(format!("  - {{ \"op\": \"remove_field\", \"key\": \"{}\" }}", sc.key));
+                        ops.push(format!(
+                            "  - {{ \"op\": \"remove_field\", \"key\": \"{}\" }}",
+                            sc.key
+                        ));
                     }
                     "added" => {
-                        ops.push(format!("  - {{ \"op\": \"add_field\", \"key\": \"{}\", \"default\": null }}", sc.key));
+                        ops.push(format!(
+                            "  - {{ \"op\": \"add_field\", \"key\": \"{}\", \"default\": null }}",
+                            sc.key
+                        ));
                     }
                     _ => {}
                 }
@@ -485,7 +527,9 @@ fn build_migration_steps(
                 order: order,
                 action: "test_migration".into(),
                 description: "Dry-run migration to verify rules produce expected output".into(),
-                command: Some("starforge migrate test --sample snapshot.json --rules rules.json".into()),
+                command: Some(
+                    "starforge migrate test --sample snapshot.json --rules rules.json".into(),
+                ),
                 code_template: None,
                 validation: Some("Check that dry-run output matches expected schema".into()),
             });
@@ -548,10 +592,7 @@ fn generate_migration_code_stub(
 ) -> String {
     let mut snippet = String::new();
 
-    snippet.push_str(&format!(
-        "// Migration function for {}\n",
-        contract_name
-    ));
+    snippet.push_str(&format!("// Migration function for {}\n", contract_name));
     snippet.push_str("// Generated by starforge migrate-ai\n\n");
     snippet.push_str("#[allow(unused)]\n");
     snippet.push_str(&format!(
@@ -630,13 +671,26 @@ fn generate_rollback_strategy(
     Some(strategy)
 }
 
-fn estimate_effort(breaking_changes: &[BreakingChange], storage_changes: &[StorageChange]) -> String {
-    let total_critical = breaking_changes.iter().filter(|c| c.severity == Severity::Critical).count();
-    let total_major = breaking_changes.iter().filter(|c| c.severity == Severity::Major).count();
-    let total_minor = breaking_changes.iter().filter(|c| c.severity == Severity::Minor).count();
+fn estimate_effort(
+    breaking_changes: &[BreakingChange],
+    storage_changes: &[StorageChange],
+) -> String {
+    let total_critical = breaking_changes
+        .iter()
+        .filter(|c| c.severity == Severity::Critical)
+        .count();
+    let total_major = breaking_changes
+        .iter()
+        .filter(|c| c.severity == Severity::Major)
+        .count();
+    let total_minor = breaking_changes
+        .iter()
+        .filter(|c| c.severity == Severity::Minor)
+        .count();
     let storage_count = storage_changes.len();
 
-    let estimated_hours = (total_critical * 4) + (total_major * 2) + total_minor + (storage_count / 2);
+    let estimated_hours =
+        (total_critical * 4) + (total_major * 2) + total_minor + (storage_count / 2);
 
     if estimated_hours == 0 {
         "negligible (minutes)".to_string()
@@ -810,10 +864,7 @@ fn parse_spec_entry(bytes: &[u8]) -> Result<(String, usize)> {
         .collect();
 
     let consumed = bytes.len().min(256);
-    Ok((
-        format!("{}:{}", xdr_type, preview.trim()),
-        consumed,
-    ))
+    Ok((format!("{}:{}", xdr_type, preview.trim()), consumed))
 }
 
 pub fn extract_wasm_hash(wasm_bytes: &[u8]) -> String {
@@ -865,7 +916,11 @@ mod tests {
         };
         let plan = analyze_contract_compatibility(&old, &new, "old", "new", &config).unwrap();
         assert_eq!(plan.compatibility, Compatibility::Incompatible);
-        let critical: Vec<_> = plan.breaking_changes.iter().filter(|c| c.severity == Severity::Critical).collect();
+        let critical: Vec<_> = plan
+            .breaking_changes
+            .iter()
+            .filter(|c| c.severity == Severity::Critical)
+            .collect();
         assert_eq!(critical.len(), 1);
         assert!(critical[0].title.contains("goodbye"));
     }
@@ -886,7 +941,11 @@ mod tests {
             contract_name: None,
         };
         let plan = analyze_contract_compatibility(&old, &new, "old", "new", &config).unwrap();
-        let major: Vec<_> = plan.breaking_changes.iter().filter(|c| c.severity == Severity::Major).collect();
+        let major: Vec<_> = plan
+            .breaking_changes
+            .iter()
+            .filter(|c| c.severity == Severity::Major)
+            .collect();
         assert_eq!(major.len(), 1);
         assert!(major[0].title.contains("add"));
     }
@@ -907,7 +966,11 @@ mod tests {
             contract_name: None,
         };
         let plan = analyze_contract_compatibility(&old, &new, "old", "new", &config).unwrap();
-        let sdk_changes: Vec<_> = plan.breaking_changes.iter().filter(|c| c.category == "sdk_major_upgrade").collect();
+        let sdk_changes: Vec<_> = plan
+            .breaking_changes
+            .iter()
+            .filter(|c| c.category == "sdk_major_upgrade")
+            .collect();
         assert_eq!(sdk_changes.len(), 1);
         assert!(sdk_changes[0].title.contains("20.0.0"));
     }
@@ -928,7 +991,11 @@ mod tests {
             contract_name: None,
         };
         let plan = analyze_contract_compatibility(&old, &new, "old", "new", &config).unwrap();
-        let proto_changes: Vec<_> = plan.breaking_changes.iter().filter(|c| c.category == "protocol_upgrade").collect();
+        let proto_changes: Vec<_> = plan
+            .breaking_changes
+            .iter()
+            .filter(|c| c.category == "protocol_upgrade")
+            .collect();
         assert_eq!(proto_changes.len(), 1);
     }
 
@@ -948,8 +1015,14 @@ mod tests {
             contract_name: Some("Token".into()),
         };
         let plan = analyze_contract_compatibility(&old, &new, "old", "new", &config).unwrap();
-        assert!(plan.storage_changes.iter().any(|s| s.key == "admin" && s.change_type == "removed"));
-        assert!(plan.storage_changes.iter().any(|s| s.key == "owner" && s.change_type == "added"));
+        assert!(plan
+            .storage_changes
+            .iter()
+            .any(|s| s.key == "admin" && s.change_type == "removed"));
+        assert!(plan
+            .storage_changes
+            .iter()
+            .any(|s| s.key == "owner" && s.change_type == "added"));
     }
 
     #[test]
@@ -969,7 +1042,11 @@ mod tests {
         };
         let plan = analyze_contract_compatibility(&old, &new, "old", "new", &config).unwrap();
         assert!(plan.rollback_strategy.is_some());
-        assert!(plan.rollback_strategy.as_ref().unwrap().contains("Rollback"));
+        assert!(plan
+            .rollback_strategy
+            .as_ref()
+            .unwrap()
+            .contains("Rollback"));
     }
 
     #[test]
@@ -988,7 +1065,10 @@ mod tests {
             contract_name: None,
         };
         let plan = analyze_contract_compatibility(&old, &new, "old", "new", &config).unwrap();
-        assert!(plan.compatibility == Compatibility::FullyCompatible || plan.compatibility == Compatibility::CompatibleWithMigration);
+        assert!(
+            plan.compatibility == Compatibility::FullyCompatible
+                || plan.compatibility == Compatibility::CompatibleWithMigration
+        );
         assert!(!plan.steps.is_empty());
         assert!(plan.steps.iter().any(|s| s.action == "backup"));
     }
@@ -1011,7 +1091,11 @@ mod tests {
 
     #[test]
     fn test_extract_storage_keys() {
-        let specs = vec!["storage:balance".into(), "storage:admin".into(), "storage:balance".into()];
+        let specs = vec![
+            "storage:balance".into(),
+            "storage:admin".into(),
+            "storage:balance".into(),
+        ];
         let keys = extract_storage_keys(&specs);
         assert_eq!(keys.len(), 2);
         assert!(keys.contains(&"balance".to_string()));

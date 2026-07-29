@@ -12,14 +12,14 @@
 //! - Support for cache prewarming
 //! - Manual cache invalidation commands
 
-use crate::utils::database::{Database, db_path};
+use crate::utils::database::{db_path, Database};
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use chrono::{DateTime, Utc};
 
 /// Default TTL for cached AI responses (7 days)
 pub const DEFAULT_CACHE_TTL_SECONDS: u64 = 7 * 24 * 60 * 60;
@@ -157,12 +157,12 @@ impl AiCache {
         ";
 
         self.db.conn.execute_batch(schema)?;
-        
+
         // Clean up expired entries on startup if configured
         if self.config.auto_cleanup {
             self.cleanup_expired()?;
         }
-        
+
         Ok(())
     }
 
@@ -186,41 +186,45 @@ impl AiCache {
     /// Get cached response if available and not expired
     pub fn get(&mut self, cache_key: &str) -> Result<Option<AiCacheEntry>> {
         let now = Self::current_timestamp();
-        
-        let entry: Option<AiCacheEntry> = self.db.conn.query_row(
-            "SELECT cache_key, model, prompt, options, response, metadata, 
+
+        let entry: Option<AiCacheEntry> = self
+            .db
+            .conn
+            .query_row(
+                "SELECT cache_key, model, prompt, options, response, metadata, 
                     created_at, last_accessed_at, expires_at, size_bytes, access_count, tags
              FROM ai_cache 
              WHERE cache_key = ?1 AND (expires_at = 0 OR expires_at > ?2)",
-            params![cache_key, now],
-            |row| {
-                Ok(AiCacheEntry {
-                    cache_key: row.get(0)?,
-                    model: row.get(1)?,
-                    prompt: row.get(2)?,
-                    options: row.get(3)?,
-                    response: row.get(4)?,
-                    metadata: row.get(5)?,
-                    created_at: row.get(6)?,
-                    last_accessed_at: row.get(7)?,
-                    expires_at: row.get(8)?,
-                    size_bytes: row.get(9)?,
-                    access_count: row.get(10)?,
-                    tags: row.get(11)?,
-                })
-            },
-        ).optional()?;
+                params![cache_key, now],
+                |row| {
+                    Ok(AiCacheEntry {
+                        cache_key: row.get(0)?,
+                        model: row.get(1)?,
+                        prompt: row.get(2)?,
+                        options: row.get(3)?,
+                        response: row.get(4)?,
+                        metadata: row.get(5)?,
+                        created_at: row.get(6)?,
+                        last_accessed_at: row.get(7)?,
+                        expires_at: row.get(8)?,
+                        size_bytes: row.get(9)?,
+                        access_count: row.get(10)?,
+                        tags: row.get(11)?,
+                    })
+                },
+            )
+            .optional()?;
 
         if let Some(mut entry) = entry {
             // Update access stats
             entry.last_accessed_at = now;
             entry.access_count += 1;
-            
+
             self.db.conn.execute(
                 "UPDATE ai_cache SET last_accessed_at = ?1, access_count = ?2 WHERE cache_key = ?3",
                 params![entry.last_accessed_at, entry.access_count, cache_key],
             )?;
-            
+
             self.stats.hits += 1;
             Ok(Some(entry))
         } else {
@@ -233,10 +237,10 @@ impl AiCache {
     pub fn put(&mut self, entry: AiCacheEntry) -> Result<()> {
         // Check cache size and evict if necessary
         self.enforce_size_limit()?;
-        
+
         // Clean up expired entries
         self.cleanup_expired()?;
-        
+
         self.db.conn.execute(
             "INSERT OR REPLACE INTO ai_cache 
              (cache_key, model, prompt, options, response, metadata, 
@@ -257,7 +261,7 @@ impl AiCache {
                 entry.tags,
             ],
         )?;
-        
+
         Ok(())
     }
 
@@ -274,11 +278,15 @@ impl AiCache {
         let now = Self::current_timestamp();
         let cache_key = Self::generate_cache_key(model, prompt, options);
         let expires_at = ttl_seconds.map_or(0, |ttl| now + ttl);
-        
+
         // Estimate size (rough approximation)
-        let size_bytes = (model.len() + prompt.len() + options.len() + 
-                         response.len() + metadata.len() + tags.len()) as u64;
-        
+        let size_bytes = (model.len()
+            + prompt.len()
+            + options.len()
+            + response.len()
+            + metadata.len()
+            + tags.len()) as u64;
+
         AiCacheEntry {
             cache_key,
             model: model.to_string(),
@@ -302,38 +310,38 @@ impl AiCache {
             [],
             |row| row.get(0),
         )?;
-        
+
         if total_size <= self.config.max_size_bytes {
             return Ok(());
         }
-        
+
         // Calculate how much to evict (evict 20% over limit)
         let target_size = (self.config.max_size_bytes as f64 * 0.8) as u64;
         let mut to_evict = total_size - target_size;
-        
+
         // Get entries sorted by last accessed (oldest first)
         let mut stmt = self.db.conn.prepare(
             "SELECT cache_key, size_bytes FROM ai_cache 
-             ORDER BY last_accessed_at ASC, access_count ASC"
+             ORDER BY last_accessed_at ASC, access_count ASC",
         )?;
-        
+
         let mut rows = stmt.query([])?;
         while to_evict > 0 {
             if let Some(row) = rows.next()? {
                 let cache_key: String = row.get(0)?;
                 let size_bytes: u64 = row.get(1)?;
-                
+
                 self.db.conn.execute(
                     "DELETE FROM ai_cache WHERE cache_key = ?1",
                     params![cache_key],
                 )?;
-                
+
                 to_evict = to_evict.saturating_sub(size_bytes);
             } else {
                 break;
             }
         }
-        
+
         Ok(())
     }
 
@@ -358,10 +366,10 @@ impl AiCache {
 
     /// Invalidate cache entries by model
     pub fn invalidate_by_model(&mut self, model: &str) -> Result<usize> {
-        let deleted = self.db.conn.execute(
-            "DELETE FROM ai_cache WHERE model = ?1",
-            params![model],
-        )?;
+        let deleted = self
+            .db
+            .conn
+            .execute("DELETE FROM ai_cache WHERE model = ?1", params![model])?;
         Ok(deleted)
     }
 
@@ -374,50 +382,55 @@ impl AiCache {
     /// Get cache statistics
     pub fn get_stats(&mut self) -> Result<AiCacheStats> {
         let now = Self::current_timestamp();
-        
-        let total_entries: usize = self.db.conn.query_row(
-            "SELECT COUNT(*) FROM ai_cache",
-            [],
-            |row| row.get(0),
-        )?;
-        
+
+        let total_entries: usize =
+            self.db
+                .conn
+                .query_row("SELECT COUNT(*) FROM ai_cache", [], |row| row.get(0))?;
+
         let active_entries: usize = self.db.conn.query_row(
             "SELECT COUNT(*) FROM ai_cache WHERE expires_at = 0 OR expires_at > ?1",
             params![now],
             |row| row.get(0),
         )?;
-        
+
         let total_size_bytes: u64 = self.db.conn.query_row(
             "SELECT COALESCE(SUM(size_bytes), 0) FROM ai_cache",
             [],
             |row| row.get(0),
         )?;
-        
+
         let expired_entries: usize = self.db.conn.query_row(
             "SELECT COUNT(*) FROM ai_cache WHERE expires_at > 0 AND expires_at <= ?1",
             params![now],
             |row| row.get(0),
         )?;
-        
-        let avg_age_seconds: f64 = self.db.conn.query_row(
-            "SELECT AVG(?1 - created_at) FROM ai_cache",
-            params![now],
-            |row| row.get(0),
-        ).unwrap_or(0.0);
-        
-        let max_access_count: u64 = self.db.conn.query_row(
-            "SELECT MAX(access_count) FROM ai_cache",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
-        
+
+        let avg_age_seconds: f64 = self
+            .db
+            .conn
+            .query_row(
+                "SELECT AVG(?1 - created_at) FROM ai_cache",
+                params![now],
+                |row| row.get(0),
+            )
+            .unwrap_or(0.0);
+
+        let max_access_count: u64 = self
+            .db
+            .conn
+            .query_row("SELECT MAX(access_count) FROM ai_cache", [], |row| {
+                row.get(0)
+            })
+            .unwrap_or(0);
+
         let total_accesses = self.stats.hits + self.stats.misses;
         let hit_rate = if total_accesses > 0 {
             (self.stats.hits as f64 / total_accesses as f64) * 100.0
         } else {
             0.0
         };
-        
+
         self.stats.total_entries = total_entries;
         self.stats.active_entries = active_entries;
         self.stats.total_size_bytes = total_size_bytes;
@@ -425,7 +438,7 @@ impl AiCache {
         self.stats.avg_age_seconds = avg_age_seconds;
         self.stats.max_access_count = max_access_count;
         self.stats.hit_rate = hit_rate;
-        
+
         Ok(self.stats.clone())
     }
 
@@ -468,15 +481,15 @@ impl AiCache {
         );
 
         let mut stmt = self.db.conn.prepare(&sql)?;
-        
+
         // Convert params to correct type for query_map
         let params_vec: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| &**p).collect();
-        
-        let mut rows = stmt.query(rusqlite::params_from_iter(
-            params_vec.into_iter()
-                .chain([&limit as &dyn rusqlite::ToSql, &offset as &dyn rusqlite::ToSql])
-        ))?;
-        
+
+        let mut rows = stmt.query(rusqlite::params_from_iter(params_vec.into_iter().chain([
+            &limit as &dyn rusqlite::ToSql,
+            &offset as &dyn rusqlite::ToSql,
+        ])))?;
+
         let mut entries = Vec::new();
         while let Some(row) = rows.next()? {
             entries.push(AiCacheEntry {
@@ -494,7 +507,7 @@ impl AiCache {
                 tags: row.get(11)?,
             });
         }
-        
+
         Ok(entries)
     }
 
@@ -510,13 +523,13 @@ impl AiCache {
     pub fn import_from_file(&mut self, path: &std::path::Path) -> Result<usize> {
         let json = std::fs::read_to_string(path)?;
         let entries: Vec<AiCacheEntry> = serde_json::from_str(&json)?;
-        
+
         let mut count = 0;
         for entry in entries {
             self.put(entry)?;
             count += 1;
         }
-        
+
         Ok(count)
     }
 
@@ -524,12 +537,28 @@ impl AiCache {
     pub fn warm_cache(&mut self) -> Result<()> {
         // Common Soroban patterns and questions to pre-cache
         let common_prompts = vec![
-            ("codellama:7b", "What is Soroban?", "Soroban is the smart contract platform for the Stellar network..."),
-            ("codellama:7b", "How do I create a token contract in Soroban?", "To create a token contract in Soroban..."),
-            ("codellama:7b", "What is the storage interface in Soroban?", "The storage interface in Soroban provides..."),
-            ("codellama:7b", "How do I handle errors in Soroban contracts?", "Error handling in Soroban contracts..."),
+            (
+                "codellama:7b",
+                "What is Soroban?",
+                "Soroban is the smart contract platform for the Stellar network...",
+            ),
+            (
+                "codellama:7b",
+                "How do I create a token contract in Soroban?",
+                "To create a token contract in Soroban...",
+            ),
+            (
+                "codellama:7b",
+                "What is the storage interface in Soroban?",
+                "The storage interface in Soroban provides...",
+            ),
+            (
+                "codellama:7b",
+                "How do I handle errors in Soroban contracts?",
+                "Error handling in Soroban contracts...",
+            ),
         ];
-        
+
         for (model, prompt, response) in common_prompts {
             let cache_key = Self::generate_cache_key(model, prompt, "{}");
             let entry = AiCacheEntry {
@@ -541,7 +570,8 @@ impl AiCache {
                 metadata: serde_json::json!({
                     "source": "cache_warming",
                     "created_by": "system"
-                }).to_string(),
+                })
+                .to_string(),
                 created_at: Self::current_timestamp(),
                 last_accessed_at: Self::current_timestamp(),
                 expires_at: 0, // Never expire
@@ -549,10 +579,10 @@ impl AiCache {
                 access_count: 0,
                 tags: "system,warmup,soroban".to_string(),
             };
-            
+
             self.put(entry)?;
         }
-        
+
         Ok(())
     }
 }

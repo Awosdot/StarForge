@@ -135,7 +135,7 @@ fn test_handles_comments_correctly() {
 // This would be unsafe: token.transfer(&to, amount);
 pub fn safe_transfer(env: Env, to: Address, amount: i128) {
     env.current_contract_address().require_auth();
-    storage.set(&balance, balance - amount);
+    storage.set(&balance, balance.checked_sub(amount).unwrap());
     // We do update state first
     token.transfer(&to, amount);
 }

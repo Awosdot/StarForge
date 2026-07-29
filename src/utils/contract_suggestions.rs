@@ -264,14 +264,17 @@ impl ContractSuggestionEngine {
                     category: SuggestionCategory::Initialization,
                     priority: SuggestionPriority::Critical,
                     description: "Initialize the NFT contract".to_string(),
-                    signature: "pub fn initialize(env: Env, admin: Address, name: String, symbol: String)".to_string(),
+                    signature:
+                        "pub fn initialize(env: Env, admin: Address, name: String, symbol: String)"
+                            .to_string(),
                     implementation: r#"{
     admin.require_auth();
     env.storage().instance().set(&symbol_short!("ADMIN"), &admin);
     env.storage().instance().set(&symbol_short!("NAME"), &name);
     env.storage().instance().set(&symbol_short!("SYMBOL"), &symbol);
     env.storage().instance().set(&symbol_short!("NEXT_ID"), &0u64);
-}"#.to_string(),
+}"#
+                    .to_string(),
                     imports: vec!["soroban_sdk::{symbol_short, Address, Env, String}".to_string()],
                     best_practices: vec![
                         "Use instance storage for admin".to_string(),
@@ -293,7 +296,8 @@ impl ContractSuggestionEngine {
     env.storage().persistent().set(&key_from_id(next_id), &to);
     env.storage().instance().set(&symbol_short!("NEXT_ID"), &(next_id + 1));
     next_id
-}"#.to_string(),
+}"#
+                    .to_string(),
                     imports: vec!["soroban_sdk::{symbol_short, Address, Env}".to_string()],
                     best_practices: vec![
                         "Only admin can mint".to_string(),
@@ -359,7 +363,8 @@ impl ContractSuggestionEngine {
                     implementation: r#"{
     admin.require_auth();
     env.storage().instance().set(&symbol_short!("ADMIN"), &admin);
-}"#.to_string(),
+}"#
+                    .to_string(),
                     imports: vec!["soroban_sdk::{symbol_short, Address, Env}".to_string()],
                     best_practices: vec![
                         "Use require_auth() for admin".to_string(),
@@ -374,11 +379,11 @@ impl ContractSuggestionEngine {
                     priority: SuggestionPriority::Medium,
                     description: "Get the current admin address".to_string(),
                     signature: "pub fn get_admin(env: Env) -> Address".to_string(),
-                    implementation: "{\n    env.storage().instance().get(&symbol_short!(\"ADMIN\")).unwrap()\n}".to_string(),
+                    implementation:
+                        "{\n    env.storage().instance().get(&symbol_short!(\"ADMIN\")).unwrap()\n}"
+                            .to_string(),
                     imports: vec!["soroban_sdk::{symbol_short, Address, Env}".to_string()],
-                    best_practices: vec![
-                        "Provide admin getter for transparency".to_string(),
-                    ],
+                    best_practices: vec!["Provide admin getter for transparency".to_string()],
                     confidence: 80,
                     context: "Admin getter function".to_string(),
                 },
@@ -442,35 +447,45 @@ impl ContractSuggestionEngine {
         let lower = source_code.to_lowercase();
 
         // Check for token patterns
-        if lower.contains("sep-41") || lower.contains("fungible")
-            || (lower.contains("transfer") && lower.contains("balance") && lower.contains("allowance"))
+        if lower.contains("sep-41")
+            || lower.contains("fungible")
+            || (lower.contains("transfer")
+                && lower.contains("balance")
+                && lower.contains("allowance"))
         {
             return ContractType::Token;
         }
 
         // Check for NFT patterns
-        if lower.contains("nft") || lower.contains("non-fungible")
+        if lower.contains("nft")
+            || lower.contains("non-fungible")
             || (lower.contains("mint") && lower.contains("owner_of") && lower.contains("token_id"))
         {
             return ContractType::Nft;
         }
 
         // Check for governance patterns
-        if lower.contains("proposal") || lower.contains("voting") || lower.contains("governance")
+        if lower.contains("proposal")
+            || lower.contains("voting")
+            || lower.contains("governance")
             || (lower.contains("propose") && lower.contains("vote") && lower.contains("execute"))
         {
             return ContractType::Governance;
         }
 
         // Check for DeFi patterns
-        if lower.contains("swap") || lower.contains("liquidity") || lower.contains("pool")
-            || lower.contains("amm") || lower.contains("lending")
+        if lower.contains("swap")
+            || lower.contains("liquidity")
+            || lower.contains("pool")
+            || lower.contains("amm")
+            || lower.contains("lending")
         {
             return ContractType::Defi;
         }
 
         // Check for access control patterns
-        if lower.contains("role") || lower.contains("permission")
+        if lower.contains("role")
+            || lower.contains("permission")
             || (lower.contains("grant") && lower.contains("revoke"))
         {
             return ContractType::AccessControl;
@@ -496,12 +511,9 @@ impl ContractSuggestionEngine {
             errors,
             has_initialize: existing_functions.iter().any(|f| f == "initialize"),
             has_admin: existing_functions.iter().any(|f| f.contains("admin")),
-            has_token: existing_functions.iter().any(|f| {
-                matches!(
-                    f.as_str(),
-                    "transfer" | "balance" | "allowance" | "approve"
-                )
-            }),
+            has_token: existing_functions
+                .iter()
+                .any(|f| matches!(f.as_str(), "transfer" | "balance" | "allowance" | "approve")),
         }
     }
 
@@ -644,7 +656,8 @@ impl ContractSuggestionEngine {
                 implementation: r#"{
     admin.require_auth();
     env.storage().instance().set(&symbol_short!("ADMIN"), &admin);
-}"#.to_string(),
+}"#
+                .to_string(),
                 imports: vec!["soroban_sdk::{symbol_short, Address, Env}".to_string()],
                 best_practices: vec![
                     "Use require_auth() for admin".to_string(),
@@ -663,11 +676,11 @@ impl ContractSuggestionEngine {
                 priority: SuggestionPriority::Medium,
                 description: "Get the current admin address".to_string(),
                 signature: "pub fn get_admin(env: Env) -> Address".to_string(),
-                implementation: "{\n    env.storage().instance().get(&symbol_short!(\"ADMIN\")).unwrap()\n}".to_string(),
+                implementation:
+                    "{\n    env.storage().instance().get(&symbol_short!(\"ADMIN\")).unwrap()\n}"
+                        .to_string(),
                 imports: vec!["soroban_sdk::{symbol_short, Address, Env}".to_string()],
-                best_practices: vec![
-                    "Provide admin getter for transparency".to_string(),
-                ],
+                best_practices: vec!["Provide admin getter for transparency".to_string()],
                 confidence: 80,
                 context: "Admin getter function".to_string(),
             });
@@ -734,7 +747,7 @@ impl ContractSuggestionEngine {
             ContractType::Token => format!(
                 r#"#![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String};
+use soroban_sdk::{{contract, contractimpl, symbol_short, Address, Env, String}};
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const NAME: Symbol = symbol_short!("NAME");
@@ -860,7 +873,7 @@ mod tests {{
             ContractType::Nft => format!(
                 r#"#![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
+use soroban_sdk::{{contract, contractimpl, symbol_short, Address, Env}};
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const NAME: Symbol = symbol_short!("NAME");
@@ -949,7 +962,7 @@ mod tests {{
             _ => format!(
                 r#"#![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
+use soroban_sdk::{{contract, contractimpl, symbol_short, Address, Env}};
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 

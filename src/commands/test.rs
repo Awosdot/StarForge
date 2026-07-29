@@ -424,7 +424,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
     if optimization_requested || args.parallel {
         let wasm_bytes = std::fs::read(&args.wasm)?;
         let wasm_hash = hex::encode(sha2::Sha256::digest(&wasm_bytes));
-        let mut optimizer = test_optimizer::TestOptimizer::new()?;
+        let mut optimizer = crate::utils::test_optimizer::TestOptimizer::new()?;
 
         // Build test name list
         let source_tests = if let Some(source) = &args.source {
@@ -472,7 +472,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
         }
 
         // Run tests with optimization tracking
-        let timing_results = if args.parallel {
+        let timing_results: Vec<_> = if args.parallel {
             p::info("Running optimized tests in parallel...");
             let runner = test_automation::ParallelTestRunner::new(args.workers);
             if let Some(contract_path) = &args.contract_path {
@@ -496,15 +496,15 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                         }
                     }
 
-                    let timings: Vec<test_optimizer::TestCaseTiming> = report
+                    let timings: Vec<crate::utils::test_optimizer::TestCaseTiming> = report
                         .results
                         .iter()
-                        .map(|r| test_optimizer::TestCaseTiming {
+                        .map(|r| crate::utils::test_optimizer::TestCaseTiming {
                             name: r.test_name.clone(),
                             duration_ms: r.duration_ms,
                             passed: matches!(r.status, test_automation::TestStatus::Passed),
                         })
-                        .collect();
+                        .collect::<Vec<_>>();
 
                     // Export report
                     if let Some(report_format) = &args.report {
@@ -516,16 +516,20 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                         };
                         match report_format.as_str() {
                             "html" => test_automation::TestReportExporter::export_html(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                             "json" => test_automation::TestReportExporter::export_json(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                             "junit" => test_automation::TestReportExporter::export_junit(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                             _ => test_automation::TestReportExporter::export_html(
-                                &report, &report_path,
+                                &report,
+                                &report_path,
                             )?,
                         }
                         p::kv("Report saved", &report_path.display().to_string());
@@ -543,8 +547,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                             if report.coverage_summary.lines_total > 0 {
                                 (report.coverage_summary.lines_covered as f64
                                     / report.coverage_summary.lines_total as f64
-                                    * 100.0)
-                                    as u32
+                                    * 100.0) as u32
                             } else {
                                 0
                             }
@@ -572,12 +575,12 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             }
             results
                 .iter()
-                .map(|r| test_optimizer::TestCaseTiming {
+                .map(|r| crate::utils::test_optimizer::TestCaseTiming {
                     name: r.name.clone(),
                     duration_ms: r.duration_ms,
                     passed: r.passed,
                 })
-                .collect()
+                .collect::<Vec<_>>()
         } else {
             // Sequential run with tracking
             let cases: Vec<String> = ordered_tests.clone();
@@ -590,16 +593,17 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             }
             results
                 .iter()
-                .map(|r| test_optimizer::TestCaseTiming {
+                .map(|r| crate::utils::test_optimizer::TestCaseTiming {
                     name: r.name.clone(),
                     duration_ms: r.duration_ms,
                     passed: r.passed,
                 })
-                .collect()
+                .collect::<Vec<_>>()
         };
 
         // Generate optimization report
-        if args.optimize || args.perf_analysis || args.optimize_out.is_some() || args.optimize_html {
+        if args.optimize || args.perf_analysis || args.optimize_out.is_some() || args.optimize_html
+        {
             let generated_cases = if let Some(source) = &args.source {
                 if args.generate {
                     crate::utils::test_generator::generate_from_source(source)
@@ -626,7 +630,9 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             for flaky in &opt_report.flaky_tests {
                 p::warn(&format!(
                     "Flaky test '{}' (score: {:.1}, failure rate: {:.1}%)",
-                    flaky.test_name, flaky.flakiness_score, flaky.failure_rate * 100.0
+                    flaky.test_name,
+                    flaky.flakiness_score,
+                    flaky.failure_rate * 100.0
                 ));
             }
 
@@ -634,7 +640,9 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                 for dup in &opt_report.duplicate_tests {
                     p::warn(&format!(
                         "Duplicate pair: '{}' <-> '{}' (similarity: {:.0}%)",
-                        dup.test_a, dup.test_b, dup.similarity_score * 100.0
+                        dup.test_a,
+                        dup.test_b,
+                        dup.similarity_score * 100.0
                     ));
                 }
             }
@@ -645,7 +653,12 @@ pub async fn handle(args: TestArgs) -> Result<()> {
             );
             p::kv(
                 "Slowest test",
-                &opt_report.performance.slowest_tests.first().cloned().unwrap_or_default(),
+                &opt_report
+                    .performance
+                    .slowest_tests
+                    .first()
+                    .cloned()
+                    .unwrap_or_default(),
             );
             p::kv(
                 "Parallel efficiency",
@@ -654,13 +667,14 @@ pub async fn handle(args: TestArgs) -> Result<()> {
 
             // Export report
             if let Some(out_path) = &args.optimize_out {
-                test_optimizer::export_optimization_report(&opt_report, out_path)?;
+                crate::utils::test_optimizer::export_optimization_report(&opt_report, out_path)?;
                 p::kv("Optimization report", &out_path.display().to_string());
             }
 
             if args.optimize_html {
                 let html_path = PathBuf::from("ai_test_optimization_report.html");
-                let html = test_optimizer::render_optimization_html_report(&opt_report);
+                let html =
+                    crate::utils::test_optimizer::render_optimization_html_report(&opt_report);
                 std::fs::write(&html_path, html)?;
                 p::kv("HTML report", &html_path.display().to_string());
             }

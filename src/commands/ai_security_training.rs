@@ -125,7 +125,12 @@ fn handle_start(args: LessonArgs) -> Result<()> {
     println!("  {}", "Exercises:".yellow().bold());
     for exercise in &lesson.exercises {
         match exercise {
-            Exercise::MultipleChoice { id, prompt, options, .. } => {
+            Exercise::MultipleChoice {
+                id,
+                prompt,
+                options,
+                ..
+            } => {
                 println!("\n  [{}] {}", id.bright_white(), prompt);
                 for (i, opt) in options.iter().enumerate() {
                     println!("    {}. {}", i, opt);
@@ -137,7 +142,9 @@ fn handle_start(args: LessonArgs) -> Result<()> {
                     id
                 );
             }
-            Exercise::SpotTheVulnerability { id, prompt, code, .. } => {
+            Exercise::SpotTheVulnerability {
+                id, prompt, code, ..
+            } => {
                 println!("\n  [{}] {}", id.bright_white(), prompt);
                 println!("    ```");
                 for line in code.lines() {
@@ -159,9 +166,8 @@ fn handle_start(args: LessonArgs) -> Result<()> {
 }
 
 fn handle_answer(args: AnswerArgs) -> Result<()> {
-    let lesson = ai_security_training::find_lesson(&args.lesson_id).ok_or_else(|| {
-        anyhow::anyhow!("Unknown lesson '{}'.", args.lesson_id)
-    })?;
+    let lesson = ai_security_training::find_lesson(&args.lesson_id)
+        .ok_or_else(|| anyhow::anyhow!("Unknown lesson '{}'.", args.lesson_id))?;
     let exercise = lesson
         .exercises
         .iter()
@@ -169,15 +175,26 @@ fn handle_answer(args: AnswerArgs) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Unknown exercise '{}'.", args.exercise_id))?;
 
     let (correct, explanation) = match exercise {
-        Exercise::MultipleChoice { correct_index, explanation, .. } => {
-            let choice = args
-                .choice
-                .ok_or_else(|| anyhow::anyhow!("This is a multiple-choice exercise — pass --choice <N>"))?;
+        Exercise::MultipleChoice {
+            correct_index,
+            explanation,
+            ..
+        } => {
+            let choice = args.choice.ok_or_else(|| {
+                anyhow::anyhow!("This is a multiple-choice exercise — pass --choice <N>")
+            })?;
             (choice == *correct_index, explanation.clone())
         }
-        Exercise::SpotTheVulnerability { code, category, explanation, .. } => {
+        Exercise::SpotTheVulnerability {
+            code,
+            category,
+            explanation,
+            ..
+        } => {
             let guess_str = args.category.ok_or_else(|| {
-                anyhow::anyhow!("This is a spot-the-vulnerability exercise — pass --category <name>")
+                anyhow::anyhow!(
+                    "This is a spot-the-vulnerability exercise — pass --category <name>"
+                )
             })?;
             let guessed = parse_category(&guess_str)?;
             let is_correct = &guessed == category
@@ -198,13 +215,15 @@ fn handle_answer(args: AnswerArgs) -> Result<()> {
     println!("  {}", explanation.dimmed());
 
     let level = assess_skill_level(&progress);
-    println!("  {} {}", "Current skill level:".dimmed(), level.to_string().cyan());
+    println!(
+        "  {} {}",
+        "Current skill level:".dimmed(),
+        level.to_string().cyan()
+    );
     Ok(())
 }
 
-fn parse_category(
-    raw: &str,
-) -> Result<crate::utils::security::ai_audit::VulnerabilityCategory> {
+fn parse_category(raw: &str) -> Result<crate::utils::security::ai_audit::VulnerabilityCategory> {
     use crate::utils::security::ai_audit::VulnerabilityCategory::*;
     Ok(match raw.to_lowercase().replace('_', "-").as_str() {
         "reentrancy" => Reentrancy,
@@ -250,7 +269,10 @@ fn handle_progress(args: ProgressArgs) -> Result<()> {
     );
     p::kv_accent("Skill level", &level.to_string());
     if let Some(lesson) = &recommended {
-        p::kv("Recommended next", &format!("{} — {}", lesson.id, lesson.title));
+        p::kv(
+            "Recommended next",
+            &format!("{} — {}", lesson.id, lesson.title),
+        );
     } else {
         p::kv("Recommended next", "All lessons completed!");
     }

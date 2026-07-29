@@ -24,8 +24,14 @@ mod wasm_preflight_tests {
     #[test]
     fn valid_wasm_passes_default_policy() {
         let report = validate_wasm_bytes(&minimal_wasm(), "contract.wasm", &default_policy());
-        assert!(report.is_valid_wasm, "minimal WASM should be recognised as valid");
-        assert!(report.passes_policy, "minimal WASM should pass the default policy");
+        assert!(
+            report.is_valid_wasm,
+            "minimal WASM should be recognised as valid"
+        );
+        assert!(
+            report.passes_policy,
+            "minimal WASM should pass the default policy"
+        );
         assert!(report.violations.is_empty(), "no violations expected");
         assert!(report.is_ok(), "report.is_ok() must be true");
     }
@@ -70,7 +76,10 @@ mod wasm_preflight_tests {
         let mut policy = default_policy();
         policy.required_exports = vec!["__invoke".to_string()];
         let report = validate_wasm_bytes(&bytes, "contract.wasm", &policy);
-        assert!(report.is_ok(), "should pass when required export is present");
+        assert!(
+            report.is_ok(),
+            "should pass when required export is present"
+        );
     }
 
     // ── Boundary cases ────────────────────────────────────────────────────────
@@ -96,8 +105,14 @@ mod wasm_preflight_tests {
         bytes.extend(vec![0u8; 110 * 1024]);
         let report = validate_wasm_bytes(&bytes, "warn.wasm", &default_policy());
         assert!(report.is_valid_wasm);
-        assert!(report.passes_policy, "should still pass policy (no violations)");
-        assert!(!report.warnings.is_empty(), "should produce a near-limit warning");
+        assert!(
+            report.passes_policy,
+            "should still pass policy (no violations)"
+        );
+        assert!(
+            !report.warnings.is_empty(),
+            "should produce a near-limit warning"
+        );
     }
 
     #[test]

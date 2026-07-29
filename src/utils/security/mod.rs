@@ -42,6 +42,8 @@ pub use patterns::{SecurityPattern, SecurityPatternLibrary};
 pub use pentest::{run_pentest, PentestCaseResult, PentestReport};
 pub use remediation::{track_findings, RemediationItem, RemediationStatus};
 pub use report::{generate_hardening_report, write_report, HardeningReport};
-pub use threat_detection::{ThreatClassification, ThreatDetectionEngine, ThreatEvent, ThreatSummary};
+pub use threat_detection::{
+    ThreatClassification, ThreatDetectionEngine, ThreatEvent, ThreatSummary,
+};
 pub use threat_intel::{ThreatFeed, ThreatIndicator};
 pub use validation::{validate_security, SecurityValidationResult};

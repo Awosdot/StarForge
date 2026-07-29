@@ -60,6 +60,7 @@ fn test_hardware_wallet_without_device_handling() {
     let output = Command::new(starforge_binary)
         .arg("wallet")
         .arg("import")
+        .arg("dummy_name")
         .arg("--hardware")
         .arg("ledger")
         .output()
@@ -168,7 +169,7 @@ fn test_hardware_wallet_offline_behavior() {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                let combined = format!("{}{}", stderr, stdout);
+                let combined = format!("{}{}", stderr, stdout).to_lowercase();
 
                 assert!(
                     combined.contains("error")

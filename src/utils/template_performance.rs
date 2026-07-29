@@ -51,17 +51,38 @@ pub struct TemplatePerformanceAnalysis {
     pub suggestions: Vec<OptimizationSuggestion>,
 }
 
-pub fn analyze_template_directory(path: &Path, template_name: Option<&str>) -> Result<TemplatePerformanceAnalysis> {
+pub fn analyze_template_directory(
+    path: &Path,
+    template_name: Option<&str>,
+) -> Result<TemplatePerformanceAnalysis> {
     let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let name = template_name.unwrap_or_else(|| path.file_name().and_then(|n| n.to_str()).unwrap_or("template")).to_string();
+    let name = template_name
+        .unwrap_or_else(|| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("template")
+        })
+        .to_string();
     let sources = read_source_files(&path);
     let joined = sources.join("\n");
 
-    let storage_layout_score = if joined.contains("storage().instance()") { 74 } else { 88 };
+    let storage_layout_score = if joined.contains("storage().instance()") {
+        74
+    } else {
+        88
+    };
     let function_efficiency_score = if joined.contains("for") { 66 } else { 84 };
     let loop_optimization_score = if joined.contains("for") { 58 } else { 82 };
-    let external_call_score = if joined.contains("call") || joined.contains("invoke") { 61 } else { 86 };
-    let batch_operations_score = if joined.contains("set(&") || joined.contains("get(&") { 69 } else { 84 };
+    let external_call_score = if joined.contains("call") || joined.contains("invoke") {
+        61
+    } else {
+        86
+    };
+    let batch_operations_score = if joined.contains("set(&") || joined.contains("get(&") {
+        69
+    } else {
+        84
+    };
 
     let mut suggestions = Vec::new();
     if joined.contains("for") {
@@ -92,7 +113,12 @@ pub fn analyze_template_directory(path: &Path, template_name: Option<&str>) -> R
         });
     }
 
-    let overall_score = ((storage_layout_score as u32 + function_efficiency_score as u32 + loop_optimization_score as u32 + external_call_score as u32 + batch_operations_score as u32) / 5) as u8;
+    let overall_score = ((storage_layout_score as u32
+        + function_efficiency_score as u32
+        + loop_optimization_score as u32
+        + external_call_score as u32
+        + batch_operations_score as u32)
+        / 5) as u8;
     let estimated_gas_reduction_percent = (100 - overall_score).max(5).min(40) as u8;
     let estimated_speedup_percent = ((100 - overall_score) / 2).max(3).min(25) as u8;
     let estimated_memory_savings_percent = ((100 - overall_score) / 3).max(2).min(15) as u8;
@@ -109,7 +135,9 @@ pub fn analyze_template_directory(path: &Path, template_name: Option<&str>) -> R
         estimated_gas_reduction_percent,
         estimated_speedup_percent,
         estimated_memory_savings_percent,
-        benchmark_summary: "Static analysis of source layout, loops, storage usage, and external interactions".to_string(),
+        benchmark_summary:
+            "Static analysis of source layout, loops, storage usage, and external interactions"
+                .to_string(),
         suggestions,
     })
 }
@@ -148,7 +176,10 @@ impl Counter {
 
         let analysis = analyze_template_directory(temp_dir.path(), Some("counter")).unwrap();
 
-        assert!(analysis.overall_score > 0, "analysis should include a score");
+        assert!(
+            analysis.overall_score > 0,
+            "analysis should include a score"
+        );
         assert!(
             !analysis.suggestions.is_empty(),
             "analysis should return actionable suggestions"

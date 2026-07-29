@@ -164,7 +164,7 @@ fn install(name: String, path: Option<PathBuf>, source: Option<String>, force: b
         source_str,
         &plugin_manifest.starforge_version,
         &plugin_manifest.version,
-        &plugin_description,
+        "",
         discovered_commands.clone(),
     )?;
 
@@ -203,10 +203,10 @@ async fn search(query: Option<String>) -> Result<()> {
     if let Some(ref q) = query {
         p::kv("Query", q);
     }
-    
+
     // Attempt to fetch from official plugin registry, fallback to hardcoded examples for demonstration.
     let registry_url = "https://starforge-protocol.github.io/starforge/plugins/registry.json";
-    
+
     let mut available_plugins = vec![
         MarketplacePlugin {
             name: "starforge-ai-audit".to_string(),
@@ -217,7 +217,7 @@ async fn search(query: Option<String>) -> Result<()> {
             name: "starforge-defi".to_string(),
             description: "DeFi scaffold and AMM tools".to_string(),
             url: "https://github.com/Nanle-code/starforge-defi".to_string(),
-        }
+        },
     ];
 
     if let Ok(resp) = reqwest::get(registry_url).await {
@@ -228,7 +228,9 @@ async fn search(query: Option<String>) -> Result<()> {
 
     if let Some(q) = query {
         let q = q.to_lowercase();
-        available_plugins.retain(|p| p.name.to_lowercase().contains(&q) || p.description.to_lowercase().contains(&q));
+        available_plugins.retain(|p| {
+            p.name.to_lowercase().contains(&q) || p.description.to_lowercase().contains(&q)
+        });
     }
 
     if available_plugins.is_empty() {
@@ -237,11 +239,12 @@ async fn search(query: Option<String>) -> Result<()> {
     }
 
     println!("\n  Found {} plugin(s):\n", available_plugins.len());
-    
-    let rows: Vec<Vec<String>> = available_plugins.into_iter().map(|p| {
-        vec![p.name, p.description, p.url]
-    }).collect();
-    
+
+    let rows: Vec<Vec<String>> = available_plugins
+        .into_iter()
+        .map(|p| vec![p.name, p.description, p.url])
+        .collect();
+
     p::table(&["Name", "Description", "Source URL"], &rows);
     println!("\nTo install a plugin, run: starforge plugin install <name> --source <url>");
 
@@ -259,16 +262,16 @@ fn list() -> Result<()> {
     p::kv("StarForge core version", CORE_VERSION);
     p::separator();
 
-    let entries = registry::plugin_list_entries(&reg);
+    let entries = reg.plugins.clone();
 
     let plugin_rows: Vec<Vec<String>> = entries
         .iter()
         .map(|entry| {
             vec![
                 entry.name.clone(),
-                entry.version.clone(),
+                entry.plugin_version.clone(),
                 entry.trust.label().to_string(),
-                entry.description.clone(),
+                "".to_string(),
             ]
         })
         .collect();
@@ -548,6 +551,7 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
                         &pl.source,
                         &pl.starforge_version,
                         &pl.plugin_version,
+                        "",
                         pl.commands.clone(),
                     )?;
                     p::success(&format!("  '{}' updated via cargo install", pl.name));
@@ -588,14 +592,15 @@ fn update(name: Option<String>, yes: bool) -> Result<()> {
 
                     if modified > installed_epoch {
                         // Library on disk is newer — refresh the registry entry.
-                        let (cmds, description) = discover_plugin_metadata(&pl.path)
-                            .unwrap_or_else(|_| (pl.commands.clone(), pl.description.clone()));
+                        let (cmds, _description) = discover_plugin_metadata(&pl.path)
+                            .unwrap_or_else(|_| (pl.commands.clone(), "".to_string()));
                         registry::install_plugin(
                             &pl.name,
                             std::path::Path::new(&pl.path),
                             &pl.source,
                             &pl.starforge_version,
                             &pl.plugin_version,
+                            "",
                             cmds,
                         )?;
                         p::success(&format!(
@@ -1023,7 +1028,9 @@ fn commands(name: Option<String>) -> Result<()> {
 
     let entries: Vec<_> = match &name {
         Some(n) => {
-            let found: Vec<_> = registry::plugin_list_entries(&reg)
+            let found: Vec<_> = reg
+                .plugins
+                .clone()
                 .into_iter()
                 .filter(|entry| entry.name == *n)
                 .collect();
@@ -1035,7 +1042,7 @@ fn commands(name: Option<String>) -> Result<()> {
             }
             found
         }
-        None => registry::plugin_list_entries(&reg),
+        None => reg.plugins.clone(),
     };
 
     let rows: Vec<Vec<String>> = entries

@@ -2,6 +2,7 @@ use crate::utils::{config, print as p};
 use anyhow::Result;
 use chrono::Utc;
 use clap::{Args, Subcommand};
+use colored::Colorize;
 use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -233,15 +234,15 @@ pub struct TrendAnalysis {
     pub success_rate_trend: String, // "improving", "declining", "stable"
     pub avg_fee_trend: String,      // "increasing", "decreasing", "stable"
     pub recent_failures: usize,
-    pub deployment_velocity: f64,   // change in deployment frequency
-    pub health_score: f64,          // 0-100
+    pub deployment_velocity: f64, // change in deployment frequency
+    pub health_score: f64,        // 0-100
     pub predictions: TrendPredictions,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TrendPredictions {
     pub next_deployment_likely_success: bool,
-    pub predicted_fee_range: (u64, u64),  // (min, max) stroops
+    pub predicted_fee_range: (u64, u64), // (min, max) stroops
     pub risk_factors: Vec<String>,
     pub recommendations: Vec<String>,
 }
@@ -250,11 +251,11 @@ pub struct TrendPredictions {
 pub struct HealthScore {
     pub contract_id: String,
     pub network: String,
-    pub overall_score: f64,  // 0-100
-    pub reliability_score: f64,  // based on success rate
-    pub performance_score: f64,  // based on fee efficiency
-    pub activity_score: f64,     // based on deployment frequency
-    pub risk_level: String,      // "low", "medium", "high"
+    pub overall_score: f64,     // 0-100
+    pub reliability_score: f64, // based on success rate
+    pub performance_score: f64, // based on fee efficiency
+    pub activity_score: f64,    // based on deployment frequency
+    pub risk_level: String,     // "low", "medium", "high"
     pub issues: Vec<String>,
     pub strengths: Vec<String>,
 }
@@ -466,9 +467,9 @@ pub fn analyze_trends(
     days: usize,
 ) -> TrendAnalysis {
     use chrono::DateTime;
-    
+
     let cutoff = Utc::now() - chrono::Duration::days(days as i64);
-    
+
     let filtered: Vec<_> = events
         .iter()
         .filter(|e| e.network == network)
@@ -502,27 +503,25 @@ pub fn analyze_trends(
 
     let total = filtered.len();
     let successful = filtered.iter().filter(|e| e.success).count();
-    let recent_failures = filtered
-        .iter()
-        .rev()
-        .take(5)
-        .filter(|e| !e.success)
-        .count();
+    let recent_failures = filtered.iter().rev().take(5).filter(|e| !e.success).count();
 
     let deployment_frequency = total as f64 / days as f64;
 
     // Calculate success rate trend (compare first half vs second half)
     let mid = total / 2;
-    let first_half_success = filtered.iter().take(mid).filter(|e| e.success).count() as f64 / mid.max(1) as f64;
-    let second_half_success = filtered.iter().skip(mid).filter(|e| e.success).count() as f64 / (total - mid).max(1) as f64;
-    
+    let first_half_success =
+        filtered.iter().take(mid).filter(|e| e.success).count() as f64 / mid.max(1) as f64;
+    let second_half_success = filtered.iter().skip(mid).filter(|e| e.success).count() as f64
+        / (total - mid).max(1) as f64;
+
     let success_rate_trend = if second_half_success > first_half_success + 0.1 {
         "improving"
     } else if second_half_success < first_half_success - 0.1 {
         "declining"
     } else {
         "stable"
-    }.to_string();
+    }
+    .to_string();
 
     // Calculate fee trend
     let fees: Vec<u64> = filtered.iter().filter_map(|e| e.fee_stroops).collect();
@@ -530,7 +529,7 @@ pub fn analyze_trends(
         let mid = fees.len() / 2;
         let first_avg: f64 = fees.iter().take(mid).sum::<u64>() as f64 / mid as f64;
         let second_avg: f64 = fees.iter().skip(mid).sum::<u64>() as f64 / (fees.len() - mid) as f64;
-        
+
         if second_avg > first_avg * 1.2 {
             "increasing"
         } else if second_avg < first_avg * 0.8 {
@@ -540,7 +539,8 @@ pub fn analyze_trends(
         }
     } else {
         "insufficient-data"
-    }.to_string();
+    }
+    .to_string();
 
     // Calculate deployment velocity (rate of change in deployment frequency)
     let deployment_velocity = if days >= 14 {
@@ -565,7 +565,7 @@ pub fn analyze_trends(
 
     // Generate predictions
     let next_deployment_likely_success = success_rate > 0.7 && recent_failures < 2;
-    
+
     let predicted_fee_range = if !fees.is_empty() {
         let avg = fees.iter().sum::<u64>() as f64 / fees.len() as f64;
         let min = (avg * 0.8) as u64;
@@ -577,7 +577,10 @@ pub fn analyze_trends(
 
     let mut risk_factors = Vec::new();
     if recent_failures >= 2 {
-        risk_factors.push(format!("{} recent deployment failures detected", recent_failures));
+        risk_factors.push(format!(
+            "{} recent deployment failures detected",
+            recent_failures
+        ));
     }
     if success_rate < 0.5 {
         risk_factors.push(format!("Low success rate: {:.1}%", success_rate * 100.0));
@@ -591,10 +594,14 @@ pub fn analyze_trends(
 
     let mut recommendations = Vec::new();
     if recent_failures > 0 {
-        recommendations.push("Review recent deployment errors with `starforge deployments history --failures`".to_string());
+        recommendations.push(
+            "Review recent deployment errors with `starforge deployments history --failures`"
+                .to_string(),
+        );
     }
     if deployment_frequency < 0.1 {
-        recommendations.push("Low deployment frequency - consider more regular deployments".to_string());
+        recommendations
+            .push("Low deployment frequency - consider more regular deployments".to_string());
     }
     if success_rate < 0.8 {
         recommendations.push("Run `starforge security audit` before next deployment".to_string());
@@ -603,7 +610,8 @@ pub fn analyze_trends(
         recommendations.push("Optimize WASM size to reduce deployment costs".to_string());
     }
     if recommendations.is_empty() {
-        recommendations.push("Deployment trends look healthy - continue current practices".to_string());
+        recommendations
+            .push("Deployment trends look healthy - continue current practices".to_string());
     }
 
     TrendAnalysis {
@@ -627,17 +635,17 @@ pub fn analyze_trends(
 
 fn calculate_health_score(success_rate: f64, recent_failures: usize, trend: &str) -> f64 {
     let mut score = success_rate * 100.0;
-    
+
     // Penalty for recent failures
     score -= (recent_failures as f64 * 10.0).min(30.0);
-    
+
     // Adjust for trend
     match trend {
         "improving" => score += 5.0,
         "declining" => score -= 15.0,
         _ => {}
     }
-    
+
     score.max(0.0).min(100.0)
 }
 
@@ -674,7 +682,10 @@ pub fn calculate_contract_health(
     let reliability_score = success_rate * 100.0;
 
     // Performance score (based on fee efficiency)
-    let fees: Vec<u64> = contract_events.iter().filter_map(|e| e.fee_stroops).collect();
+    let fees: Vec<u64> = contract_events
+        .iter()
+        .filter_map(|e| e.fee_stroops)
+        .collect();
     let performance_score = if !fees.is_empty() {
         let avg_fee = fees.iter().sum::<u64>() as f64 / fees.len() as f64;
         // Lower fees = better performance score (baseline is 5000 stroops)
@@ -689,7 +700,7 @@ pub fn calculate_contract_health(
         .iter()
         .filter_map(|e| chrono::DateTime::parse_from_rfc3339(&e.timestamp).ok())
         .max();
-    
+
     let activity_score = if let Some(last) = last_deployment {
         let days_since = (now - last.with_timezone(&Utc)).num_days();
         if days_since <= 7 {
@@ -706,7 +717,7 @@ pub fn calculate_contract_health(
     };
 
     // Calculate overall score (weighted average)
-    let overall_score = (reliability_score * 0.5 + performance_score * 0.3 + activity_score * 0.2);
+    let overall_score = reliability_score * 0.5 + performance_score * 0.3 + activity_score * 0.2;
 
     // Determine risk level
     let risk_level = if overall_score >= 80.0 {
@@ -715,7 +726,8 @@ pub fn calculate_contract_health(
         "medium"
     } else {
         "high"
-    }.to_string();
+    }
+    .to_string();
 
     // Identify issues and strengths
     let mut issues = Vec::new();
@@ -724,7 +736,10 @@ pub fn calculate_contract_health(
     if success_rate < 0.7 {
         issues.push(format!("Low success rate: {:.1}%", success_rate * 100.0));
     } else if success_rate >= 0.95 {
-        strengths.push(format!("Excellent success rate: {:.1}%", success_rate * 100.0));
+        strengths.push(format!(
+            "Excellent success rate: {:.1}%",
+            success_rate * 100.0
+        ));
     }
 
     if activity_score < 40.0 {
@@ -739,7 +754,12 @@ pub fn calculate_contract_health(
         strengths.push("Efficient deployment costs".to_string());
     }
 
-    let recent_failures = contract_events.iter().rev().take(5).filter(|e| !e.success).count();
+    let recent_failures = contract_events
+        .iter()
+        .rev()
+        .take(5)
+        .filter(|e| !e.success)
+        .count();
     if recent_failures >= 2 {
         issues.push(format!("{} recent deployment failures", recent_failures));
     }
@@ -1106,7 +1126,12 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
     config::validate_network(&args.network)?;
 
     let events = load_events()?;
-    let analysis = analyze_trends(&events, &args.network, args.contract_id.as_deref(), args.days);
+    let analysis = analyze_trends(
+        &events,
+        &args.network,
+        args.contract_id.as_deref(),
+        args.days,
+    );
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&analysis)?);
@@ -1118,14 +1143,17 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
         p::kv("Contract", c);
     }
     p::kv("Network", &analysis.network);
-    p::kv("Time window", &format!("{} days", analysis.time_window_days));
+    p::kv(
+        "Time window",
+        &format!("{} days", analysis.time_window_days),
+    );
     p::separator();
-    
+
     println!("  {}", "Key Metrics".bright_white().bold());
     println!();
     p::kv(
         "Deployment frequency",
-        &format!("{:.2} per day", analysis.deployment_frequency)
+        &format!("{:.2} per day", analysis.deployment_frequency),
     );
     p::kv(
         "Success rate trend",
@@ -1133,7 +1161,7 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
             "improving" => analysis.success_rate_trend.green().to_string(),
             "declining" => analysis.success_rate_trend.red().to_string(),
             _ => analysis.success_rate_trend.yellow().to_string(),
-        }
+        },
     );
     p::kv(
         "Average fee trend",
@@ -1141,30 +1169,25 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
             "increasing" => analysis.avg_fee_trend.red().to_string(),
             "decreasing" => analysis.avg_fee_trend.green().to_string(),
             _ => analysis.avg_fee_trend.yellow().to_string(),
-        }
+        },
     );
     p::kv("Recent failures", &format!("{}", analysis.recent_failures));
     p::kv(
         "Deployment velocity",
-        &format!("{:+.2} deployments/day", analysis.deployment_velocity)
+        &format!("{:+.2} deployments/day", analysis.deployment_velocity),
     );
-    p::kv(
-        "Health score",
-        &format!("{:.1}/100", analysis.health_score)
-    );
+    p::kv("Health score", &format!("{:.1}/100", analysis.health_score));
 
     println!();
     println!("  {}", "Predictions".bright_white().bold());
     println!();
     let pred = &analysis.predictions;
-    p::kv(
-        "Next deployment success",
-        if pred.next_deployment_likely_success {
-            "Likely ✓".green().to_string()
-        } else {
-            "At risk ✗".red().to_string()
-        }
-    );
+    let deploy_str = if pred.next_deployment_likely_success {
+        format!("{}", "Likely ✓".green())
+    } else {
+        format!("{}", "At risk ✗".red())
+    };
+    p::kv("Next deployment success", &deploy_str);
     p::kv(
         "Predicted fee range",
         &format!(
@@ -1173,12 +1196,16 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
             pred.predicted_fee_range.1,
             pred.predicted_fee_range.0 as f64 / 10_000_000.0,
             pred.predicted_fee_range.1 as f64 / 10_000_000.0
-        )
+        ),
     );
 
     if !pred.risk_factors.is_empty() {
         println!();
-        println!("  {} {}", "Risk Factors:".red().bold(), format!("({})", pred.risk_factors.len()).red());
+        println!(
+            "  {} {}",
+            "Risk Factors:".red().bold(),
+            format!("({})", pred.risk_factors.len()).red()
+        );
         for risk in &pred.risk_factors {
             println!("    {} {}", "⚠".yellow(), risk.dimmed());
         }
@@ -1217,16 +1244,31 @@ fn handle_predict(args: PredictArgs) -> Result<()> {
     println!("  {}", "Prediction Results".bright_white().bold());
     println!();
 
-    let success_icon = if pred.next_deployment_likely_success { "✓" } else { "✗" };
-    let success_color = if pred.next_deployment_likely_success { "green" } else { "red" };
-    
+    let success_icon = if pred.next_deployment_likely_success {
+        "✓"
+    } else {
+        "✗"
+    };
+    let success_color = if pred.next_deployment_likely_success {
+        "green"
+    } else {
+        "red"
+    };
+
     println!(
         "  {:<25}  {}",
         "Success probability".bright_white(),
-        format!("{} {}", 
+        format!(
+            "{} {}",
             success_icon,
-            if pred.next_deployment_likely_success { "High" } else { "Low" }
-        ).color(success_color).bold()
+            if pred.next_deployment_likely_success {
+                "High"
+            } else {
+                "Low"
+            }
+        )
+        .color(success_color)
+        .bold()
     );
 
     println!(
@@ -1234,9 +1276,9 @@ fn handle_predict(args: PredictArgs) -> Result<()> {
         "Estimated fee range".bright_white(),
         format!(
             "{} - {} stroops",
-            pred.predicted_fee_range.0,
-            pred.predicted_fee_range.1
-        ).white()
+            pred.predicted_fee_range.0, pred.predicted_fee_range.1
+        )
+        .white()
     );
 
     println!(
@@ -1246,7 +1288,8 @@ fn handle_predict(args: PredictArgs) -> Result<()> {
             "{:.5} - {:.5}",
             pred.predicted_fee_range.0 as f64 / 10_000_000.0,
             pred.predicted_fee_range.1 as f64 / 10_000_000.0
-        ).white()
+        )
+        .white()
     );
 
     if let Some(size_kb) = args.wasm_size_kb {
@@ -1319,7 +1362,9 @@ fn handle_health(args: HealthArgs) -> Result<()> {
     println!(
         "  {:<25}  {} {}",
         "Overall Score".bright_white(),
-        format!("{:.1}/100", health.overall_score).color(score_color).bold(),
+        format!("{:.1}/100", health.overall_score)
+            .color(score_color)
+            .bold(),
         health_indicator(health.overall_score)
     );
 
@@ -1355,7 +1400,11 @@ fn handle_health(args: HealthArgs) -> Result<()> {
 
     if !health.issues.is_empty() {
         println!();
-        println!("  {} {}", "Issues".red().bold(), format!("({})", health.issues.len()).red());
+        println!(
+            "  {} {}",
+            "Issues".red().bold(),
+            format!("({})", health.issues.len()).red()
+        );
         for issue in &health.issues {
             println!("    {} {}", "✗".red(), issue.white());
         }
@@ -1363,14 +1412,18 @@ fn handle_health(args: HealthArgs) -> Result<()> {
 
     if !health.strengths.is_empty() {
         println!();
-        println!("  {} {}", "Strengths".green().bold(), format!("({})", health.strengths.len()).green());
+        println!(
+            "  {} {}",
+            "Strengths".green().bold(),
+            format!("({})", health.strengths.len()).green()
+        );
         for strength in &health.strengths {
             println!("    {} {}", "✓".green(), strength.white());
         }
     }
 
     p::separator();
-    
+
     // Provide actionable recommendations
     if health.overall_score < 60.0 {
         p::warn("Low health score detected - review issues and take corrective action");

@@ -39,8 +39,7 @@ fn analytics_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
     let dir = home.join(".starforge").join("analytics");
     if !dir.exists() {
-        fs::create_dir_all(&dir)
-            .with_context(|| format!("Failed to create {}", dir.display()))?;
+        fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     }
     Ok(dir)
 }
@@ -77,7 +76,8 @@ fn load_jsonl<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<Vec<T>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let file = fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let file =
+        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
     let reader = BufReader::new(file);
     let mut out = Vec::new();
     for line in reader.lines() {
@@ -198,16 +198,43 @@ pub struct FeedbackEntry {
 }
 
 const BUG_KEYWORDS: &[&str] = &[
-    "bug", "crash", "error", "broken", "fails", "failing", "panic", "doesn't work",
-    "does not work", "not working", "vulnerability", "exploit", "regression",
+    "bug",
+    "crash",
+    "error",
+    "broken",
+    "fails",
+    "failing",
+    "panic",
+    "doesn't work",
+    "does not work",
+    "not working",
+    "vulnerability",
+    "exploit",
+    "regression",
 ];
 const FEATURE_KEYWORDS: &[&str] = &[
-    "please add", "would be nice", "wish", "feature request", "support for",
-    "it would be great", "can you add", "missing", "could you add", "feature:",
+    "please add",
+    "would be nice",
+    "wish",
+    "feature request",
+    "support for",
+    "it would be great",
+    "can you add",
+    "missing",
+    "could you add",
+    "feature:",
 ];
 const PRAISE_KEYWORDS: &[&str] = &[
-    "love", "great", "awesome", "excellent", "perfect", "thanks", "thank you", "amazing",
-    "fantastic", "well done",
+    "love",
+    "great",
+    "awesome",
+    "excellent",
+    "perfect",
+    "thanks",
+    "thank you",
+    "amazing",
+    "fantastic",
+    "well done",
 ];
 
 /// Heuristically classify free-text feedback when the caller doesn't supply
@@ -374,7 +401,11 @@ const BUG_REPORT_FLAG_THRESHOLD: usize = 3;
 pub async fn generate_report(name: Option<&str>) -> Result<CommunityAnalysisReport> {
     let registry = templates::load_registry().await?;
     let entries: Vec<TemplateEntry> = match name {
-        Some(n) => registry.templates.into_iter().filter(|t| t.name == n).collect(),
+        Some(n) => registry
+            .templates
+            .into_iter()
+            .filter(|t| t.name == n)
+            .collect(),
         None => registry.templates,
     };
 
@@ -396,7 +427,9 @@ pub async fn generate_report(name: Option<&str>) -> Result<CommunityAnalysisRepo
 
     Ok(CommunityAnalysisReport {
         generated_at: Utc::now(),
-        scope: name.map(str::to_string).unwrap_or_else(|| "all".to_string()),
+        scope: name
+            .map(str::to_string)
+            .unwrap_or_else(|| "all".to_string()),
         usage,
         feedback: feedback_analysis,
         trends,
@@ -438,7 +471,10 @@ fn build_usage_analytics(
 }
 
 fn build_feedback_analysis(feedback: &[FeedbackEntry]) -> FeedbackAnalysis {
-    let ratings: Vec<f32> = feedback.iter().filter_map(|f| f.rating.map(|r| r as f32)).collect();
+    let ratings: Vec<f32> = feedback
+        .iter()
+        .filter_map(|f| f.rating.map(|r| r as f32))
+        .collect();
     let average_rating = if ratings.is_empty() {
         None
     } else {
@@ -459,9 +495,9 @@ fn build_feedback_analysis(feedback: &[FeedbackEntry]) -> FeedbackAnalysis {
             None => match f.category {
                 FeedbackCategory::Praise => sentiment.positive += 1,
                 FeedbackCategory::Bug => sentiment.negative += 1,
-                FeedbackCategory::FeatureRequest | FeedbackCategory::Question | FeedbackCategory::Other => {
-                    sentiment.neutral += 1
-                }
+                FeedbackCategory::FeatureRequest
+                | FeedbackCategory::Question
+                | FeedbackCategory::Other => sentiment.neutral += 1,
             },
         }
 
@@ -564,8 +600,8 @@ fn build_issue_detection(entries: &[TemplateEntry], feedback: &[FeedbackEntry]) 
             reasons.push("Missing documentation".to_string());
         }
         if let Some(sr) = &e.security_review {
-            if let Some(findings) = sr.findings {
-                if findings > 0 {
+            if let Some(findings) = &sr.findings {
+                if findings.len() > 0 {
                     reasons.push(format!("{} unresolved security finding(s)", findings));
                 }
             }
@@ -616,8 +652,16 @@ fn build_community_insights(entries: &[TemplateEntry]) -> CommunityInsights {
 
     CommunityInsights {
         total_templates: total,
-        verified_pct: if total == 0 { 0.0 } else { (verified as f32 / total as f32) * 100.0 },
-        documented_pct: if total == 0 { 0.0 } else { (documented as f32 / total as f32) * 100.0 },
+        verified_pct: if total == 0 {
+            0.0
+        } else {
+            (verified as f32 / total as f32) * 100.0
+        },
+        documented_pct: if total == 0 {
+            0.0
+        } else {
+            (documented as f32 / total as f32) * 100.0
+        },
         top_tags,
         top_authors,
     }
@@ -677,7 +721,11 @@ fn build_suggestions(
     }
 
     for flag in &issues.flagged {
-        suggestions.push(format!("Review '{}': {}", flag.template, flag.reasons.join("; ")));
+        suggestions.push(format!(
+            "Review '{}': {}",
+            flag.template,
+            flag.reasons.join("; ")
+        ));
     }
 
     suggestions.dedup();
@@ -695,8 +743,14 @@ impl CommunityAnalysisReport {
     pub fn to_text(&self) -> String {
         let mut out = String::new();
 
-        out.push_str(&format!("Community Analysis Report — scope: {}\n", self.scope));
-        out.push_str(&format!("Generated: {}\n\n", self.generated_at.to_rfc3339()));
+        out.push_str(&format!(
+            "Community Analysis Report — scope: {}\n",
+            self.scope
+        ));
+        out.push_str(&format!(
+            "Generated: {}\n\n",
+            self.generated_at.to_rfc3339()
+        ));
 
         out.push_str("Usage Analytics\n");
         out.push_str(&format!(
@@ -716,14 +770,19 @@ impl CommunityAnalysisReport {
         out.push('\n');
 
         out.push_str("Feedback Analysis\n");
-        out.push_str(&format!("  Total feedback entries: {}\n", self.feedback.total_feedback));
+        out.push_str(&format!(
+            "  Total feedback entries: {}\n",
+            self.feedback.total_feedback
+        ));
         match self.feedback.average_rating {
             Some(avg) => out.push_str(&format!("  Average rating: {:.1}/5\n", avg)),
             None => out.push_str("  Average rating: no ratings submitted yet\n"),
         }
         out.push_str(&format!(
             "  Sentiment — positive: {}, neutral: {}, negative: {}\n",
-            self.feedback.sentiment.positive, self.feedback.sentiment.neutral, self.feedback.sentiment.negative
+            self.feedback.sentiment.positive,
+            self.feedback.sentiment.neutral,
+            self.feedback.sentiment.negative
         ));
         if !self.feedback.common_issues.is_empty() {
             out.push_str("  Common issue keywords:\n");
@@ -745,11 +804,19 @@ impl CommunityAnalysisReport {
         ));
         out.push_str(&format!(
             "  Rising: {}\n",
-            if self.trends.rising.is_empty() { "—".to_string() } else { self.trends.rising.join(", ") }
+            if self.trends.rising.is_empty() {
+                "—".to_string()
+            } else {
+                self.trends.rising.join(", ")
+            }
         ));
         out.push_str(&format!(
             "  Declining: {}\n",
-            if self.trends.declining.is_empty() { "—".to_string() } else { self.trends.declining.join(", ") }
+            if self.trends.declining.is_empty() {
+                "—".to_string()
+            } else {
+                self.trends.declining.join(", ")
+            }
         ));
         out.push('\n');
 
@@ -758,7 +825,11 @@ impl CommunityAnalysisReport {
             out.push_str("  No issues detected.\n");
         } else {
             for flag in &self.issues.flagged {
-                out.push_str(&format!("  - {}: {}\n", flag.template, flag.reasons.join("; ")));
+                out.push_str(&format!(
+                    "  - {}: {}\n",
+                    flag.template,
+                    flag.reasons.join("; ")
+                ));
             }
         }
         out.push('\n');
@@ -774,9 +845,15 @@ impl CommunityAnalysisReport {
         out.push('\n');
 
         out.push_str("Community Insights\n");
-        out.push_str(&format!("  Templates tracked: {}\n", self.insights.total_templates));
+        out.push_str(&format!(
+            "  Templates tracked: {}\n",
+            self.insights.total_templates
+        ));
         out.push_str(&format!("  Verified: {:.0}%\n", self.insights.verified_pct));
-        out.push_str(&format!("  Documented: {:.0}%\n", self.insights.documented_pct));
+        out.push_str(&format!(
+            "  Documented: {:.0}%\n",
+            self.insights.documented_pct
+        ));
         if !self.insights.top_tags.is_empty() {
             let tags: Vec<String> = self
                 .insights
@@ -810,7 +887,7 @@ pub async fn ai_narrative_summary(report: &CommunityAnalysisReport) -> Option<St
     if !crate::utils::ollama::is_ollama_running().await {
         return None;
     }
-    let prompt = crate::utils::ollama::prompts::community_analysis_prompt(&report.to_text());
+    let prompt = format!("Analyze this community report: {}", report.to_text());
     crate::utils::ollama::generate(crate::utils::ollama::DEFAULT_MODEL, &prompt, None)
         .await
         .ok()
@@ -829,7 +906,9 @@ mod tests {
             name: name.to_string(),
             description: String::new(),
             version: "1.0.0".to_string(),
-            source: TemplateSource::Builtin { id: name.to_string() },
+            source: TemplateSource::Builtin {
+                id: name.to_string(),
+            },
             tags: vec![],
             path: None,
             author: String::new(),
@@ -850,7 +929,12 @@ mod tests {
         }
     }
 
-    fn feedback(template: &str, category: FeedbackCategory, rating: Option<u8>, comment: &str) -> FeedbackEntry {
+    fn feedback(
+        template: &str,
+        category: FeedbackCategory,
+        rating: Option<u8>,
+        comment: &str,
+    ) -> FeedbackEntry {
         FeedbackEntry {
             template: template.to_string(),
             rating,
@@ -880,12 +964,18 @@ mod tests {
 
     #[test]
     fn classify_feedback_detects_praise() {
-        assert_eq!(classify_feedback("Love this template, thanks!", None), FeedbackCategory::Praise);
+        assert_eq!(
+            classify_feedback("Love this template, thanks!", None),
+            FeedbackCategory::Praise
+        );
     }
 
     #[test]
     fn classify_feedback_detects_question() {
-        assert_eq!(classify_feedback("Does this support mainnet?", None), FeedbackCategory::Question);
+        assert_eq!(
+            classify_feedback("Does this support mainnet?", None),
+            FeedbackCategory::Question
+        );
     }
 
     #[test]
@@ -895,24 +985,36 @@ mod tests {
 
     #[test]
     fn classify_feedback_high_rating_without_keywords_is_praise() {
-        assert_eq!(classify_feedback("solid", Some(5)), FeedbackCategory::Praise);
+        assert_eq!(
+            classify_feedback("solid", Some(5)),
+            FeedbackCategory::Praise
+        );
     }
 
     #[test]
     fn classify_feedback_default_is_other() {
-        assert_eq!(classify_feedback("neutral comment", Some(3)), FeedbackCategory::Other);
+        assert_eq!(
+            classify_feedback("neutral comment", Some(3)),
+            FeedbackCategory::Other
+        );
     }
 
     // ── FeedbackCategory::from_str ──────────────────────────────────────────
 
     #[test]
     fn feedback_category_from_str_accepts_known_aliases() {
-        assert_eq!("bug".parse::<FeedbackCategory>().unwrap(), FeedbackCategory::Bug);
+        assert_eq!(
+            "bug".parse::<FeedbackCategory>().unwrap(),
+            FeedbackCategory::Bug
+        );
         assert_eq!(
             "feature_request".parse::<FeedbackCategory>().unwrap(),
             FeedbackCategory::FeatureRequest
         );
-        assert_eq!("PRAISE".parse::<FeedbackCategory>().unwrap(), FeedbackCategory::Praise);
+        assert_eq!(
+            "PRAISE".parse::<FeedbackCategory>().unwrap(),
+            FeedbackCategory::Praise
+        );
     }
 
     #[test]
@@ -948,16 +1050,27 @@ mod tests {
 
         submit_feedback_at(&path, "voting", "Great template, thanks!", Some(5), None).unwrap();
         submit_feedback_at(&path, "voting", "Crashes when quorum is zero", None, None).unwrap();
-        submit_feedback_at(&path, "nft", "Please add batch transfer", None, Some(FeedbackCategory::FeatureRequest))
-            .unwrap();
+        submit_feedback_at(
+            &path,
+            "nft",
+            "Please add batch transfer",
+            None,
+            Some(FeedbackCategory::FeatureRequest),
+        )
+        .unwrap();
 
         let all: Vec<FeedbackEntry> = load_jsonl(&path).unwrap();
         assert_eq!(all.len(), 3);
 
-        let voting_only: Vec<FeedbackEntry> = all.into_iter().filter(|f| f.template == "voting").collect();
+        let voting_only: Vec<FeedbackEntry> =
+            all.into_iter().filter(|f| f.template == "voting").collect();
         assert_eq!(voting_only.len(), 2);
-        assert!(voting_only.iter().any(|f| f.category == FeedbackCategory::Praise));
-        assert!(voting_only.iter().any(|f| f.category == FeedbackCategory::Bug));
+        assert!(voting_only
+            .iter()
+            .any(|f| f.category == FeedbackCategory::Praise));
+        assert!(voting_only
+            .iter()
+            .any(|f| f.category == FeedbackCategory::Bug));
     }
 
     #[test]
@@ -991,9 +1104,21 @@ mod tests {
         let entries = vec![entry("voting"), entry("nft")];
         let now = Utc::now();
         let events = vec![
-            UsageEvent { template: "voting".into(), action: UsageAction::Scaffold, timestamp: now },
-            UsageEvent { template: "voting".into(), action: UsageAction::Scaffold, timestamp: now },
-            UsageEvent { template: "nft".into(), action: UsageAction::Install, timestamp: now },
+            UsageEvent {
+                template: "voting".into(),
+                action: UsageAction::Scaffold,
+                timestamp: now,
+            },
+            UsageEvent {
+                template: "voting".into(),
+                action: UsageAction::Scaffold,
+                timestamp: now,
+            },
+            UsageEvent {
+                template: "nft".into(),
+                action: UsageAction::Install,
+                timestamp: now,
+            },
         ];
 
         let analytics = build_usage_analytics(&entries, &events, None);
@@ -1032,12 +1157,20 @@ mod tests {
             feedback("voting", FeedbackCategory::Bug, None, "crashes every time"),
         ];
         let analysis = build_feedback_analysis(&fb);
-        assert!(analysis.common_issues.iter().any(|(kw, count)| kw == "crash" && *count == 2));
+        assert!(analysis
+            .common_issues
+            .iter()
+            .any(|(kw, count)| kw == "crash" && *count == 2));
     }
 
     #[test]
     fn feedback_analysis_collects_feature_requests() {
-        let fb = vec![feedback("voting", FeedbackCategory::FeatureRequest, None, "please add quorum config")];
+        let fb = vec![feedback(
+            "voting",
+            FeedbackCategory::FeatureRequest,
+            None,
+            "please add quorum config",
+        )];
         let analysis = build_feedback_analysis(&fb);
         assert_eq!(analysis.feature_requests.len(), 1);
     }
@@ -1056,8 +1189,16 @@ mod tests {
         let now = Utc::now();
         let events = vec![
             // 2 events this week
-            UsageEvent { template: "voting".into(), action: UsageAction::Scaffold, timestamp: now },
-            UsageEvent { template: "voting".into(), action: UsageAction::Scaffold, timestamp: now },
+            UsageEvent {
+                template: "voting".into(),
+                action: UsageAction::Scaffold,
+                timestamp: now,
+            },
+            UsageEvent {
+                template: "voting".into(),
+                action: UsageAction::Scaffold,
+                timestamp: now,
+            },
             // 1 event the prior week
             UsageEvent {
                 template: "voting".into(),
@@ -1098,8 +1239,14 @@ mod tests {
 
         let issues = build_issue_detection(&[e], &[]);
         assert_eq!(issues.flagged.len(), 1);
-        assert!(issues.flagged[0].reasons.iter().any(|r| r.contains("deprecated")));
-        assert!(issues.flagged[0].reasons.iter().any(|r| r.contains("documentation")));
+        assert!(issues.flagged[0]
+            .reasons
+            .iter()
+            .any(|r| r.contains("deprecated")));
+        assert!(issues.flagged[0]
+            .reasons
+            .iter()
+            .any(|r| r.contains("documentation")));
     }
 
     #[test]
@@ -1116,7 +1263,10 @@ mod tests {
 
         let issues = build_issue_detection(&[e], &[]);
         assert_eq!(issues.flagged.len(), 1);
-        assert!(issues.flagged[0].reasons.iter().any(|r| r.contains("security finding")));
+        assert!(issues.flagged[0]
+            .reasons
+            .iter()
+            .any(|r| r.contains("security finding")));
     }
 
     #[test]
@@ -1131,7 +1281,10 @@ mod tests {
 
         let issues = build_issue_detection(&[e.clone()], &fb);
         assert_eq!(issues.flagged.len(), 1);
-        assert!(issues.flagged[0].reasons.iter().any(|r| r.contains("bug report")));
+        assert!(issues.flagged[0]
+            .reasons
+            .iter()
+            .any(|r| r.contains("bug report")));
         e.security_review = None; // no-op, keeps `e` used
     }
 
@@ -1192,12 +1345,19 @@ mod tests {
         ];
         let feedback_analysis = build_feedback_analysis(&fb);
         let suggestions = build_suggestions(&[], &feedback_analysis, &IssueDetection::default());
-        assert!(suggestions.iter().any(|s| s.contains("Average community rating")));
+        assert!(suggestions
+            .iter()
+            .any(|s| s.contains("Average community rating")));
     }
 
     #[test]
     fn suggestions_surface_feature_request_count() {
-        let fb = vec![feedback("voting", FeedbackCategory::FeatureRequest, None, "please add X")];
+        let fb = vec![feedback(
+            "voting",
+            FeedbackCategory::FeatureRequest,
+            None,
+            "please add X",
+        )];
         let feedback_analysis = build_feedback_analysis(&fb);
         let suggestions = build_suggestions(&[], &feedback_analysis, &IssueDetection::default());
         assert!(suggestions.iter().any(|s| s.contains("feature request")));

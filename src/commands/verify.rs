@@ -1,6 +1,5 @@
 use crate::utils::{
-    config,
-    print as p,
+    config, print as p,
     wasm_hash::{compute_wasm_hash, BuildEnvironment},
 };
 use anyhow::Result;

@@ -93,7 +93,8 @@ impl Backoff {
 
 impl SorobanEventStream {
     pub fn new(rpc_url: String, contract_id: String) -> Self {
-        let websocket_url = websocket_url_from_rpc_url(&rpc_url).unwrap_or_else(|_| rpc_url.clone());
+        let websocket_url =
+            websocket_url_from_rpc_url(&rpc_url).unwrap_or_else(|_| rpc_url.clone());
         Self {
             rpc_url,
             websocket_url,
@@ -252,7 +253,12 @@ impl SorobanEventStream {
 
         let (websocket, _) = connect_async(self.websocket_url.as_str())
             .await
-            .with_context(|| format!("failed to connect to Soroban RPC WebSocket {}", self.websocket_url))?;
+            .with_context(|| {
+                format!(
+                    "failed to connect to Soroban RPC WebSocket {}",
+                    self.websocket_url
+                )
+            })?;
         self.websocket = Some(websocket);
         Ok(())
     }
@@ -538,7 +544,8 @@ mod tests {
             let (stream, _) = listener.accept().await.unwrap();
             let mut socket = accept_async(stream).await.unwrap();
             let message = socket.next().await.unwrap().unwrap();
-            let request: serde_json::Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+            let request: serde_json::Value =
+                serde_json::from_str(message.to_text().unwrap()).unwrap();
             assert_eq!(request["method"], "getEvents");
             socket
                 .send(Message::Text(
@@ -563,12 +570,9 @@ mod tests {
                 .unwrap();
         });
 
-        let mut stream = SorobanEventStream::new(
-            format!("http://{}", address),
-            "C123".to_string(),
-        )
-        .with_transport(EventStreamTransport::WebSocket)
-        .with_websocket_url(format!("ws://{}", address));
+        let mut stream = SorobanEventStream::new(format!("http://{}", address), "C123".to_string())
+            .with_transport(EventStreamTransport::WebSocket)
+            .with_websocket_url(format!("ws://{}", address));
         let events = stream.next_batch().await.unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].id, "mock-event");

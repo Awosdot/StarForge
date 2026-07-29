@@ -270,7 +270,10 @@ pub fn summarize(records: &[AiCallRecord]) -> AiTelemetrySummary {
         } else {
             error_count += 1;
             stats.errors += 1;
-            let kind = r.error_kind.clone().unwrap_or_else(|| "unknown".to_string());
+            let kind = r
+                .error_kind
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
             *by_error_kind.entry(kind).or_insert(0) += 1;
         }
     }
@@ -306,7 +309,13 @@ pub fn summarize(records: &[AiCallRecord]) -> AiTelemetrySummary {
 mod tests {
     use super::*;
 
-    fn rec(provider: &str, model: &str, feature: &str, latency_ms: u64, success: bool) -> AiCallRecord {
+    fn rec(
+        provider: &str,
+        model: &str,
+        feature: &str,
+        latency_ms: u64,
+        success: bool,
+    ) -> AiCallRecord {
         AiCallRecord {
             timestamp: Utc::now(),
             provider: provider.to_string(),
@@ -316,7 +325,11 @@ mod tests {
             tokens_out: Some(50),
             latency_ms,
             success,
-            error_kind: if success { None } else { Some("timeout".to_string()) },
+            error_kind: if success {
+                None
+            } else {
+                Some("timeout".to_string())
+            },
             cost_usd: estimate_cost_usd(provider, model, Some(100), Some(50)),
         }
     }

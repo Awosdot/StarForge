@@ -295,50 +295,58 @@ pub async fn generate_cached(
     tags: &str,
 ) -> Result<GenerateResponse> {
     use serde_json;
-    
+
     // Try to open cache (may fail if database is locked, etc.)
     let mut cache = match ai_cache::AiCache::open() {
         Ok(cache) => cache,
         Err(e) => {
-            tracing::warn!("Failed to open AI cache, falling back to direct call: {}", e);
+            tracing::warn!(
+                "Failed to open AI cache, falling back to direct call: {}",
+                e
+            );
             return generate(model, prompt, options).await;
         }
     };
-    
+
     // Generate cache key
-    let options_json = options.as_ref()
+    let options_json = options
+        .as_ref()
         .map(|opts| serde_json::to_string(opts).unwrap_or_default())
         .unwrap_or_default();
-    
+
     let cache_key = ai_cache::AiCache::generate_cache_key(model, prompt, &options_json);
-    
+
     // Try to get from cache
     if let Some(entry) = cache.get(&cache_key)? {
         tracing::debug!("Cache hit for key: {}", cache_key);
-        
+
         // Parse response from cache
-        let response: GenerateResponse = serde_json::from_str(&entry.response)
-            .context("Failed to parse cached response")?;
-        
+        let response: GenerateResponse =
+            serde_json::from_str(&entry.response).context("Failed to parse cached response")?;
+
         return Ok(response);
     }
-    
-    tracing::debug!("Cache miss for key: {}, making request to Ollama", cache_key);
-    
+
+    tracing::debug!(
+        "Cache miss for key: {}, making request to Ollama",
+        cache_key
+    );
+
     // Make actual request
     let response = generate(model, prompt, options).await?;
-    
+
     // Store in cache
-    let response_json = serde_json::to_string(&response)
-        .context("Failed to serialize response for caching")?;
-    
+    let response_json =
+        serde_json::to_string(&response).context("Failed to serialize response for caching")?;
+
     let metadata = serde_json::json!({
         "total_duration": response.total_duration,
         "done": response.done,
         "cached_at": chrono::Utc::now().to_rfc3339(),
         "source": "ollama"
-    }).to_string();
-    
+    })
+    .to_string();
+
     let entry = ai_cache::AiCache::create_entry(
         model,
         prompt,
@@ -348,11 +356,11 @@ pub async fn generate_cached(
         ttl_seconds,
         tags,
     );
-    
+
     if let Err(e) = cache.put(entry) {
         tracing::warn!("Failed to store response in cache: {}", e);
     }
-    
+
     Ok(response)
 }
 
@@ -390,6 +398,14 @@ severity (Critical / High / Medium / Low) and a recommended fix.\n\n\
 Include a summary of its storage model, entry-point functions, and any notable design \
 patterns.\n\n```rust\n{}\n```",
             SYSTEM_CONTEXT, contract_code
+        )
+    }
+
+    /// Prompt for translating text.
+    pub fn translation_prompt(text: &str, target_lang: &str) -> String {
+        format!(
+            "{}Translate the following text into {}. Provide only the translation, no extra commentary.\n\n{}",
+            SYSTEM_CONTEXT, target_lang, text
         )
     }
 

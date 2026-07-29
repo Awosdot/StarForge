@@ -7,9 +7,8 @@
 
 use chrono::{Duration, Utc};
 use starforge::utils::{
-    context_help,
-    help_metadata,
-    history::{HistoryEntry, load_history, save_history},
+    context_help, help_metadata,
+    history::{load_history, save_history, HistoryEntry},
 };
 use tempfile::TempDir;
 
@@ -33,7 +32,10 @@ fn help_engine_handles_known_command() {
     assert!(help.description.contains("Deploy"));
     assert!(!help.flags_and_examples.is_empty());
     assert!(help.flags_and_examples.iter().any(|s| s.contains("--wasm")));
-    assert!(help.workflow_suggestions.iter().any(|s| s.contains("first-contract")));
+    assert!(help
+        .workflow_suggestions
+        .iter()
+        .any(|s| s.contains("first-contract")));
     assert!(!help.best_practice_tips.is_empty());
     assert!(help.related_commands.contains(&"contract".to_string()));
 }
@@ -54,7 +56,12 @@ fn help_engine_handles_unknown_command_with_fallback() {
 #[test]
 fn predicted_issues_block_first_deploy_without_wallet_history() {
     let warnings = context_help::predict_issues("deploy", &[]);
-    assert_eq!(warnings.len(), 2, "expected wallet create + fund warnings, got {:?}", warnings);
+    assert_eq!(
+        warnings.len(),
+        2,
+        "expected wallet create + fund warnings, got {:?}",
+        warnings
+    );
     assert!(warnings.iter().any(|w| w.contains("wallet create")));
     assert!(warnings.iter().any(|w| w.contains("funded")));
 }
@@ -66,7 +73,11 @@ fn predicted_issues_satisfied_with_history() {
         entry("wallet fund deployer", 1, 0),
     ];
     let warnings = context_help::predict_issues("deploy", &hist);
-    assert!(warnings.is_empty(), "got unexpected warnings: {:?}", warnings);
+    assert!(
+        warnings.is_empty(),
+        "got unexpected warnings: {:?}",
+        warnings
+    );
 }
 
 #[test]
@@ -102,7 +113,9 @@ fn troubleshoot_returns_actionable_step_for_common_errors() {
     assert!(auth_steps.iter().any(|s| s.contains("Authorization")));
 
     let overflow = context_help::troubleshoot("attempt to multiply with overflow");
-    assert!(overflow.iter().any(|s| s.to_lowercase().contains("arithmetic")));
+    assert!(overflow
+        .iter()
+        .any(|s| s.to_lowercase().contains("arithmetic")));
 
     let wasm = context_help::troubleshoot("invalid wasm magic header");
     assert!(wasm.iter().any(|s| s.to_lowercase().contains("wasm")));
@@ -129,8 +142,16 @@ fn category_filtering_works_via_help_context() {
     };
     let help = context_help::generate_help(&ctx);
     assert!(!help.best_practice_tips.is_empty());
-    assert!(help.workflow_suggestions.is_empty(), "got {:?}", help.workflow_suggestions);
-    assert!(help.flags_and_examples.is_empty(), "got {:?}", help.flags_and_examples);
+    assert!(
+        help.workflow_suggestions.is_empty(),
+        "got {:?}",
+        help.workflow_suggestions
+    );
+    assert!(
+        help.flags_and_examples.is_empty(),
+        "got {:?}",
+        help.flags_and_examples
+    );
 }
 
 #[test]
@@ -140,7 +161,10 @@ fn workflow_lookups_are_consistent() {
     assert!(context_help::workflow_duration("first-contract").is_some());
     assert!(context_help::workflow_steps("nope").is_none());
 
-    assert_eq!(context_help::workflow_count(), help_metadata::WORKFLOWS.len());
+    assert_eq!(
+        context_help::workflow_count(),
+        help_metadata::WORKFLOWS.len()
+    );
     assert_eq!(
         context_help::commands_with_help(),
         help_metadata::HELP_REGISTRY.len()

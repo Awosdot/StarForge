@@ -179,11 +179,26 @@ pub fn test_template(template_dir: &Path, config: &TestConfig) -> Result<Templat
         phases.push(phase);
     }
 
-    let critical_count = all_findings.iter().filter(|f| f.severity == Severity::Critical).count();
-    let high_count = all_findings.iter().filter(|f| f.severity == Severity::High).count();
-    let medium_count = all_findings.iter().filter(|f| f.severity == Severity::Medium).count();
-    let low_count = all_findings.iter().filter(|f| f.severity == Severity::Low).count();
-    let info_count = all_findings.iter().filter(|f| f.severity == Severity::Info).count();
+    let critical_count = all_findings
+        .iter()
+        .filter(|f| f.severity == Severity::Critical)
+        .count();
+    let high_count = all_findings
+        .iter()
+        .filter(|f| f.severity == Severity::High)
+        .count();
+    let medium_count = all_findings
+        .iter()
+        .filter(|f| f.severity == Severity::Medium)
+        .count();
+    let low_count = all_findings
+        .iter()
+        .filter(|f| f.severity == Severity::Low)
+        .count();
+    let info_count = all_findings
+        .iter()
+        .filter(|f| f.severity == Severity::Info)
+        .count();
 
     let quality_score = compute_quality_score(&all_findings);
     let passed = critical_count == 0 && high_count == 0;
@@ -228,10 +243,7 @@ pub fn test_all_templates(
 ) -> Result<Vec<TemplateTestReport>> {
     let examples_dir = templates_dir.join("examples");
     if !examples_dir.exists() {
-        anyhow::bail!(
-            "Examples directory not found at {}",
-            examples_dir.display()
-        );
+        anyhow::bail!("Examples directory not found at {}", examples_dir.display());
     }
 
     let mut reports = Vec::new();
@@ -437,7 +449,8 @@ fn validate_cargo_toml(cargo_path: &Path, findings: &mut Vec<TestFinding>) {
                 file: Some("Cargo.toml".to_string()),
                 line: None,
                 suggestion: Some(
-                    "Use {{PROJECT_NAME}} as the package name for template substitution.".to_string(),
+                    "Use {{PROJECT_NAME}} as the package name for template substitution."
+                        .to_string(),
                 ),
             });
         }
@@ -470,21 +483,18 @@ fn validate_cargo_toml(cargo_path: &Path, findings: &mut Vec<TestFinding>) {
     // Check cdylib crate type
     if let Some(lib) = parsed.get("lib") {
         if let Some(crate_type) = lib.get("crate-type").and_then(|v| v.as_array()) {
-            let has_cdylib = crate_type
-                .iter()
-                .any(|v| v.as_str() == Some("cdylib"));
+            let has_cdylib = crate_type.iter().any(|v| v.as_str() == Some("cdylib"));
             if !has_cdylib {
                 findings.push(TestFinding {
                     category: FindingCategory::BestPractice,
                     severity: Severity::Medium,
                     title: "Missing cdylib crate type".to_string(),
-                    description: "Soroban contracts should include 'cdylib' in crate-type for WASM output."
-                        .to_string(),
+                    description:
+                        "Soroban contracts should include 'cdylib' in crate-type for WASM output."
+                            .to_string(),
                     file: Some("Cargo.toml".to_string()),
                     line: None,
-                    suggestion: Some(
-                        "Add crate-type = [\"cdylib\"] under [lib].".to_string(),
-                    ),
+                    suggestion: Some("Add crate-type = [\"cdylib\"] under [lib].".to_string()),
                 });
             }
         }
@@ -553,7 +563,11 @@ fn validate_rust_source_file(path: &Path, findings: &mut Vec<TestFinding>) {
         Err(_) => return,
     };
 
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let file_name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
 
     // Check for #![no_std]
     if !content.contains("#![no_std]") {
@@ -574,7 +588,8 @@ fn validate_rust_source_file(path: &Path, findings: &mut Vec<TestFinding>) {
             category: FindingCategory::Structure,
             severity: Severity::High,
             title: "Missing #[contract] attribute".to_string(),
-            description: "Source file must declare a Soroban contract with #[contract].".to_string(),
+            description: "Source file must declare a Soroban contract with #[contract]."
+                .to_string(),
             file: Some(file_name.clone()),
             line: None,
             suggestion: Some("Add #[contract] to the main contract struct.".to_string()),
@@ -590,7 +605,9 @@ fn validate_rust_source_file(path: &Path, findings: &mut Vec<TestFinding>) {
             description: "Contract methods must be inside a #[contractimpl] block.".to_string(),
             file: Some(file_name.clone()),
             line: None,
-            suggestion: Some("Add #[contractimpl] to the contract implementation block.".to_string()),
+            suggestion: Some(
+                "Add #[contractimpl] to the contract implementation block.".to_string(),
+            ),
         });
     }
 
@@ -602,7 +619,8 @@ fn validate_rust_source_file(path: &Path, findings: &mut Vec<TestFinding>) {
             category: FindingCategory::Placeholder,
             severity: Severity::Medium,
             title: "No template placeholders in source".to_string(),
-            description: "Contract struct name should use {{{{PROJECT_NAME_PASCAL}}}} placeholder.".to_string(),
+            description: "Contract struct name should use {{{{PROJECT_NAME_PASCAL}}}} placeholder."
+                .to_string(),
             file: Some(file_name.clone()),
             line: None,
             suggestion: Some(
@@ -643,10 +661,7 @@ fn validate_placeholders(template_dir: &Path, findings: &mut Vec<TestFinding>) {
     }
 }
 
-fn collect_placeholders(
-    dir: &Path,
-    found: &mut HashMap<String, Vec<String>>,
-) {
+fn collect_placeholders(dir: &Path, found: &mut HashMap<String, Vec<String>>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -665,7 +680,8 @@ fn collect_placeholders(
                                 .unwrap_or_default()
                                 .to_string_lossy()
                                 .to_string();
-                            found.entry(placeholder.to_string())
+                            found
+                                .entry(placeholder.to_string())
                                 .or_default()
                                 .push(file_name);
                         }
@@ -773,11 +789,7 @@ fn scan_source_security(src_dir: &Path, findings: &mut Vec<TestFinding>) {
     }
 }
 
-fn analyze_security_patterns(
-    content: &str,
-    file_name: &str,
-    findings: &mut Vec<TestFinding>,
-) {
+fn analyze_security_patterns(content: &str, file_name: &str, findings: &mut Vec<TestFinding>) {
     let lines: Vec<&str> = content.lines().collect();
 
     // Check for require_auth usage in mutating functions
@@ -856,17 +868,14 @@ fn analyze_security_patterns(
             ),
             file: Some(file_name.to_string()),
             line: Some(fn_line),
-            suggestion: Some(
-                "Add caller.require_auth() before state mutations.".to_string(),
-            ),
+            suggestion: Some("Add caller.require_auth() before state mutations.".to_string()),
         });
     }
 
     // Check for reentrancy patterns
     let has_external_call =
         content.contains("token::Client") || content.contains("client.transfer(");
-    let has_reentrancy_guard =
-        content.contains("REENTRANCY") || content.contains("reentrancy");
+    let has_reentrancy_guard = content.contains("REENTRANCY") || content.contains("reentrancy");
 
     if has_external_call && !has_reentrancy_guard {
         findings.push(TestFinding {
@@ -1026,11 +1035,7 @@ fn scan_performance_patterns(src_dir: &Path, findings: &mut Vec<TestFinding>) {
     }
 }
 
-fn analyze_performance_patterns(
-    content: &str,
-    file_name: &str,
-    findings: &mut Vec<TestFinding>,
-) {
+fn analyze_performance_patterns(content: &str, file_name: &str, findings: &mut Vec<TestFinding>) {
     let lines: Vec<&str> = content.lines().collect();
 
     // Check for storage instance vs persistent vs temporary usage patterns
@@ -1065,7 +1070,11 @@ fn analyze_performance_patterns(
         if trimmed.contains("for ") && (trimmed.contains("in ") || trimmed.contains("iter()")) {
             // Check if the loop iterates over storage collections
             if trimmed.contains("storage()")
-                || content.lines().nth(i + 1).unwrap_or("").contains("storage()")
+                || content
+                    .lines()
+                    .nth(i + 1)
+                    .unwrap_or("")
+                    .contains("storage()")
             {
                 findings.push(TestFinding {
                     category: FindingCategory::Performance,
@@ -1106,9 +1115,7 @@ fn analyze_performance_patterns(
     }
 
     // Check for release profile optimizations
-    let cargo_path = file_name
-        .rsplit_once('/')
-        .map(|(_, rest)| rest.to_string());
+    let cargo_path = file_name.rsplit_once('/').map(|(_, rest)| rest.to_string());
     if cargo_path.as_deref() == Some("lib.rs") {
         // We're in a lib.rs — check if the parent has good release profile
         // (This is a heuristic based on content patterns)
@@ -1216,10 +1223,7 @@ fn run_compatibility_phase(template_dir: &Path, config: &TestConfig) -> Result<P
                             table
                                 .get("features")
                                 .and_then(|f| f.as_array())
-                                .map(|arr| {
-                                    arr.iter()
-                                        .any(|f| f.as_str() == Some("testutils"))
-                                })
+                                .map(|arr| arr.iter().any(|f| f.as_str() == Some("testutils")))
                                 .unwrap_or(false)
                         } else {
                             false
@@ -1253,7 +1257,8 @@ fn run_compatibility_phase(template_dir: &Path, config: &TestConfig) -> Result<P
                         file: Some("Cargo.toml".to_string()),
                         line: None,
                         suggestion: Some(
-                            "Add [dev-dependencies] with soroban-sdk testutils feature.".to_string(),
+                            "Add [dev-dependencies] with soroban-sdk testutils feature."
+                                .to_string(),
                         ),
                     });
                 }
@@ -1367,7 +1372,9 @@ fn validate_readme(content: &str, findings: &mut Vec<TestFinding>) {
             description: "README should mention the license.".to_string(),
             file: Some("README.md".to_string()),
             line: None,
-            suggestion: Some("Add license information to README and include a LICENSE file.".to_string()),
+            suggestion: Some(
+                "Add license information to README and include a LICENSE file.".to_string(),
+            ),
         });
     }
 }
@@ -1385,8 +1392,14 @@ fn check_source_docs(src_dir: &Path, findings: &mut Vec<TestFinding>) {
                         .to_string();
 
                     // Count doc comments vs public functions
-                    let doc_comment_count = content.lines().filter(|l| l.trim().starts_with("///")).count();
-                    let pub_fn_count = content.lines().filter(|l| l.trim().starts_with("pub fn ")).count();
+                    let doc_comment_count = content
+                        .lines()
+                        .filter(|l| l.trim().starts_with("///"))
+                        .count();
+                    let pub_fn_count = content
+                        .lines()
+                        .filter(|l| l.trim().starts_with("pub fn "))
+                        .count();
 
                     if pub_fn_count > 0 && doc_comment_count == 0 {
                         findings.push(TestFinding {
@@ -1532,8 +1545,16 @@ mod test {
         let config = TestConfig::default();
         let report = test_template(&template_dir, &config).unwrap();
 
-        assert!(report.passed, "Valid template should pass: {}", report.summary);
-        assert!(report.quality_score >= 70, "Score should be >= 70, got {}", report.quality_score);
+        assert!(
+            report.passed,
+            "Valid template should pass: {}",
+            report.summary
+        );
+        assert!(
+            report.quality_score >= 70,
+            "Score should be >= 70, got {}",
+            report.quality_score
+        );
     }
 
     #[test]

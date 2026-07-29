@@ -164,7 +164,10 @@ impl AIService for OpenAIAdapter {
             .context("Failed to send OpenAI request")?;
 
         let status = resp.status();
-        let text = resp.text().await.context("Failed to read OpenAI response")?;
+        let text = resp
+            .text()
+            .await
+            .context("Failed to read OpenAI response")?;
 
         if !status.is_success() {
             anyhow::bail!("OpenAI API error ({}): {}", status, text);
@@ -208,7 +211,10 @@ impl AIService for OpenAIAdapter {
         );
         self.generate_text(&AIRequest {
             prompt,
-            context: Some("You are a Rust and Soroban expert. Suggest concrete, actionable improvements.".into()),
+            context: Some(
+                "You are a Rust and Soroban expert. Suggest concrete, actionable improvements."
+                    .into(),
+            ),
             max_tokens: Some(1024),
             temperature: Some(0.5),
         })
@@ -320,7 +326,10 @@ impl AIService for AnthropicAdapter {
         );
         self.generate_text(&AIRequest {
             prompt,
-            context: Some("You are a Rust and Soroban expert. Suggest concrete, actionable improvements.".into()),
+            context: Some(
+                "You are a Rust and Soroban expert. Suggest concrete, actionable improvements."
+                    .into(),
+            ),
             max_tokens: Some(1024),
             temperature: Some(0.5),
         })
@@ -384,10 +393,7 @@ impl AIService for OllamaAdapter {
         let parsed: serde_json::Value =
             serde_json::from_str(&text).context("Failed to parse Ollama response")?;
 
-        let content = parsed["response"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let content = parsed["response"].as_str().unwrap_or("").to_string();
 
         Ok(AIResponse {
             content,
@@ -496,7 +502,8 @@ impl AIServiceManager {
     }
 
     pub async fn generate_text(&self, request: &AIRequest) -> Result<AIResponse> {
-        self.generate_text_for_feature(request, "generate_text").await
+        self.generate_text_for_feature(request, "generate_text")
+            .await
     }
 
     pub async fn generate_text_for_feature(
@@ -562,10 +569,7 @@ impl AIServiceManager {
                         false,
                         Some(classify_error_kind(&e)),
                     );
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
-                    );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }
@@ -643,10 +647,7 @@ impl AIServiceManager {
                         false,
                         Some(classify_error_kind(&e)),
                     );
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
-                    );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }
@@ -723,10 +724,7 @@ impl AIServiceManager {
                         false,
                         Some(classify_error_kind(&e)),
                     );
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
-                    );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }

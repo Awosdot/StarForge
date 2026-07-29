@@ -34,8 +34,8 @@ pub struct VulnerableWithdrawal;
 
 #[contractimpl]
 impl VulnerableWithdrawal {
-    pub fn withdraw(env: Env, amount: i128) {
-        // VULNERABILITY: Missing require_auth() check
+    pub fn withdraw(env:Env, amount: i128) {
+        // VULNERABILITY: Missing authorization check
         let balance = storage.get(&DataKey::Balance);
         assert!(balance >= amount);
         
@@ -54,10 +54,11 @@ pub struct UnsafeCalculations;
 
 #[contractimpl]
 impl UnsafeCalculations {
-    pub fn add_to_balance(env: Env, amount: i128) {
+    pub fn add_to_balance(env:Env, amount: i128) {
         // VULNERABILITY: Unchecked arithmetic - no overflow protection
         let balance = storage.get(&DataKey::Balance).unwrap_or(0);
-        let new_balance = balance + amount;  // Could overflow!
+        // Could overflow!
+        let new_balance = balance + amount;
         storage.set(&DataKey::Balance, new_balance);
     }
 }
@@ -99,15 +100,10 @@ pub struct PrivacyLeak;
 
 #[contractimpl]
 impl PrivacyLeak {
-    pub fn store_secret(env: Env, password: String, key: String) {
+    pub fn store_secret(env:Env, password: String, key: String) {
         // VULNERABILITY: Storing sensitive data on-chain
-        env.storage()
-            .persistent()
-            .set(&DataKey::Password, &password);
-        
-        env.storage()
-            .persistent()
-            .set(&DataKey::SecretKey, &key);
+        env.storage().persistent().set(&DataKey::Password, &password);
+        env.storage().persistent().set(&DataKey::SecretKey, &key);
     }
 }
 "#;

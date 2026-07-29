@@ -132,7 +132,9 @@ pub async fn handle(cmd: TemplateVcsCommands) -> Result<()> {
         TemplateVcsCommands::Changelog { path } => changelog(path),
         TemplateVcsCommands::Status { path } => status(path),
         TemplateVcsCommands::Analyze { path } => analyze(path).await,
-        TemplateVcsCommands::Compatibility { path, from, to } => compatibility(path, from, to).await,
+        TemplateVcsCommands::Compatibility { path, from, to } => {
+            compatibility(path, from, to).await
+        }
         TemplateVcsCommands::Suggest { path } => suggest(path).await,
         TemplateVcsCommands::Migrate { path, from, to } => migrate(path, from, to).await,
         TemplateVcsCommands::Rollback { path, version } => rollback(path, version).await,

@@ -55,7 +55,10 @@ impl MigrationTestRunner {
                         ));
                     }
                     None => {
-                        errors.push(format!("Expected key '{}' was missing in migrated state", key));
+                        errors.push(format!(
+                            "Expected key '{}' was missing in migrated state",
+                            key
+                        ));
                     }
                 }
             }
@@ -66,7 +69,8 @@ impl MigrationTestRunner {
                 rules: test_case.invariant_rules.clone(),
                 ..Default::default()
             };
-            let report = validate_state_transition(&test_case.initial_state, &migrated_state, &options);
+            let report =
+                validate_state_transition(&test_case.initial_state, &migrated_state, &options);
             for err in report.errors {
                 errors.push(format!("[Invariant Error] {}: {}", err.key, err.message));
             }

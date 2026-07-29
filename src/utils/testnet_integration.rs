@@ -200,25 +200,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
         "params": params,
     });
 
-    let url_owned = url.to_string();
-    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
-    let text = rt.block_on(async move {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()?;
-        let res = client
-            .post(&url_owned)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .context("RPC request failed")?;
-        res.text().await.context("Failed to read RPC response")
-    })?;
-
-    
     let url = url.to_string();
-    let body_string = body.to_string();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let result = (|| {

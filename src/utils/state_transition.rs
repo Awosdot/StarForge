@@ -5,29 +5,13 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TransitionInvariantRule {
-    RequiredKey {
-        key: String,
-    },
-    ForbiddenKey {
-        key: String,
-    },
-    TypeConstraint {
-        key: String,
-        expected_type: String,
-    },
-    NonDecreasingNumeric {
-        key: String,
-    },
-    ValueEquals {
-        key: String,
-        expected: Value,
-    },
-    ValuePreserved {
-        key: String,
-    },
-    NonNullValue {
-        key: String,
-    },
+    RequiredKey { key: String },
+    ForbiddenKey { key: String },
+    TypeConstraint { key: String, expected_type: String },
+    NonDecreasingNumeric { key: String },
+    ValueEquals { key: String, expected: Value },
+    ValuePreserved { key: String },
+    NonNullValue { key: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,7 +115,10 @@ pub fn validate_state_transition(
                         });
                     }
                 } else {
-                    warnings.push(format!("Type check skipped: key '{}' not found in after state", key));
+                    warnings.push(format!(
+                        "Type check skipped: key '{}' not found in after state",
+                        key
+                    ));
                 }
             }
             TransitionInvariantRule::NonDecreasingNumeric { key } => {
@@ -269,8 +256,12 @@ mod tests {
             from_version: Some("v1".into()),
             to_version: Some("v2".into()),
             rules: vec![
-                TransitionInvariantRule::RequiredKey { key: "new_v".into() },
-                TransitionInvariantRule::ForbiddenKey { key: "old_v".into() },
+                TransitionInvariantRule::RequiredKey {
+                    key: "new_v".into(),
+                },
+                TransitionInvariantRule::ForbiddenKey {
+                    key: "old_v".into(),
+                },
             ],
             check_checksum_integrity: true,
         };

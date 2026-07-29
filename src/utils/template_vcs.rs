@@ -170,6 +170,15 @@ pub fn init_vcs(template_path: &Path, template_name: &str) -> Result<()> {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("git init failed: {}", stderr);
         }
+
+        let _ = Command::new("git")
+            .current_dir(template_path)
+            .args(["config", "user.name", "StarForge VCS"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(template_path)
+            .args(["config", "user.email", "vcs@starforge.test"])
+            .output();
     }
 
     Ok(())
@@ -453,11 +462,7 @@ pub fn init_collaboration(
     Ok(session)
 }
 
-pub fn log_collaboration_activity(
-    template_path: &Path,
-    author: &str,
-    message: &str,
-) -> Result<()> {
+pub fn log_collaboration_activity(template_path: &Path, author: &str, message: &str) -> Result<()> {
     let mut session = load_collaboration(template_path)?;
     session.activity_log.push(CollaborationActivity {
         author: author.to_string(),
@@ -481,7 +486,11 @@ pub fn generate_ai_review_suggestions(
 
     for path in files {
         if let Ok(content) = fs::read_to_string(&path) {
-            let relative = path.strip_prefix(template_path).unwrap_or(&path).display().to_string();
+            let relative = path
+                .strip_prefix(template_path)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
             let lowered = content.to_lowercase();
 
             if lowered.contains("todo") || lowered.contains("fixme") || lowered.contains("tbd") {
@@ -489,16 +498,19 @@ pub fn generate_ai_review_suggestions(
                     title: format!("Address TODO/FIXME items in {}", relative),
                     summary: "The template still contains unresolved placeholders that should be clarified before sharing it with collaborators.".to_string(),
                     severity: "medium".to_string(),
-                    file_path: Some(relative),
+                    file_path: Some(relative.clone()),
                 });
             }
 
-            if relative.ends_with("README.md") && !lowered.contains("usage") && !lowered.contains("customization") {
+            if relative.ends_with("README.md")
+                && !lowered.contains("usage")
+                && !lowered.contains("customization")
+            {
                 suggestions.push(ReviewSuggestion {
                     title: format!("Add documentation guidance for {}", relative),
                     summary: "The documentation should explain how to install, customize, and test the template.".to_string(),
                     severity: "low".to_string(),
-                    file_path: Some(relative),
+                    file_path: Some(relative.clone()),
                 });
             }
         }
@@ -524,10 +536,16 @@ pub fn resolve_template_conflicts(template_path: &Path) -> Result<Vec<ConflictRe
 
     for path in files {
         if let Ok(content) = fs::read_to_string(&path) {
-            let relative = path.strip_prefix(template_path).unwrap_or(&path).display().to_string();
+            let relative = path
+                .strip_prefix(template_path)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
             let conflict_lines: Vec<String> = content
                 .lines()
-                .filter(|line| line.contains("<<<<<<<") || line.contains("=======") || line.contains(">>>>>>") )
+                .filter(|line| {
+                    line.contains("<<<<<<<") || line.contains("=======") || line.contains(">>>>>>")
+                })
                 .map(|line| line.trim().to_string())
                 .collect();
 
@@ -594,7 +612,9 @@ pub fn collect_team_analytics(template_path: &Path) -> Result<TeamAnalytics> {
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_else(|| "unknown".to_string()),
-        participant_count: session.map(|session| session.participants.len()).unwrap_or(0),
+        participant_count: session
+            .map(|session| session.participants.len())
+            .unwrap_or(0),
         contribution_count: versions,
         review_suggestion_count: review_suggestions,
         knowledge_entry_count: knowledge_entries,
@@ -667,14 +687,23 @@ fn collect_template_files(template_path: &Path, files: &mut Vec<PathBuf>) -> Res
         let path = entry.path();
 
         if path.is_dir() {
-            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
             if name == ".git" || name == ".starforge-vcs" || name == "target" {
                 continue;
             }
             collect_template_files(&path, files)?;
         } else if path.is_file() {
-            let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
-            let supported = matches!(extension, "rs" | "md" | "toml" | "json" | "txt" | "yml" | "yaml" | "sh" | "sql" | "cfg");
+            let extension = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or_default();
+            let supported = matches!(
+                extension,
+                "rs" | "md" | "toml" | "json" | "txt" | "yml" | "yaml" | "sh" | "sql" | "cfg"
+            );
             if supported {
                 files.push(path);
             }
@@ -811,8 +840,8 @@ mod tests {
         make_valid_template(tmp.path());
         init_vcs(tmp.path(), "test-template").unwrap();
 
-        let session = init_collaboration(tmp.path(), "test-template", &["alice".to_string()])
-            .unwrap();
+        let session =
+            init_collaboration(tmp.path(), "test-template", &["alice".to_string()]).unwrap();
 
         assert_eq!(session.template_name, "test-template");
         assert_eq!(session.participants.len(), 1);
@@ -823,14 +852,24 @@ mod tests {
     fn generate_ai_review_suggestions_detects_template_issues() {
         let tmp = tempdir().unwrap();
         make_valid_template(tmp.path());
-        fs::write(tmp.path().join("README.md"), "# Template\n\nTODO: add docs\n").unwrap();
-        fs::write(tmp.path().join("src/lib.rs"), "#![no_std]\n\n// TODO: improve defaults\n")
-            .unwrap();
+        fs::write(
+            tmp.path().join("README.md"),
+            "# Template\n\nTODO: add docs\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("src/lib.rs"),
+            "#![no_std]\n\n// TODO: improve defaults\n",
+        )
+        .unwrap();
 
-        let suggestions = generate_ai_review_suggestions(tmp.path(), Some("improve docs"))
-            .unwrap();
+        let suggestions = generate_ai_review_suggestions(tmp.path(), Some("improve docs")).unwrap();
 
         assert!(!suggestions.is_empty());
-        assert!(suggestions.iter().any(|suggestion| suggestion.title.contains("TODO") || suggestion.title.contains("documentation") || suggestion.title.contains("review")));
+        assert!(suggestions
+            .iter()
+            .any(|suggestion| suggestion.title.contains("TODO")
+                || suggestion.title.contains("documentation")
+                || suggestion.title.contains("review")));
     }
 }

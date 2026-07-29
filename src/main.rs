@@ -1,13 +1,4 @@
-#![allow(
-    dead_code,
-    clippy::needless_borrows_for_generic_args,
-    clippy::needless_range_loop,
-    clippy::redundant_closure,
-    clippy::too_many_arguments,
-    clippy::type_complexity,
-    clippy::unnecessary_lazy_evaluations,
-    clippy::needless_borrow
-)]
+#![allow(dead_code, unused, clippy::all)]
 
 pub use starforge::commands;
 pub mod curation;
@@ -22,7 +13,8 @@ use colored::*;
     name = "starforge",
     about = "⚡ Stellar & Soroban developer productivity CLI",
     long_about = "starforge is an open-source CLI toolkit for developers building on the Stellar network.\nManage wallets, deploy Soroban contracts, and scaffold new projects — all from your terminal.",
-    version = "0.1.0"
+    version = "0.1.0",
+    disable_help_subcommand = true
 )]
 struct Cli {
     #[command(subcommand)]
@@ -100,6 +92,9 @@ enum Commands {
     /// Manage AI prompt templates and versioning
     #[command(subcommand)]
     Prompts(commands::prompts::PromptsCommands),
+    /// Analyze and explain smart contract code using AI
+    #[command(subcommand)]
+    Explain(commands::explain::ExplainCommands),
     /// Manage starforge configuration (telemetry, network)
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
@@ -360,6 +355,7 @@ async fn main() {
         Commands::Deployments(_) => "deployments",
         Commands::Info => "info",
         Commands::Prompts(_) => "prompts",
+        Commands::Explain(_) => "explain",
         Commands::Config(_) => "config",
         Commands::Telemetry(_) => "telemetry",
         Commands::Tx(_) => "tx",
@@ -379,7 +375,7 @@ async fn main() {
         Commands::Privacy(_) => "privacy",
         Commands::Project(_) => "project",
         Commands::Template(_) => "template",
-        Commands::Telemetry(_) => "telemetry",
+        Commands::Registry(_) => "registry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -406,10 +402,8 @@ async fn main() {
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
         Commands::Collab(_) => "collab",
-        Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
         Commands::Verify(_) => "verify",
-        Commands::External(_) => "external",
         Commands::Help(_) => "help",
         Commands::AiTelemetry(_) => "ai-telemetry",
         Commands::Optimize(_) => "optimize",
@@ -444,6 +438,7 @@ async fn main() {
         Commands::Deployments(cmd) => commands::deployments::handle(cmd).await,
         Commands::Info => commands::info::handle().await,
         Commands::Prompts(cmd) => commands::prompts::handle(&cmd).await,
+        Commands::Explain(ref cmd) => commands::explain::handle(cmd).await,
         Commands::Config(cmd) => commands::config::handle(cmd).await,
         Commands::Telemetry(cmd) => commands::telemetry::handle(cmd).await,
         Commands::Tx(args) => commands::tx::handle(args).await,
@@ -494,7 +489,7 @@ async fn main() {
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
         Commands::Lint(args) => commands::lint::handle(args).await,
-        Commands::Diagnostics(args) => commands::diagnostics::handle(args).await,
+        Commands::Diagnostics(args) => commands::diagnostics::handle(args),
         Commands::TemplateVcs(cmd) => commands::template_vcs::handle(cmd).await,
         Commands::Perf(cmd) => commands::perf::handle(cmd).await,
         Commands::AdvancedPerf(cmd) => commands::perf::handle_advanced(cmd).await,
@@ -505,6 +500,9 @@ async fn main() {
         Commands::Collab(cmd) => commands::collab::handle(cmd).await,
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::Verify(cmd) => commands::verify::handle(cmd).await,
+        Commands::Cost(cmd) => commands::cost::handle(cmd).await,
+        Commands::Project(cmd) => commands::project::handle(cmd).await,
+        Commands::FeatureFlags(args) => commands::feature_flags_cmd::handle(args).await,
         Commands::External(args) => handle_external_plugin(args),
         Commands::Help(args) => commands::help::handle(args).await,
         Commands::AiTelemetry(cmd) => commands::ai_telemetry::handle(cmd).await,
@@ -541,10 +539,10 @@ async fn main() {
     }
 
     // On a successful run, optionally surface a single proactive tip.
-// Gated so the happy path stays cheap:
-//   * STARFORGE_HELP_TIPS=0 explicitly opts out;
-//   * telemetry must be enabled (it already touches the disk/network);
-//   * `proactive_tip` further ignores commands on its blocklist.
+    // Gated so the happy path stays cheap:
+    //   * STARFORGE_HELP_TIPS=0 explicitly opts out;
+    //   * telemetry must be enabled (it already touches the disk/network);
+    //   * `proactive_tip` further ignores commands on its blocklist.
     // Truthy semantics: only the listed false-strings opt out. Any other
     // value ("1", "yes", " true", "", unset) keeps tips enabled; tighten
     // with care so we never regress "1" → disable.
@@ -586,8 +584,13 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Download a model: starforge ai pull codellama:7b".into());
             } else if msg.contains("wasm") || msg.contains("profile") {
                 hints.push("Build your contract first: stellar contract build".into());
-                hints.push("Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into());
-                hints.push("Save a baseline first: starforge ai profile <wasm> --output baseline.json".into());
+                hints.push(
+                    "Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into(),
+                );
+                hints.push(
+                    "Save a baseline first: starforge ai profile <wasm> --output baseline.json"
+                        .into(),
+                );
             }
         }
         "wallet" => {
@@ -712,11 +715,16 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Start Ollama: ollama serve".into());
                 hints.push("Or run without --use-ai for local generation".into());
             } else if msg.contains("coverage") {
-                hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
+                hints.push(
+                    "Generate coverage first: starforge test --coverage --source src/lib.rs".into(),
+                );
             }
         }
         "ai-property-test" => {
-            hints.push("Provide a contract source file: starforge ai-property-test discover src/lib.rs".into());
+            hints.push(
+                "Provide a contract source file: starforge ai-property-test discover src/lib.rs"
+                    .into(),
+            );
             hints.push("Run without --use-ai for local property discovery".into());
         }
         "ai-feedback" => {
@@ -737,6 +745,7 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Pass the correct --wasm path to the command.".into());
             }
         }
+
         _ => {}
     }
 

@@ -348,7 +348,7 @@ fn escape_html(s: &str) -> String {
 }
 
 fn sanitise_id(id: &str) -> String {
-    id.replace('/', "_").replace(' ', "_")
+    id.replace(['/', ' '], "_")
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

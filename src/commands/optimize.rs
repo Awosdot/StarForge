@@ -517,7 +517,11 @@ fn detect_dead_code(content: &str, file: &str) -> Vec<TransformSuggestion> {
         if !trimmed.starts_with("fn ") || trimmed.starts_with("pub fn ") {
             continue;
         }
-        let prev = if line_idx > 0 { lines[line_idx - 1].trim() } else { "" };
+        let prev = if line_idx > 0 {
+            lines[line_idx - 1].trim()
+        } else {
+            ""
+        };
         if prev.starts_with('#') {
             // Skip functions annotated with #[test], #[allow(...)], etc.
             continue;
@@ -1033,7 +1037,9 @@ fn fetch_ai_optimization_opinion(source: &str) -> Result<Option<String>> {
                     .error_for_status()?
                     .json::<serde_json::Value>()
                     .await?;
-                let tokens_in = resp.pointer("/usage/prompt_tokens").and_then(|v| v.as_u64());
+                let tokens_in = resp
+                    .pointer("/usage/prompt_tokens")
+                    .and_then(|v| v.as_u64());
                 let tokens_out = resp
                     .pointer("/usage/completion_tokens")
                     .and_then(|v| v.as_u64());
@@ -1069,11 +1075,21 @@ fn fetch_ai_optimization_opinion(source: &str) -> Result<Option<String>> {
         }
         Ok(Err(e)) => {
             ai_telemetry::record_call(
-                "openai", &model, "contract-optimize", None, None, elapsed_ms, false, Some("network"),
+                "openai",
+                &model,
+                "contract-optimize",
+                None,
+                None,
+                elapsed_ms,
+                false,
+                Some("network"),
             );
             Err(e)
         }
-        Err(e) => Err(anyhow::anyhow!("AI opinion worker exited unexpectedly: {}", e)),
+        Err(e) => Err(anyhow::anyhow!(
+            "AI opinion worker exited unexpectedly: {}",
+            e
+        )),
     }
 }
 
@@ -1102,7 +1118,7 @@ fn handle_bench(args: BenchArgs) -> Result<()> {
     let baseline_hash = wasm_hash_hex(&baseline_bytes);
     let optimized_hash = wasm_hash_hex(&optimized_bytes);
     let size_delta = optimized_bytes.len() as i64 - baseline_bytes.len() as i64;
-    let size_reduction_pct = if baseline_bytes.len() > 0 {
+    let size_reduction_pct = if !baseline_bytes.is_empty() {
         ((baseline_bytes.len() as f64 - optimized_bytes.len() as f64) / baseline_bytes.len() as f64)
             * 100.0
     } else {
@@ -1197,7 +1213,8 @@ fn handle_report(args: ReportArgs) -> Result<()> {
 
     let reports = load_reports_store()?;
     let report = reports
-        .iter().rfind(|r| r.contract == args.contract)
+        .iter()
+        .rfind(|r| r.contract == args.contract)
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "No optimization report found for contract '{}'. Run `starforge optimize analyse` first.",
@@ -1457,7 +1474,9 @@ pub fn entry_point() -> u64 {
         assert!(suggestions
             .iter()
             .any(|s| s.reason.contains("`unused_helper`")));
-        assert!(!suggestions.iter().any(|s| s.reason.contains("`used_helper`")));
+        assert!(!suggestions
+            .iter()
+            .any(|s| s.reason.contains("`used_helper`")));
     }
 
     #[test]

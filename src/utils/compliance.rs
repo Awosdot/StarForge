@@ -1409,7 +1409,7 @@ pub fn generate_compliance_statistics() -> Result<ComplianceStatistics> {
     }
 
     let mut most_failed: Vec<(String, usize)> = policy_failures.into_iter().collect();
-    most_failed.sort_by(|a, b| b.1.cmp(&a.1));
+    most_failed.sort_by_key(|b| std::cmp::Reverse(b.1));
     most_failed.truncate(5);
 
     // Network breakdown

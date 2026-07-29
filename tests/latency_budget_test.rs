@@ -16,9 +16,8 @@
 //! | Report          | `json_report_round_trip`, `print_summary_does_not_panic`              |
 
 use starforge::utils::latency_budget::{
-    check_latency_budget, check_measurement, is_significant_regression,
-    budget_report_to_json, print_budget_summary, BudgetStatus, LatencyBudget,
-    LatencyBudgets, LatencyMeasurement,
+    budget_report_to_json, check_latency_budget, check_measurement, is_significant_regression,
+    print_budget_summary, BudgetStatus, LatencyBudget, LatencyBudgets, LatencyMeasurement,
 };
 use std::time::Duration;
 
@@ -157,9 +156,9 @@ fn high_cv_noisy_but_not_fail() {
     let budget = LatencyBudget::new_static("noisy", 1000, Some(0.05), true);
     let m = LatencyMeasurement {
         label: "noisy".into(),
-        median: Duration::from_millis(10),   // well under budget
+        median: Duration::from_millis(10), // well under budget
         mean: Duration::from_millis(10),
-        std_dev: Duration::from_millis(10),  // cv = 1.0
+        std_dev: Duration::from_millis(10), // cv = 1.0
         sample_size: 100,
     };
     assert_eq!(check_measurement(&m, &budget), BudgetStatus::Noisy);
@@ -355,8 +354,8 @@ fn json_report_round_trip() {
     let json = budget_report_to_json(&result);
 
     // Parse and validate structure.
-    let parsed: serde_json::Value = serde_json::from_str(&json)
-        .expect("JSON report must be valid JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("JSON report must be valid JSON");
 
     assert!(
         parsed["all_pass"].as_bool().unwrap_or(false),

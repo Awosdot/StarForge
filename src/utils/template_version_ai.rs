@@ -87,7 +87,11 @@ pub async fn suggest_update(template_path: &Path) -> Result<UpdateSuggestion> {
     let latest = versions
         .versions
         .iter()
-        .max_by(|a, b| Version::parse(&a.version).cmp(&Version::parse(&b.version)))
+        .max_by(|a, b| {
+            let a_v = Version::parse(&a.version).unwrap_or(Version::new(0, 0, 0));
+            let b_v = Version::parse(&b.version).unwrap_or(Version::new(0, 0, 0));
+            a_v.cmp(&b_v)
+        })
         .context("No versions found")?;
 
     let diff = get_template_diff(template_path)?;
@@ -191,7 +195,7 @@ fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-fn find_version(versions: &TemplateChangelog, version: &str) -> Result<&TemplateVersion> {
+fn find_version<'a>(versions: &'a TemplateChangelog, version: &str) -> Result<&'a TemplateVersion> {
     versions
         .versions
         .iter()
@@ -272,10 +276,9 @@ Diff:\n\
 fn parse_change_analysis(text: &str) -> Result<ChangeAnalysis> {
     let changes = extract_list(text, "CHANGES:");
     let breaking_changes = extract_list(text, "BREAKING_CHANGES:");
-    let impact_level = extract_field(text, "IMPACT_LEVEL:")
-        .unwrap_or_else(|| "Medium".to_string());
-    let summary = extract_field(text, "SUMMARY:")
-        .unwrap_or_else(|| "No summary available".to_string());
+    let impact_level = extract_field(text, "IMPACT_LEVEL:").unwrap_or_else(|| "Medium".to_string());
+    let summary =
+        extract_field(text, "SUMMARY:").unwrap_or_else(|| "No summary available".to_string());
 
     Ok(ChangeAnalysis {
         changes,
@@ -300,10 +303,9 @@ fn parse_compatibility_check(text: &str) -> Result<CompatibilityCheck> {
 }
 
 fn parse_update_suggestion(text: &str, current_version: &str) -> Result<UpdateSuggestion> {
-    let suggested_version = extract_field(text, "SUGGESTED_VERSION:")
-        .unwrap_or_else(|| current_version.to_string());
-    let reason = extract_field(text, "REASON:")
-        .unwrap_or_else(|| "No reason provided".to_string());
+    let suggested_version =
+        extract_field(text, "SUGGESTED_VERSION:").unwrap_or_else(|| current_version.to_string());
+    let reason = extract_field(text, "REASON:").unwrap_or_else(|| "No reason provided".to_string());
     let benefits = extract_list(text, "BENEFITS:");
 
     Ok(UpdateSuggestion {

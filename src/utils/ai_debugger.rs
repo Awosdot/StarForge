@@ -604,9 +604,7 @@ fn pattern_compilation_error() -> DebugFinding {
             "Use `cargo check` for faster iteration than a full build.".into(),
             "Run `rustc --explain EXXXX` for a detailed explanation of any error code.".into(),
         ],
-        references: vec![
-            "https://doc.rust-lang.org/error_codes/error-index.html".into(),
-        ],
+        references: vec!["https://doc.rust-lang.org/error_codes/error-index.html".into()],
     }
 }
 
@@ -639,9 +637,7 @@ fn pattern_configuration_error() -> DebugFinding {
             "Inspect `~/.starforge/config.toml` for syntax errors.".into(),
             "Check for required environment variables referenced in the error message.".into(),
         ],
-        references: vec![
-            "https://developers.stellar.org/docs/networks".into(),
-        ],
+        references: vec!["https://developers.stellar.org/docs/networks".into()],
     }
 }
 
@@ -887,16 +883,15 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
         let value_lower = value.to_lowercase();
 
         // Detect potential zero-value bugs
-        if value == "0" || value == "0i128" || value == "0u128" {
-            if name_lower.contains("amount")
+        if (value == "0" || value == "0i128" || value == "0u128")
+            && (name_lower.contains("amount")
                 || name_lower.contains("balance")
-                || name_lower.contains("fee")
-            {
-                insights.push(format!(
-                    "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
-                    name
-                ));
-            }
+                || name_lower.contains("fee"))
+        {
+            insights.push(format!(
+                "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
+                name
+            ));
         }
 
         // Detect max-value boundary conditions

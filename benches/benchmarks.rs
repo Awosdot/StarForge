@@ -454,7 +454,14 @@ fn bench_cli_command_latency(c: &mut Criterion) {
         vec!["starforge", "-q", "template", "list"],
         vec!["starforge", "-q", "template", "search", "defi"],
         vec!["starforge", "-q", "deploy", "--help"],
-        vec!["starforge", "-q", "benchmark", "wasm", "--operations", "1000"],
+        vec![
+            "starforge",
+            "-q",
+            "benchmark",
+            "wasm",
+            "--operations",
+            "1000",
+        ],
     ];
 
     for args in &commands {

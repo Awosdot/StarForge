@@ -7,6 +7,7 @@ use crate::utils::compliance::{
 use crate::utils::print as p;
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use colored::Colorize;
 use colored::*;
 use std::collections::HashMap;
 
@@ -345,14 +346,12 @@ fn handle_check(args: CheckArgs) -> Result<()> {
         };
         p::kv("Overall Risk Level", &risk_color);
         p::kv("Risk Score", &format!("{}/100", risk.overall_score));
-        p::kv(
-            "Approved for Deployment",
-            if risk.approved_for_deployment {
-                "yes".green().to_string()
-            } else {
-                "no".red().to_string()
-            },
-        );
+        let approved_str = if risk.approved_for_deployment {
+            format!("{}", "yes".green())
+        } else {
+            format!("{}", "no".red())
+        };
+        p::kv("Approved for Deployment", &approved_str);
 
         if !risk.factors.is_empty() {
             println!();
@@ -582,14 +581,12 @@ fn handle_show_report(args: ShowReportArgs) -> Result<()> {
         "Timestamp",
         &report.timestamp.get(..19).unwrap_or(&report.timestamp),
     );
-    p::kv(
-        "Status",
-        if report.all_passed {
-            "PASSED".green().to_string()
-        } else {
-            "FAILED".red().to_string()
-        },
-    );
+    let status_str = if report.all_passed {
+        format!("{}", "PASSED".green())
+    } else {
+        format!("{}", "FAILED".red())
+    };
+    p::kv("Status", &status_str);
     p::kv("Blocking issues", &report.blocking_count.to_string());
     p::kv("Warnings", &report.warning_count.to_string());
 
@@ -752,14 +749,12 @@ fn handle_risk(args: RiskArgs) -> Result<()> {
         };
         p::kv_accent("Overall Risk Level", &risk_color);
         p::kv("Risk Score", &format!("{}/100", risk.overall_score));
-        p::kv(
-            "Approved for Deployment",
-            if risk.approved_for_deployment {
-                "yes".green().to_string()
-            } else {
-                "no".red().to_string()
-            },
-        );
+        let approved_str = if risk.approved_for_deployment {
+            format!("{}", "yes".green())
+        } else {
+            format!("{}", "no".red())
+        };
+        p::kv("Approved for Deployment", &approved_str);
 
         println!();
         p::separator();

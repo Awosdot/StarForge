@@ -31,4 +31,8 @@ jobs:
       - name: Run deployment verification tests
         # cargo accepts a single positional filter; libtest accepts several,
         # so the filters must go after `--`.
-        run: cargo test --locked -- deployment_verify network_sim bridge --nocapture
+        run: |
+          cargo test --locked --test deployment_verification -- --nocapture
+          cargo test --locked --test network_simulation -- --nocapture
+          cargo test --locked --test bridge_integration -- --nocapture
+          cargo test --locked -- deployment_verify network_sim bridge --nocapture

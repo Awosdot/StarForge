@@ -4,7 +4,7 @@
 //! unit tests, integration tests, E2E tests, property-based testing, fuzzing, and regression tests.
 
 use crate::utils::{
-    ai_test_generator::{AiTestGenerator, TestGenerationConfig, TestType, TestCategory},
+    ai_test_generator::{AiTestGenerator, TestCategory, TestGenerationConfig, TestType},
     print as p,
 };
 use anyhow::{Context, Result};
@@ -134,12 +134,24 @@ async fn handle_generate(
     println!();
 
     p::info("Test Types:");
-    if unit { p::info("  ✓ Unit Tests"); }
-    if integration { p::info("  ✓ Integration Tests"); }
-    if e2e { p::info("  ✓ E2E Tests"); }
-    if property { p::info("  ✓ Property-Based Tests"); }
-    if fuzzing { p::info("  ✓ Fuzzing Tests"); }
-    if regression { p::info("  ✓ Regression Tests"); }
+    if unit {
+        p::info("  ✓ Unit Tests");
+    }
+    if integration {
+        p::info("  ✓ Integration Tests");
+    }
+    if e2e {
+        p::info("  ✓ E2E Tests");
+    }
+    if property {
+        p::info("  ✓ Property-Based Tests");
+    }
+    if fuzzing {
+        p::info("  ✓ Fuzzing Tests");
+    }
+    if regression {
+        p::info("  ✓ Regression Tests");
+    }
     println!();
 
     let config = TestGenerationConfig {
@@ -157,18 +169,22 @@ async fn handle_generate(
 
     p::info("Analyzing code structure...");
     let spinner = p::spinner("Generating test suite...");
-    
+
     let test_suite = generator.generate_test_suite(&file, &code).await?;
-    
+
     spinner.finish_and_clear();
 
     p::success(&format!("Generated {} tests", test_suite.tests.len()));
-    p::kv("Estimated Coverage", &format!("{:.1}%", test_suite.coverage_estimate * 100.0));
+    p::kv(
+        "Estimated Coverage",
+        &format!("{:.1}%", test_suite.coverage_estimate * 100.0),
+    );
 
     // Show test breakdown
     println!();
     p::info("Test Breakdown:");
-    let mut breakdown: std::collections::HashMap<TestType, usize> = std::collections::HashMap::new();
+    let mut breakdown: std::collections::HashMap<TestType, usize> =
+        std::collections::HashMap::new();
     for test in &test_suite.tests {
         *breakdown.entry(test.test_type.clone()).or_insert(0) += 1;
     }
@@ -187,7 +203,8 @@ async fn handle_generate(
     // Show coverage by category
     println!();
     p::info("Test Categories:");
-    let mut category_breakdown: std::collections::HashMap<TestCategory, usize> = std::collections::HashMap::new();
+    let mut category_breakdown: std::collections::HashMap<TestCategory, usize> =
+        std::collections::HashMap::new();
     for test in &test_suite.tests {
         *category_breakdown.entry(test.category.clone()).or_insert(0) += 1;
     }
@@ -208,9 +225,18 @@ async fn handle_analytics() -> Result<()> {
     let generator = AiTestGenerator::new();
     let analytics = generator.get_analytics().await;
 
-    p::kv("Total Tests Generated", &analytics.total_tests_generated.to_string());
-    p::kv("Average Coverage", &format!("{:.1}%", analytics.average_coverage * 100.0));
-    p::kv("Total Generation Time", &format!("{} ms", analytics.generation_time_ms));
+    p::kv(
+        "Total Tests Generated",
+        &analytics.total_tests_generated.to_string(),
+    );
+    p::kv(
+        "Average Coverage",
+        &format!("{:.1}%", analytics.average_coverage * 100.0),
+    );
+    p::kv(
+        "Total Generation Time",
+        &format!("{} ms", analytics.generation_time_ms),
+    );
     println!();
 
     p::info("Tests by Type:");
@@ -242,7 +268,7 @@ async fn handle_reset_analytics() -> Result<()> {
     // Note: This would require adding a reset method to AiTestGenerator
     // For now, just inform the user
     p::info("Analytics reset functionality would be implemented here.");
-    
+
     p::separator();
     Ok(())
 }
@@ -288,7 +314,10 @@ async fn handle_analyze(file: PathBuf) -> Result<()> {
         println!();
         p::info("Structs:");
         for struct_info in &analysis.structs {
-            p::kv(&struct_info.name, &format!("{} fields", struct_info.fields.len()));
+            p::kv(
+                &struct_info.name,
+                &format!("{} fields", struct_info.fields.len()),
+            );
         }
     }
 

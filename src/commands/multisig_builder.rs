@@ -2,6 +2,8 @@ use crate::utils::{multisig_builder as multisig, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::exit;
 
@@ -616,19 +618,18 @@ fn validate_proposal(proposal_path: &std::path::Path, json: bool) -> Result<()> 
     if report.valid {
         p::success("Proposal is valid — no structural errors found.");
     } else {
-        println!("  {} {} error(s) detected:", "✗".red().bold(), report.errors.len());
+        println!(
+            "  {} {} error(s) detected:",
+            "✗".red().bold(),
+            report.errors.len()
+        );
     }
 
     if !report.errors.is_empty() {
         println!();
         println!("  {}", "Errors:".red().bold());
         for e in &report.errors {
-            println!(
-                "    {} [{}] {}",
-                "•".red(),
-                e.code.yellow(),
-                e.message
-            );
+            println!("    {} [{}] {}", "•".red(), e.code.yellow(), e.message);
         }
     }
 

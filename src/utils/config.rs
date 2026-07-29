@@ -179,6 +179,9 @@ pub fn validate_amount(amount: &str) -> Result<f64> {
     let amt: f64 = amount
         .parse()
         .map_err(|_| anyhow::anyhow!("Invalid amount format: '{}'", amount))?;
+    if amt.is_nan() || amt.is_infinite() {
+        anyhow::bail!("Amount must be a finite number, got {}", amt);
+    }
     if amt <= 0.0 {
         anyhow::bail!("Amount must be strictly positive, got {}", amt);
     }

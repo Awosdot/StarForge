@@ -84,10 +84,10 @@ pub fn init(dir: &Path, contract: &str) -> Result<VersionManifest> {
 }
 
 pub fn load(path: &Path) -> Result<VersionManifest> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
-    let manifest = toml::from_str(&content)
-        .with_context(|| format!("Failed to parse {}", path.display()))?;
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let manifest =
+        toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
     Ok(manifest)
 }
 
@@ -516,7 +516,10 @@ pub fn detect_conflicts(dir: &Path) -> Result<Vec<Conflict>> {
     let edges = collect_requirements(dir)?;
     let mut by_dep: HashMap<String, Vec<&RequirementEdge>> = HashMap::new();
     for edge in &edges {
-        by_dep.entry(edge.dependency.clone()).or_default().push(edge);
+        by_dep
+            .entry(edge.dependency.clone())
+            .or_default()
+            .push(edge);
     }
 
     let mut conflicts = Vec::new();
@@ -542,26 +545,24 @@ pub fn detect_conflicts(dir: &Path) -> Result<Vec<Conflict>> {
 
         let dep_path = group.iter().find_map(|e| e.dep_path.clone());
         let (resolvable_versions, history_checked) = match dep_path {
-            Some(p) if !structurally_impossible => {
-                match list(&p) {
-                    Ok(versions) if !versions.is_empty() => {
-                        let matches: Vec<String> = versions
-                            .iter()
-                            .filter(|v| !v.yanked)
-                            .filter_map(|v| Version::parse(&v.version).ok().map(|pv| (pv, v)))
-                            .filter(|(pv, _)| reqs.iter().all(|(_, r)| r.matches(pv)))
-                            .map(|(_, v)| v.version.clone())
-                            .collect();
-                        (matches, true)
-                    }
-                    _ => (Vec::new(), false),
+            Some(p) if !structurally_impossible => match list(&p) {
+                Ok(versions) if !versions.is_empty() => {
+                    let matches: Vec<String> = versions
+                        .iter()
+                        .filter(|v| !v.yanked)
+                        .filter_map(|v| Version::parse(&v.version).ok().map(|pv| (pv, v)))
+                        .filter(|(pv, _)| reqs.iter().all(|(_, r)| r.matches(pv)))
+                        .map(|(_, v)| v.version.clone())
+                        .collect();
+                    (matches, true)
                 }
-            }
+                _ => (Vec::new(), false),
+            },
             _ => (Vec::new(), false),
         };
 
-        let has_conflict = structurally_impossible
-            || (history_checked && resolvable_versions.is_empty());
+        let has_conflict =
+            structurally_impossible || (history_checked && resolvable_versions.is_empty());
 
         if has_conflict {
             conflicts.push(Conflict {
@@ -751,7 +752,14 @@ mod tests {
         let dir = tempdir().unwrap();
         init(dir.path(), "token").unwrap();
 
-        let r1 = tag(dir.path(), "1.0.0", Some("first release".into()), None, false).unwrap();
+        let r1 = tag(
+            dir.path(),
+            "1.0.0",
+            Some("first release".into()),
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(r1.version, "1.0.0");
 
         // Tagging a lower/equal version without --force should fail.
@@ -805,10 +813,7 @@ mod tests {
 
         let caret = req_interval(&VersionReq::parse("^0.2.3").unwrap());
         // ^0.2.3 := >=0.2.3, <0.3.0
-        assert_eq!(
-            caret.upper.as_ref().unwrap().value,
-            Version::new(0, 3, 0)
-        );
+        assert_eq!(caret.upper.as_ref().unwrap().value, Version::new(0, 3, 0));
     }
 
     fn write_deps(dir: &Path, contents: &str) {

@@ -89,7 +89,9 @@ mod tx_status_polling_tests {
             status: TxStatus::Duplicate,
             ledger: None,
             return_value: None,
-            error_message: Some("Duplicate transaction: this hash was already submitted.".to_string()),
+            error_message: Some(
+                "Duplicate transaction: this hash was already submitted.".to_string(),
+            ),
             polls: 1,
         };
         assert_eq!(result.status, TxStatus::Duplicate);

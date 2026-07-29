@@ -211,7 +211,10 @@ impl EventStore {
     pub fn persist(&self, event: &PersistedEvent) -> Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create event store directory {}", parent.display())
+                format!(
+                    "failed to create event store directory {}",
+                    parent.display()
+                )
             })?;
         }
 
@@ -239,7 +242,11 @@ impl EventStore {
         let mut identities = HashSet::new();
         for (index, line) in reader.lines().enumerate() {
             let line = line.with_context(|| {
-                format!("failed to read line {} from {}", index + 1, self.path.display())
+                format!(
+                    "failed to read line {} from {}",
+                    index + 1,
+                    self.path.display()
+                )
             })?;
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -292,7 +299,10 @@ impl EventAnalytics {
                 .map(|ledger| ledger.max(event.event.ledger))
                 .unwrap_or(event.event.ledger),
         );
-        *self.by_type.entry(event.event.event_type.clone()).or_insert(0) += 1;
+        *self
+            .by_type
+            .entry(event.event.event_type.clone())
+            .or_insert(0) += 1;
 
         for route in &event.routes {
             *self.by_route.entry(route.clone()).or_insert(0) += 1;
@@ -431,7 +441,10 @@ fn parse_trigger(spec: &str) -> Result<EventTrigger> {
     let pattern = pattern.trim();
     let command = command.trim();
     if pattern.is_empty() || command.is_empty() {
-        anyhow::bail!("invalid trigger '{}'; pattern and command cannot be empty", spec);
+        anyhow::bail!(
+            "invalid trigger '{}'; pattern and command cannot be empty",
+            spec
+        );
     }
     Ok(EventTrigger {
         pattern: pattern.to_string(),
@@ -570,13 +583,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("events.jsonl");
         let store = EventStore::new(path.clone());
-        let persisted = PersistedEvent::new(
-            "testnet",
-            "C123",
-            sample_event(),
-            Vec::new(),
-            Vec::new(),
-        );
+        let persisted =
+            PersistedEvent::new("testnet", "C123", sample_event(), Vec::new(), Vec::new());
         store.persist(&persisted).unwrap();
         store.persist(&persisted).unwrap();
         std::fs::OpenOptions::new()

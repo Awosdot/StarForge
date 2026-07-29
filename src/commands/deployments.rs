@@ -453,7 +453,12 @@ fn handle_monitor(args: MonitorArgs) -> Result<()> {
             let tr_id = format!("dep-{}", &r.id[..8.min(r.id.len())]);
             tracker.start_tracking(&tr_id, &r.network, &r.wallet);
             if r.status == DeployStatus::Success {
-                tracker.mark_completed(&tr_id, r.contract_id.as_deref().unwrap_or("C000"), None, r.duration_ms.unwrap_or(1000));
+                tracker.mark_completed(
+                    &tr_id,
+                    r.contract_id.as_deref().unwrap_or("C000"),
+                    None,
+                    r.duration_ms.unwrap_or(1000),
+                );
             } else if r.status == DeployStatus::Failed {
                 tracker.mark_failed(&tr_id, "Deployment failed during invocation");
             }
@@ -467,7 +472,8 @@ fn handle_monitor(args: MonitorArgs) -> Result<()> {
         );
         let service_alerts = DeploymentAlertEngine::generate_alerts(&tracks, &health_checks);
 
-        let dashboard_view = render_monitoring_dashboard(&tracks, &health_checks, &service_alerts, &args.network);
+        let dashboard_view =
+            render_monitoring_dashboard(&tracks, &health_checks, &service_alerts, &args.network);
         println!("{}", dashboard_view);
         return Ok(());
     }
@@ -498,9 +504,7 @@ fn handle_monitor(args: MonitorArgs) -> Result<()> {
     for prediction in &report.predictions {
         println!(
             "  [{}] {} — {}",
-            prediction.confidence,
-            prediction.title,
-            prediction.detail
+            prediction.confidence, prediction.title, prediction.detail
         );
         println!("    → {}", prediction.recommended_action);
     }
@@ -508,7 +512,10 @@ fn handle_monitor(args: MonitorArgs) -> Result<()> {
     println!();
     p::info("Recent trend indicators");
     for trend in &report.history {
-        println!("  {}: {:.0} ms ({})", trend.label, trend.value, trend.direction);
+        println!(
+            "  {}: {:.0} ms ({})",
+            trend.label, trend.value, trend.direction
+        );
     }
 
     p::separator();

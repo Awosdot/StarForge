@@ -4,14 +4,14 @@
 //! fallback mechanisms, and user-friendly error messages.
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 
 /// Error categories for AI operations
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum AiErrorCategory {
     /// API errors: rate limits, auth failures, service unavailable
     Api,
@@ -68,12 +68,7 @@ pub struct AiError {
 }
 
 impl AiError {
-    pub fn new(
-        category: AiErrorCategory,
-        code: String,
-        message: String,
-        provider: String,
-    ) -> Self {
+    pub fn new(category: AiErrorCategory, code: String, message: String, provider: String) -> Self {
         let user_message = Self::generate_user_message(&category, &message);
         AiError {
             category,
@@ -189,8 +184,14 @@ impl Default for ErrorAnalytics {
 impl ErrorAnalytics {
     pub fn record_error(&mut self, error: &AiError) {
         self.total_errors += 1;
-        *self.errors_by_category.entry(error.category.clone()).or_insert(0) += 1;
-        *self.errors_by_provider.entry(error.provider.clone()).or_insert(0) += 1;
+        *self
+            .errors_by_category
+            .entry(error.category.clone())
+            .or_insert(0) += 1;
+        *self
+            .errors_by_provider
+            .entry(error.provider.clone())
+            .or_insert(0) += 1;
     }
 
     pub fn record_recovery(&mut self, success: bool) {
@@ -262,7 +263,7 @@ impl AiErrorHandler {
 
         for retry_count in 0..=self.retry_config.max_retries {
             let provider = &self.providers[provider_index];
-            
+
             if !provider.enabled {
                 // Try next provider
                 provider_index = (provider_index + 1) % self.providers.len();
@@ -316,14 +317,17 @@ impl AiErrorHandler {
     /// Classify an error into an AiError
     fn classify_error(&self, error: &anyhow::Error, provider: &str) -> AiError {
         let error_msg = error.to_string().to_lowercase();
-        
+
         let (category, code) = if error_msg.contains("timeout") || error_msg.contains("timed out") {
             (AiErrorCategory::Network, "timeout".to_string())
         } else if error_msg.contains("connection") || error_msg.contains("connect") {
             (AiErrorCategory::Network, "connection_failed".to_string())
         } else if error_msg.contains("rate limit") || error_msg.contains("429") {
             (AiErrorCategory::Api, "rate_limit_exceeded".to_string())
-        } else if error_msg.contains("auth") || error_msg.contains("401") || error_msg.contains("403") {
+        } else if error_msg.contains("auth")
+            || error_msg.contains("401")
+            || error_msg.contains("403")
+        {
             (AiErrorCategory::Api, "auth_failed".to_string())
         } else if error_msg.contains("503") || error_msg.contains("unavailable") {
             (AiErrorCategory::Api, "service_unavailable".to_string())
@@ -412,7 +416,13 @@ mod tests {
 
         analytics.record_error(&error);
         assert_eq!(analytics.total_errors, 1);
-        assert_eq!(*analytics.errors_by_category.get(&AiErrorCategory::Network).unwrap(), 1);
+        assert_eq!(
+            *analytics
+                .errors_by_category
+                .get(&AiErrorCategory::Network)
+                .unwrap(),
+            1
+        );
 
         analytics.record_recovery(true);
         assert_eq!(analytics.successful_recoveries, 1);

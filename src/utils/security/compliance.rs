@@ -96,7 +96,8 @@ impl ComplianceEngine {
                 description: "Ensure only necessary data is collected and stored".into(),
                 severity: "high".into(),
                 check_fn: "check_data_minimization".into(),
-                remediation: "Review data collection to ensure only required fields are stored".into(),
+                remediation: "Review data collection to ensure only required fields are stored"
+                    .into(),
             },
             ComplianceRule {
                 id: "gdpr-right-to-erasure".into(),
@@ -243,7 +244,8 @@ impl ComplianceEngine {
             100.0
         };
 
-        let standards_checked: Vec<String> = standards.iter().map(|s| s.as_str().to_string()).collect();
+        let standards_checked: Vec<String> =
+            standards.iter().map(|s| s.as_str().to_string()).collect();
 
         let critical_gaps: Vec<String> = results
             .iter()
@@ -299,41 +301,58 @@ impl ComplianceEngine {
                 has_minimize && !has_excessive
             }
             "gdpr-right-to-erasure" => {
-                source_lower.contains("delete") || source_lower.contains("remove")
-                    || source_lower.contains("erase") || source_lower.contains("destroy")
+                source_lower.contains("delete")
+                    || source_lower.contains("remove")
+                    || source_lower.contains("erase")
+                    || source_lower.contains("destroy")
             }
             "gdpr-consent" => {
-                source_lower.contains("consent") || source_lower.contains("approve")
+                source_lower.contains("consent")
+                    || source_lower.contains("approve")
                     || source_lower.contains("authorize")
             }
             "soc2-access-control" => {
-                source_lower.contains("require_auth") || source_lower.contains("check_auth")
-                    || source_lower.contains("has_role") || source_lower.contains("is_admin")
+                source_lower.contains("require_auth")
+                    || source_lower.contains("check_auth")
+                    || source_lower.contains("has_role")
+                    || source_lower.contains("is_admin")
                     || source_lower.contains("authorize")
             }
             "soc2-audit-logging" => {
-                source_lower.contains("event") || source_lower.contains("log")
-                    || source_lower.contains("emit") || source_lower.contains("audit")
+                source_lower.contains("event")
+                    || source_lower.contains("log")
+                    || source_lower.contains("emit")
+                    || source_lower.contains("audit")
             }
             "soc2-encryption" => {
-                source_lower.contains("encrypt") || source_lower.contains("cipher")
-                    || source_lower.contains("aes") || source_lower.contains("hash")
+                source_lower.contains("encrypt")
+                    || source_lower.contains("cipher")
+                    || source_lower.contains("aes")
+                    || source_lower.contains("hash")
             }
             "hipaa-phi-protection" => {
-                source_lower.contains("encrypt") || source_lower.contains("protect")
-                    || source_lower.contains("secure") || source_lower.contains("safe")
+                source_lower.contains("encrypt")
+                    || source_lower.contains("protect")
+                    || source_lower.contains("secure")
+                    || source_lower.contains("safe")
             }
             "hipaa-audit-trail" => {
-                source_lower.contains("log") || source_lower.contains("audit")
-                    || source_lower.contains("trace") || source_lower.contains("record")
+                source_lower.contains("log")
+                    || source_lower.contains("audit")
+                    || source_lower.contains("trace")
+                    || source_lower.contains("record")
             }
             "iso27001-risk-assessment" => {
-                source_lower.contains("risk") || source_lower.contains("assess")
-                    || source_lower.contains("threat") || source_lower.contains("vulnerability")
+                source_lower.contains("risk")
+                    || source_lower.contains("assess")
+                    || source_lower.contains("threat")
+                    || source_lower.contains("vulnerability")
             }
             "iso27001-access-review" => {
-                source_lower.contains("review") || source_lower.contains("audit")
-                    || source_lower.contains("check_access") || source_lower.contains("validate_access")
+                source_lower.contains("review")
+                    || source_lower.contains("audit")
+                    || source_lower.contains("check_access")
+                    || source_lower.contains("validate_access")
             }
             _ => true,
         }

@@ -6,9 +6,9 @@
 
 use crate::utils::ollama::{self, GenerateOptions};
 use anyhow::{Context, Result};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use chrono::{DateTime, Utc, Datelike, Timelike};
 
 // ─── Output Format ────────────────────────────────────────────────────────────
 
@@ -52,7 +52,6 @@ pub struct ContractAnalysis {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ComplexityLevel {
-
     Low,
     Medium,
     High,
@@ -149,7 +148,6 @@ pub struct RiskAssessment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum RiskLevel {
-
     Low,
     Medium,
     High,
@@ -247,26 +245,34 @@ impl AiDeploymentPlanner {
         let network_recommendation = self.recommend_network(&analysis).await?;
 
         // Step 3: Estimate gas costs
-        let gas_estimate = self.estimate_gas(&analysis, &network_recommendation).await?;
+        let gas_estimate = self
+            .estimate_gas(&analysis, &network_recommendation)
+            .await?;
 
         // Step 4: Determine deployment window
-        let deployment_window = self.suggest_deployment_window(&network_recommendation).await?;
+        let deployment_window = self
+            .suggest_deployment_window(&network_recommendation)
+            .await?;
 
         // Step 5: Assess risks
-        let risk_assessment = self.assess_risks(&analysis, &network_recommendation).await?;
+        let risk_assessment = self
+            .assess_risks(&analysis, &network_recommendation)
+            .await?;
 
         // Step 6: Create rollback plan
-        let rollback_plan = self.create_rollback_plan(&analysis, &network_recommendation).await?;
+        let rollback_plan = self
+            .create_rollback_plan(&analysis, &network_recommendation)
+            .await?;
 
         // Step 7: Generate recommendations
-        let recommendations = self.generate_recommendations(
-            &analysis,
-            &risk_assessment,
-            &gas_estimate,
-        ).await?;
+        let recommendations = self
+            .generate_recommendations(&analysis, &risk_assessment, &gas_estimate)
+            .await?;
 
         Ok(DeploymentPlan {
-            contract_name: self.contract_path.file_stem()
+            contract_name: self
+                .contract_path
+                .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
@@ -313,7 +319,7 @@ Contract code:
         // For now, we'll use heuristic analysis
         let line_count = code.lines().count();
         let func_count = code.matches("fn ").count();
-        
+
         let complexity = if line_count > 500 || func_count > 20 {
             ComplexityLevel::High
         } else if line_count > 200 || func_count > 10 {
@@ -335,7 +341,7 @@ Contract code:
 
         // Simple security checks
         let mut security_findings = Vec::new();
-        
+
         // Check for reentrancy risks
         if code.contains("transfer") || code.contains("send") {
             security_findings.push(SecurityFinding {
@@ -369,7 +375,8 @@ Contract code:
         // Optimization suggestions
         let mut optimization_suggestions = Vec::new();
         if code.contains("vec!") || code.contains("Vec::new") {
-            optimization_suggestions.push("Consider using fixed-size arrays where possible".to_string());
+            optimization_suggestions
+                .push("Consider using fixed-size arrays where possible".to_string());
         }
         if code.contains("String") {
             optimization_suggestions.push("Use &str instead of String where possible".to_string());
@@ -390,7 +397,9 @@ Contract code:
         }
 
         Ok(ContractAnalysis {
-            name: self.contract_path.file_stem()
+            name: self
+                .contract_path
+                .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
@@ -406,7 +415,10 @@ Contract code:
         })
     }
 
-    async fn recommend_network(&self, analysis: &ContractAnalysis) -> Result<NetworkRecommendation> {
+    async fn recommend_network(
+        &self,
+        analysis: &ContractAnalysis,
+    ) -> Result<NetworkRecommendation> {
         let mut reasons = Vec::new();
         let mut risks = Vec::new();
         let mut alternatives = Vec::new();
@@ -470,7 +482,7 @@ Contract code:
 
         let function_gas = (analysis.functions as u64) * 20_000;
         let upgrade_gas = if analysis.is_upgradeable { 50_000 } else { 0 };
-        
+
         let deployment_gas = base_gas + function_gas + upgrade_gas;
         let verification_gas = 50_000;
         let interactions_gas = (analysis.functions as u64).min(5) * 30_000;
@@ -508,14 +520,18 @@ Contract code:
         network: &NetworkRecommendation,
     ) -> Result<DeploymentWindow> {
         let now = Utc::now();
-        
+
         // Suggest next weekday at 8 AM UTC
         let mut start_time = now;
         let days_to_add = 1;
         start_time = start_time + chrono::Duration::days(days_to_add);
-        start_time = start_time.with_hour(8).unwrap()
-            .with_minute(0).unwrap()
-            .with_second(0).unwrap();
+        start_time = start_time
+            .with_hour(8)
+            .unwrap()
+            .with_minute(0)
+            .unwrap()
+            .with_second(0)
+            .unwrap();
 
         // If weekend, move to Monday
         let weekday = start_time.weekday();
@@ -557,9 +573,11 @@ Contract code:
         let mut mitigations = Vec::new();
 
         // Contract security risk
-        let security_level = if analysis.security_findings.iter().any(|f| {
-            matches!(f.level, SecurityLevel::Critical | SecurityLevel::High)
-        }) {
+        let security_level = if analysis
+            .security_findings
+            .iter()
+            .any(|f| matches!(f.level, SecurityLevel::Critical | SecurityLevel::High))
+        {
             RiskLevel::High
         } else if analysis.security_findings.len() > 3 {
             RiskLevel::Medium
@@ -659,7 +677,10 @@ Contract code:
                 order: 1,
                 action: "Deploy previous version".to_string(),
                 description: "Upgrade the proxy to the previous implementation".to_string(),
-                prerequisites: vec!["Proxy address".to_string(), "Previous implementation address".to_string()],
+                prerequisites: vec![
+                    "Proxy address".to_string(),
+                    "Previous implementation address".to_string(),
+                ],
                 verification: "Verify functions work correctly".to_string(),
                 estimated_time: "5 minutes".to_string(),
             });
@@ -677,7 +698,10 @@ Contract code:
                 order: 2,
                 action: "Deploy new version".to_string(),
                 description: "Deploy fixed version of the contract".to_string(),
-                prerequisites: vec!["New contract code ready".to_string(), "Migration script".to_string()],
+                prerequisites: vec![
+                    "New contract code ready".to_string(),
+                    "Migration script".to_string(),
+                ],
                 verification: "Verify new deployment works".to_string(),
                 estimated_time: "15 minutes".to_string(),
             });
@@ -697,7 +721,7 @@ Contract code:
         Ok(RollbackPlan {
             steps,
             estimated_time: format!("{} minutes", total_time),
-            rollback_cost: if analysis.is_upgradeable { 
+            rollback_cost: if analysis.is_upgradeable {
                 "0.001 ETH".to_string()
             } else {
                 "0.002 ETH".to_string()
@@ -785,9 +809,20 @@ Contract code:
         use colored::*;
 
         println!();
-        println!("{}", "╔═══════════════════════════════════════════════════════════════════╗".cyan());
-        println!("{}", "║           AI DEPLOYMENT PLAN SUMMARY                             ║".cyan().bold());
-        println!("{}", "╚═══════════════════════════════════════════════════════════════════╝".cyan());
+        println!(
+            "{}",
+            "╔═══════════════════════════════════════════════════════════════════╗".cyan()
+        );
+        println!(
+            "{}",
+            "║           AI DEPLOYMENT PLAN SUMMARY                             ║"
+                .cyan()
+                .bold()
+        );
+        println!(
+            "{}",
+            "╚═══════════════════════════════════════════════════════════════════╝".cyan()
+        );
         println!();
 
         // Contract Info
@@ -819,15 +854,30 @@ Contract code:
 
         // Gas Estimate
         println!("{}", "💰 GAS ESTIMATE".green().bold());
-        println!("  Expected: {} {}", plan.gas_estimate.expected, plan.gas_estimate.unit);
-        println!("  Range:    {} - {}", plan.gas_estimate.min, plan.gas_estimate.max);
+        println!(
+            "  Expected: {} {}",
+            plan.gas_estimate.expected, plan.gas_estimate.unit
+        );
+        println!(
+            "  Range:    {} - {}",
+            plan.gas_estimate.min, plan.gas_estimate.max
+        );
         if let Some(usd) = &plan.gas_estimate.usd_value {
             println!("  USD:      {}", usd);
         }
         println!("  Components:");
-        println!("    Deployment:   {} gas", plan.gas_estimate.components.deployment);
-        println!("    Verification: {} gas", plan.gas_estimate.components.verification);
-        println!("    Interactions: {} gas", plan.gas_estimate.components.interactions);
+        println!(
+            "    Deployment:   {} gas",
+            plan.gas_estimate.components.deployment
+        );
+        println!(
+            "    Verification: {} gas",
+            plan.gas_estimate.components.verification
+        );
+        println!(
+            "    Interactions: {} gas",
+            plan.gas_estimate.components.interactions
+        );
         println!();
 
         // Risk Assessment
@@ -838,7 +888,10 @@ Contract code:
             RiskLevel::Medium => "cyan".to_string(),
             RiskLevel::Low => "green".to_string(),
         };
-        println!("  Overall:  {}", format!("{:?}", plan.risk_assessment.overall).color(risk_color));
+        println!(
+            "  Overall:  {}",
+            format!("{:?}", plan.risk_assessment.overall).color(risk_color)
+        );
         println!("  Score:    {}/100", plan.risk_assessment.score);
         for category in &plan.risk_assessment.categories {
             let color = match category.level {
@@ -847,7 +900,11 @@ Contract code:
                 RiskLevel::Medium => "cyan",
                 RiskLevel::Low => "green",
             };
-            println!("    📌 {}: {}", category.name, format!("{:?}", category.level).color(color));
+            println!(
+                "    📌 {}: {}",
+                category.name,
+                format!("{:?}", category.level).color(color)
+            );
             println!("       {}", category.description);
         }
         if !plan.risk_assessment.mitigations.is_empty() {
@@ -865,8 +922,10 @@ Contract code:
         println!("  Priority: {:?}", plan.deployment_window.priority);
         println!("  Reason:   {}", plan.deployment_window.reason);
         if let Some(pred) = &plan.deployment_window.gas_price_prediction {
-            println!("  Gas:      Current: {}, Predicted: {}, Trend: {:?}",
-                pred.current, pred.predicted, pred.trend);
+            println!(
+                "  Gas:      Current: {}, Predicted: {}, Trend: {:?}",
+                pred.current, pred.predicted, pred.trend
+            );
         }
         println!();
 
@@ -881,7 +940,10 @@ Contract code:
         }
         println!("  Estimated Time: {}", plan.rollback_plan.estimated_time);
         println!("  Cost:           {}", plan.rollback_plan.rollback_cost);
-        println!("  Success Rate:   {:.0}%", plan.rollback_plan.success_probability * 100.0);
+        println!(
+            "  Success Rate:   {:.0}%",
+            plan.rollback_plan.success_probability * 100.0
+        );
         println!();
 
         // Recommendations
@@ -893,16 +955,36 @@ Contract code:
                     Urgency::BeforeDeployment => "yellow",
                     Urgency::PostDeployment => "cyan",
                 };
-                println!("  {} [{}]:", rec.action, format!("{:?}", rec.urgency).color(urgency_color));
+                println!(
+                    "  {} [{}]:",
+                    rec.action,
+                    format!("{:?}", rec.urgency).color(urgency_color)
+                );
                 println!("    Impact: {}", rec.impact);
                 println!("    Details: {}", rec.details);
             }
             println!();
         }
 
-        println!("{}", "╔═══════════════════════════════════════════════════════════════════╗".cyan());
-        println!("{}", format!("║  Status: {:?}                                              ║", plan.status).cyan());
-        println!("{}", format!("║  Generated: {}                    ║", plan.generated_at).cyan());
-        println!("{}", "╚═══════════════════════════════════════════════════════════════════╝".cyan());
+        println!(
+            "{}",
+            "╔═══════════════════════════════════════════════════════════════════╗".cyan()
+        );
+        println!(
+            "{}",
+            format!(
+                "║  Status: {:?}                                              ║",
+                plan.status
+            )
+            .cyan()
+        );
+        println!(
+            "{}",
+            format!("║  Generated: {}                    ║", plan.generated_at).cyan()
+        );
+        println!(
+            "{}",
+            "╚═══════════════════════════════════════════════════════════════════╝".cyan()
+        );
     }
 }

@@ -8,6 +8,7 @@ use crate::utils::{
     deployment_monitor, horizon, notifications, optimizer, print as p, simulation_resources,
     soroban, wallet_signer,
     wasm_hash::{compute_wasm_hash, BuildEnvironment},
+    wasm_preflight,
 };
 
 use crate::utils::hardware_wallet::HardwareWalletKind;
@@ -201,7 +202,8 @@ async fn run_dry_run(
     p::kv("        SHA-256 (code hash)", wasm_hash);
 
     let policy = wasm_preflight::WasmPolicy::default();
-    let preflight = wasm_preflight::validate_wasm_bytes(wasm_bytes, &wasm_path.to_string_lossy(), &policy);
+    let preflight =
+        wasm_preflight::validate_wasm_bytes(wasm_bytes, &wasm_path.to_string_lossy(), &policy);
 
     if !preflight.is_valid_wasm {
         for v in &preflight.violations {
@@ -221,10 +223,7 @@ async fn run_dry_run(
         warnings.push(w.clone());
     }
     if !preflight.exports.is_empty() {
-        p::kv(
-            "        Exports",
-            &preflight.exports.join(", "),
-        );
+        p::kv("        Exports", &preflight.exports.join(", "));
     }
     println!();
 
@@ -328,44 +327,37 @@ async fn run_dry_run(
         "Op 1:".cyan().bold(),
         "InvokeHostFunction —".dimmed()
     );
-    println!(
-        "         Code hash  : {}",
-        wasm_hash.cyan()
-    );
+    println!("         Code hash  : {}", wasm_hash.cyan());
     println!(
         "         Size       : {:.1} KB ({} bytes)",
         wasm_size_kb,
         wasm_bytes.len()
     );
-    println!(
-        "         Authorized : {}",
-        wallet.public_key
-    );
+    println!("         Authorized : {}", wallet.public_key);
     println!();
     println!(
         "  {} {} Create contract instance",
         "Op 2:".cyan().bold(),
         "InvokeHostFunction —".dimmed()
     );
-    println!(
-        "         Constructor: default (no __constructor export detected)"
-    );
-    println!(
-        "         Storage    : Persistent (new ContractData ledger entry)"
-    );
-    println!(
-        "         Authorized : {}",
-        wallet.public_key
-    );
+    println!("         Constructor: default (no __constructor export detected)");
+    println!("         Storage    : Persistent (new ContractData ledger entry)");
+    println!("         Authorized : {}", wallet.public_key);
     println!();
-    println!("  {} No existing contract state will be modified.", "Note:".dimmed());
+    println!(
+        "  {} No existing contract state will be modified.",
+        "Note:".dimmed()
+    );
     println!("  {} This is a fresh deployment.", "Note:".dimmed());
     println!();
 
     // ── Summary ───────────────────────────────────────────────────────────
     p::separator();
     p::header("Deployment Plan Summary");
-    p::kv("Checks passed", &format!("{}/{}", checks_passed, checks_total));
+    p::kv(
+        "Checks passed",
+        &format!("{}/{}", checks_passed, checks_total),
+    );
     p::kv("Network", network);
     p::kv("Wallet", &wallet.name);
     p::kv("Account public key", &wallet.public_key);
@@ -495,10 +487,133 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
 
     let wasm_hash = compute_local_wasm_hash(&wasm_bytes);
 
+    // ── AI-driven compliance checks (regulatory, security, best practices) ─
+    if args.compliance {
+        p::header("AI Deployment Compliance Checks");
+        let request_id = format!(
+            "deploy-{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0000")
+        );
+        let contract_id = format!("wasm:{}", &wasm_hash[..16]);
+
+        match crate::utils::compliance::run_compliance_checks(
+            &request_id,
+            &contract_id,
+            &args.network,
+            wallet.name.as_str(),
+        ) {
+            Ok(report) => {
+                p::kv("Compliance Report ID", &report.request_id[..12]);
+                p::kv(
+                    "Regulatory checks",
+                    &report.regulatory_checks.len().to_string(),
+                );
+                p::kv("Best practices", &report.best_practices.len().to_string());
+
+                for check in &report.checks {
+                    let status = if check.passed {
+                        "✓".green()
+                    } else {
+                        "✗".red()
+                    };
+                    let sev_label = match check.severity {
+                        crate::utils::compliance::ComplianceSeverity::Blocking => {
+                            "[BLOCKING]".red()
+                        }
+                        crate::utils::compliance::ComplianceSeverity::Warning => {
+                            "[WARNING]".yellow()
+                        }
+                        crate::utils::compliance::ComplianceSeverity::Info => "[INFO]".dimmed(),
+                    };
+                    if !check.passed {
+                        println!(
+                            "  {} {} {} — {}",
+                            status,
+                            sev_label,
+                            check.policy_name,
+                            check.message.dimmed()
+                        );
+                    }
+                }
+
+                if let Some(ref risk) = report.risk_assessment {
+                    println!();
+                    p::kv(
+                        "Risk Level",
+                        &match risk.overall_level {
+                            crate::utils::compliance::RiskLevel::Low => {
+                                risk.overall_level.to_string().green()
+                            }
+                            crate::utils::compliance::RiskLevel::Medium => {
+                                risk.overall_level.to_string().yellow()
+                            }
+                            crate::utils::compliance::RiskLevel::High => {
+                                risk.overall_level.to_string().red()
+                            }
+                            crate::utils::compliance::RiskLevel::Critical => {
+                                risk.overall_level.to_string().red().bold()
+                            }
+                        }
+                        .to_string(),
+                    );
+                    p::kv("Risk Score", &format!("{}/100", risk.overall_score));
+
+                    if !risk.approved_for_deployment {
+                        if args.yes {
+                            p::warn("Deployment NOT approved by risk assessment, but proceeding due to --yes.");
+                        } else {
+                            p::error(&format!(
+                                "Deployment blocked by risk assessment (level: {}, score: {}/100). Use --yes to force.",
+                                risk.overall_level, risk.overall_score
+                            ));
+                        }
+                    }
+                }
+
+                // Enforce blocking policies: bail unless --yes is set
+                if report.blocking_count > 0 && !args.yes {
+                    p::separator();
+                    println!();
+                    anyhow::bail!(
+                        "Compliance check failed: {} blocking issue(s) found.\n  Address the issues or run with --yes to force deployment.\n  Run `starforge compliance report show {}` for full details.",
+                        report.request_id,
+                        report.request_id
+                    );
+                }
+
+                if report.warning_count > 0 {
+                    println!();
+                    p::warn(&format!(
+                        "{} warning(s) found — review recommended before deploying.",
+                        report.warning_count
+                    ));
+                }
+            }
+            Err(e) => {
+                if args.yes {
+                    p::warn(&format!(
+                        "Compliance check failed (bypassed with --yes): {}",
+                        e
+                    ));
+                } else {
+                    anyhow::bail!(
+                        "Compliance check failed: {}\n  Run with --yes to skip compliance checks.",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
     // ── WASM pre-flight policy check (always runs, blocks on violations) ───
     {
         let policy = wasm_preflight::WasmPolicy::default();
-        let report = wasm_preflight::validate_wasm_bytes(&wasm_bytes, &wasm_path.to_string_lossy(), &policy);
+        let report =
+            wasm_preflight::validate_wasm_bytes(&wasm_bytes, &wasm_path.to_string_lossy(), &policy);
         if !report.is_ok() {
             for v in &report.violations {
                 p::warn(&format!("[{}] {}", v.code, v.message));
@@ -523,7 +638,8 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             wasm_size_kb,
             wallet,
             &args.network,
-        );
+        )
+        .await;
     }
 
     if args.simulate {
@@ -695,10 +811,9 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
             // Record deployment analytics event (execute attempt failed).
             // Try to parse a contract id, even though the command failed.
             let contract_id_for_analytics = parse_contract_id_from_stdout(&stderr);
-            record_analytics(analytics_cmds::AnalyticsCommands::Track(
+            tokio::spawn(record_analytics(analytics_cmds::AnalyticsCommands::Track(
                 analytics_cmds::TrackArgs {
                     contract_id: contract_id_for_analytics.unwrap_or_default(),
-
                     network: args.network.clone(),
                     wasm_hash: Some(wasm_hash.clone()),
                     deployer: Some(wallet.name.clone()),
@@ -709,7 +824,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                     success: false,
                     error: Some(stderr.clone()),
                 },
-            ));
+            )));
 
             // Automatic rollback safety net: revert to the last good deployment.
             handle_failed_deploy_rollback(
@@ -734,7 +849,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
         let _ = set_duration(&record_id, duration_ms);
 
         // Record deployment analytics event (execute attempt succeeded).
-        record_analytics(analytics_cmds::AnalyticsCommands::Track(
+        tokio::spawn(record_analytics(analytics_cmds::AnalyticsCommands::Track(
             analytics_cmds::TrackArgs {
                 contract_id: parsed_contract_id.clone().unwrap_or_default(),
                 network: args.network.clone(),
@@ -747,7 +862,7 @@ pub async fn handle(args: DeployArgs) -> Result<()> {
                 success: true,
                 error: None,
             },
-        ));
+        )));
 
         p::success("Deployment executed successfully!");
         p::kv("Recorded deployment", &record_id[..8.min(record_id.len())]);

@@ -196,12 +196,13 @@ fn find_rust_files(dir: &Path) -> Result<Vec<PathBuf>> {
 // ── Search Functions ─────────────────────────────────────────────────────────
 
 /// Search code by natural language query.
-pub fn search_code(query: &str, project_dir: &Path, config: &SearchConfig) -> Result<DiscoveryResult> {
+pub fn search_code(
+    query: &str,
+    project_dir: &Path,
+    config: &SearchConfig,
+) -> Result<DiscoveryResult> {
     let index = build_index(project_dir)?;
-    let query_tokens: Vec<String> = query
-        .split_whitespace()
-        .map(|w| w.to_lowercase())
-        .collect();
+    let query_tokens: Vec<String> = query.split_whitespace().map(|w| w.to_lowercase()).collect();
 
     let mut results: Vec<SearchResult> = Vec::new();
 
@@ -256,7 +257,11 @@ fn calculate_relevance(query_tokens: &[String], entry_tokens: &[String], raw_con
 
     let matches = query_tokens
         .iter()
-        .filter(|qt| entry_tokens.iter().any(|et| et.contains(qt.as_str()) || qt.contains(et.as_str())))
+        .filter(|qt| {
+            entry_tokens
+                .iter()
+                .any(|et| et.contains(qt.as_str()) || qt.contains(et.as_str()))
+        })
         .count();
 
     let token_score = matches as f64 / query_tokens.len() as f64;
@@ -264,13 +269,7 @@ fn calculate_relevance(query_tokens: &[String], entry_tokens: &[String], raw_con
     let raw_lower = raw_content.to_lowercase();
     let exact_bonus: f64 = query_tokens
         .iter()
-        .map(|qt| {
-            if raw_lower.contains(qt) {
-                0.1
-            } else {
-                0.0
-            }
-        })
+        .map(|qt| if raw_lower.contains(qt) { 0.1 } else { 0.0 })
         .sum();
 
     (token_score + exact_bonus).min(1.0)
@@ -515,7 +514,11 @@ mod tests {
     #[test]
     fn test_calculate_relevance() {
         let query = vec!["transfer".to_string(), "amount".to_string()];
-        let tokens = vec!["fn".to_string(), "transfer".to_string(), "amount".to_string()];
+        let tokens = vec![
+            "fn".to_string(),
+            "transfer".to_string(),
+            "amount".to_string(),
+        ];
         let score = calculate_relevance(&query, &tokens, "fn transfer(amount: i64)");
         assert!(score > 0.5);
     }

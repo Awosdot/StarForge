@@ -286,8 +286,6 @@ proptest! {
         // rejecting those aborts the run with "too many global rejects".
         passphrase in proptest::string::string_regex("[ -~]{0,11}").unwrap()
     ) {
-        // Only test strings shorter than the minimum length.
-        prop_assume!(passphrase.len() < starforge::utils::crypto::MIN_PASSPHRASE_LEN);
         let result = starforge::utils::crypto::check_passphrase_strength(&passphrase);
         prop_assert!(
             result.is_err(),
