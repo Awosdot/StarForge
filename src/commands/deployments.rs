@@ -2,6 +2,9 @@ use crate::utils::deploy_history::{
     get_record, last_successful, load_history, set_verified, update_status, DeployStatus,
 };
 use crate::utils::deployment_monitor;
+use crate::utils::deployment_monitoring_service::{
+    render_monitoring_dashboard, DeploymentAlertEngine, DeploymentHealthChecker, DeploymentTracker,
+};
 use crate::utils::deployment_verify::{
     generate_ci_snippet, load_report, save_report, DeploymentVerifier,
 };
@@ -28,7 +31,7 @@ pub enum DeploymentsCommands {
     Report(ReportArgs),
     /// Generate CI snippet for automated deployment verification
     Ci(CiArgs),
-    /// Run AI-assisted deployment monitoring and predictions
+    /// Run deployment monitoring service, real-time status updates, health checks, and alerting
     Monitor(MonitorArgs),
 }
 
@@ -121,6 +124,18 @@ pub struct MonitorArgs {
     /// Optional contract ID to scope the analysis
     #[arg(long)]
     pub contract: Option<String>,
+    /// Optional wallet name to scope the health check
+    #[arg(long)]
+    pub wallet: Option<String>,
+    /// Render live monitoring dashboard with real-time status and health check matrix
+    #[arg(long)]
+    pub dashboard: bool,
+    /// Enable health check verification
+    #[arg(long)]
+    pub health_check: bool,
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args)]
@@ -419,10 +434,43 @@ fn handle_report(args: ReportArgs) -> Result<()> {
 }
 
 fn handle_monitor(args: MonitorArgs) -> Result<()> {
-    p::header("AI Deployment Monitoring");
+    p::header("Deployment Monitoring Service");
     config::validate_network(&args.network)?;
 
     let report = deployment_monitor::analyze_deployments(&args.network, args.contract.as_deref())?;
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    if args.dashboard || args.health_check {
+        let tracker = DeploymentTracker::new();
+
+        // Populate tracker with history for visual status
+        let records = load_history().unwrap_or_default();
+        for (idx, r) in records.iter().enumerate().take(5) {
+            let tr_id = format!("dep-{}", &r.id[..8.min(r.id.len())]);
+            tracker.start_tracking(&tr_id, &r.network, &r.wallet);
+            if r.status == DeployStatus::Success {
+                tracker.mark_completed(&tr_id, r.contract_id.as_deref().unwrap_or("C000"), None, r.duration_ms.unwrap_or(1000));
+            } else if r.status == DeployStatus::Failed {
+                tracker.mark_failed(&tr_id, "Deployment failed during invocation");
+            }
+        }
+
+        let tracks = tracker.get_active_tracks();
+        let health_checks = DeploymentHealthChecker::check_network_health(
+            &args.network,
+            args.contract.as_deref(),
+            args.wallet.as_deref(),
+        );
+        let service_alerts = DeploymentAlertEngine::generate_alerts(&tracks, &health_checks);
+
+        let dashboard_view = render_monitoring_dashboard(&tracks, &health_checks, &service_alerts, &args.network);
+        println!("{}", dashboard_view);
+        return Ok(());
+    }
 
     p::separator();
     p::kv("Network", &report.network);
