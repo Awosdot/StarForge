@@ -18,7 +18,7 @@
 
 use crate::utils::ai_cache;
 use crate::utils::{
-    ai_cache, contract_profiler,
+    contract_profiler,
     ollama::{self, GenerateOptions},
     pattern_library, print as p,
 };

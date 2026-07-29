@@ -747,7 +747,7 @@ impl ContractSuggestionEngine {
             ContractType::Token => format!(
                 r#"#![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String};
+use soroban_sdk::{{contract, contractimpl, symbol_short, Address, Env, String}};
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const NAME: Symbol = symbol_short!("NAME");
@@ -873,7 +873,7 @@ mod tests {{
             ContractType::Nft => format!(
                 r#"#![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
+use soroban_sdk::{{contract, contractimpl, symbol_short, Address, Env}};
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const NAME: Symbol = symbol_short!("NAME");
@@ -962,7 +962,7 @@ mod tests {{
             _ => format!(
                 r#"#![no_std]
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
+use soroban_sdk::{{contract, contractimpl, symbol_short, Address, Env}};
 
 const ADMIN: Symbol = symbol_short!("ADMIN");
 

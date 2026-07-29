@@ -1,16 +1,37 @@
+
+
+// AI Context Management (#487)
+// AI Deployment Planner
+// AI Rate Limiting (#489)
+// AI Request Caching (#483)
+// AI Response Validation (#486)
+// AI Service Abstraction Layer (#479)
+// AI Test Analytics (#570)
+pub mod ai;
+pub mod ai_cache;
+pub mod ai_context;
 pub mod ai_conversation;
 pub mod ai_debugger;
+pub mod ai_deployment_planner;
+pub mod ai_deployment_testing;
 pub mod ai_docs;
 pub mod ai_error_handler;
 pub mod ai_feedback;
 pub mod ai_gas_estimation;
-pub mod ai_gas_estimation;
+pub mod ai_ide_integration;
+pub mod ai_performance_profiler;
 pub mod ai_property_testing;
+pub mod ai_rate_limiter;
 pub mod ai_recommendations;
+pub mod ai_refactor;
 pub mod ai_search;
+pub mod ai_template_testing;
+pub mod ai_test_analytics;
 pub mod ai_test_assistant;
 pub mod ai_test_generator;
+pub mod ai_test_maintenance;
 pub mod ai_tutorial;
+pub mod ai_validation;
 pub mod approval_engine;
 pub mod audit;
 pub mod backup;
@@ -32,6 +53,7 @@ pub mod contract_suggestions;
 pub mod contract_test_framework;
 pub mod contract_test_runner;
 pub mod contract_testing;
+pub mod contract_versioning;
 pub mod cost_estimation;
 pub mod cost_management;
 pub mod crypto;
@@ -39,8 +61,12 @@ pub mod database;
 pub mod debugger;
 pub mod deploy_history;
 pub mod deploy_orchestrator;
+pub mod deployment_automation;
+pub mod deployment_monitor;
+pub mod deployment_optimizer;
 pub mod deployment_verify;
 pub mod doc_api_ref;
+pub mod doc_extractor;
 pub mod doc_generator;
 pub mod doc_html;
 pub mod doc_publisher;
@@ -48,7 +74,7 @@ pub mod doc_templates;
 pub mod docs;
 pub mod documentation;
 pub mod event_monitoring;
-pub mod event_monitoring;
+pub mod feature_flags;
 pub mod gas_analyzer;
 pub mod gas_report;
 pub mod governance;
@@ -65,6 +91,7 @@ pub mod multi_network_deploy;
 pub mod multisig;
 pub mod multisig_builder;
 pub mod mutation;
+pub mod network_sim;
 pub mod network_simulator;
 pub mod node;
 pub mod notifications;
@@ -92,9 +119,12 @@ pub mod state_diff;
 pub mod stream;
 pub mod telemetry;
 pub mod template;
+pub mod template_analytics;
 pub mod template_customization_ai;
 pub mod template_integration;
 pub mod template_performance;
+pub mod template_recommender;
+pub mod template_security_scanner;
 pub mod template_vcs;
 pub mod template_version_ai;
 pub mod templates;
@@ -108,19 +138,3 @@ pub mod tutorial_engine;
 pub mod tx_batch;
 pub mod wallet_signer;
 pub mod workflow_guidance;
-
-// AI Deployment Planner
-pub mod ai_deployment_planner;
-
-// AI Service Abstraction Layer (#479)
-pub mod ai;
-// AI Response Validation (#486)
-pub mod ai_validation;
-// AI Context Management (#487)
-pub mod ai_context;
-// AI Rate Limiting (#489)
-pub mod ai_rate_limiter;
-// AI Request Caching (#483)
-pub mod ai_cache;
-// AI Test Analytics (#570)
-pub mod ai_test_analytics;
