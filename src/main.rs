@@ -309,6 +309,10 @@ enum Commands {
     /// AI-driven security training: lessons, exercises, progress tracking
     #[command(subcommand)]
     AiSecurityTraining(commands::ai_security_training::AiSecurityTrainingCommands),
+
+    /// Contract health monitoring, performance tracking, security events, alerting, and dashboard
+    #[command(subcommand)]
+    ContractMonitor(commands::contract_monitor::ContractMonitorCommands),
 }
 
 #[tokio::main]
@@ -410,6 +414,7 @@ async fn main() {
         Commands::AiTelemetry(_) => "ai-telemetry",
         Commands::Optimize(_) => "optimize",
         Commands::AiSecurityTraining(_) => "ai-security-training",
+        Commands::ContractMonitor(_) => "contract-monitor",
     }
     .to_string();
 
@@ -505,6 +510,7 @@ async fn main() {
         Commands::AiTelemetry(cmd) => commands::ai_telemetry::handle(cmd).await,
         Commands::Optimize(cmd) => commands::optimize::handle(cmd).await,
         Commands::AiSecurityTraining(cmd) => commands::ai_security_training::handle(cmd).await,
+        Commands::ContractMonitor(cmd) => commands::contract_monitor::handle(cmd).await,
     };
     let duration = start.elapsed();
 
