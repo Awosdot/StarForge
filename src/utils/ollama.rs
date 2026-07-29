@@ -401,6 +401,15 @@ patterns.\n\n```rust\n{}\n```",
         )
     }
 
+    /// Prompt for translating text.
+    pub fn translation_prompt(text: &str, target_lang: &str) -> String {
+        format!(
+            "{}Translate the following text into {}. Provide only the translation, no extra commentary.\n\n{}",
+            SYSTEM_CONTEXT, target_lang, text
+        )
+    }
+
+
     /// Prompt for generating a test suite for a contract.
     pub fn test_prompt(contract_code: &str) -> String {
         format!(
