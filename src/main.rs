@@ -274,6 +274,9 @@ enum Commands {
     /// Contract storage migration tools (transform, validate, rollback)
     #[command(subcommand)]
     Migrate(commands::migrate::MigrateCommands),
+    /// AI-driven collaboration tools: code review, conflict resolution, knowledge sharing, contribution tracking
+    #[command(subcommand)]
+    Collab(commands::collab::CollabCommands),
 
     /// Run formal verification on a contract
     #[command(subcommand)]
@@ -357,6 +360,9 @@ async fn main() {
         Commands::Analytics(_) => "analytics",
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
+        Commands::Collab(_) => "collab",
+        Commands::Complete(_) => "complete",
+        Commands::External(_) => "external",
         Commands::Verify(_) => "verify",
         Commands::External(_) => "external",
         Commands::Help(_) => "help",
@@ -435,6 +441,7 @@ async fn main() {
         Commands::Analytics(cmd) => commands::analytics::handle(cmd).await,
         Commands::Approval(cmd) => commands::approval::handle(cmd).await,
         Commands::Migrate(cmd) => commands::migrate::handle(cmd),
+        Commands::Collab(cmd) => commands::collab::handle(cmd).await,
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::Verify(cmd) => commands::verify::handle(cmd).await,
         Commands::External(args) => handle_external_plugin(args),
