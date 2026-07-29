@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use starforge::utils::ai_test_assistant as ata;
+use std::path::PathBuf;
 
 const SAMPLE_CONTRACT: &str = r#"
 #![no_std]
@@ -156,7 +156,10 @@ fn test_priorities_include_security_tests() {
 
     let transfer_priority = priorities.iter().find(|p| p.function_name == "transfer");
     assert!(transfer_priority.is_some());
-    assert!(transfer_priority.unwrap().test_types.contains(&"security".to_string()));
+    assert!(transfer_priority
+        .unwrap()
+        .test_types
+        .contains(&"security".to_string()));
 }
 
 #[test]
@@ -346,7 +349,9 @@ fn test_generation_request_serialization_roundtrip() {
 
     assert_eq!(deserialized.contract_name, "Token");
     assert_eq!(deserialized.test_type, ata::TestType::EdgeCase);
-    assert!(deserialized.focus_functions.contains(&"transfer".to_string()));
+    assert!(deserialized
+        .focus_functions
+        .contains(&"transfer".to_string()));
 }
 
 #[test]
@@ -360,7 +365,10 @@ fn test_optimization_request_serialization_roundtrip() {
     let json = serde_json::to_string(&request).unwrap();
     let deserialized: ata::TestOptimizationRequest = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(deserialized.optimization_goals, vec![ata::OptimizationGoal::All]);
+    assert_eq!(
+        deserialized.optimization_goals,
+        vec![ata::OptimizationGoal::All]
+    );
 }
 
 #[test]
@@ -474,14 +482,12 @@ fn test_security_checks_for_mutating_functions() {
         is_public: true,
         is_entry_point: false,
         is_mutating: true,
-        params: vec![
-            ata::ParamInfo {
-                name: "amount".to_string(),
-                param_type: "i64".to_string(),
-                is_ref: false,
-                is_mut: false,
-            },
-        ],
+        params: vec![ata::ParamInfo {
+            name: "amount".to_string(),
+            param_type: "i64".to_string(),
+            is_ref: false,
+            is_mut: false,
+        }],
         return_type: None,
         complexity_score: 2,
         line_start: 1,

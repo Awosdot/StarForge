@@ -27,8 +27,6 @@ ignore = [
     "RUSTSEC-2025-0134",
     # anyhow downcast_mut
     "RUSTSEC-2026-0190",
-    # crossbeam pointer deref
-    "RUSTSEC-2026-0204",
 ]
 
 [licenses]
