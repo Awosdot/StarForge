@@ -12,8 +12,10 @@ use crate::utils::{
 };
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use rustyline::Editor;
+use rustyline::{DefaultEditor, Editor};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use crate::utils::ai_cache;
 
 #[derive(Subcommand)]
 pub enum AiChatCommands {
@@ -129,7 +131,7 @@ async fn handle_chat(
     );
     manager.add_system_message(&session_id, system_msg).await?;
 
-    let mut rl = Editor::<()>::new()?;
+    let mut rl = DefaultEditor::new()?;
 
     loop {
         let readline = rl.readline("You: ");
