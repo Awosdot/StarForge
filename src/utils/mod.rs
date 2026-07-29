@@ -38,6 +38,8 @@ pub mod database;
 pub mod debugger;
 pub mod deploy_history;
 pub mod deploy_orchestrator;
+pub mod deployment_monitor;
+pub mod deployment_monitoring_service;
 pub mod deployment_verify;
 pub mod event_monitoring;
 pub mod doc_generator;
