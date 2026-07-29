@@ -60,6 +60,9 @@ enum Commands {
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
+    /// Natural language command interface
+    Nl(commands::nl::NlArgs),
+
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
@@ -344,6 +347,7 @@ async fn main() {
         Commands::AiQualityGate(_) => "ai-quality-gate",
         Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
+        Commands::Nl(_) => "nl",
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
@@ -429,6 +433,7 @@ async fn main() {
         Commands::AiQualityGate(cmd) => commands::ai_quality_gate::handle(cmd),
         Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
+        Commands::Nl(args) => commands::nl::handle(args).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
