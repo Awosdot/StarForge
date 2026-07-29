@@ -1,10 +1,12 @@
-use crate::utils::{audit, config, confirmation, horizon, print as p};
+use crate::utils::{
+    audit, config, confirmation, horizon, print as p,
+    wasm_hash::{compute_wasm_hash, BuildEnvironment},
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use clap::{Args, Subcommand};
 use colored::*;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 
@@ -284,9 +286,8 @@ fn save_history(history: &[UpgradeRecord]) -> Result<()> {
 
 /// Compute SHA-256 hash of WASM bytes, returned as a hex string.
 pub fn wasm_hash(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hex::encode(hasher.finalize())
+    compute_wasm_hash(bytes, BuildEnvironment::current())
+        .unwrap_or_else(|e| panic!("failed to compute upgrade WASM hash: {e}"))
 }
 
 fn validate_wasm(path: &PathBuf) -> Result<(Vec<u8>, String)> {

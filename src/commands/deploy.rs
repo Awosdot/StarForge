@@ -1,8 +1,18 @@
-use crate::utils::{config, confirmation, horizon, optimizer, print as p, soroban, wasm_preflight};
+use crate::commands::analytics as analytics_cmds;
+use crate::utils::{
+    config, confirmation,
+    deploy_history::{
+        self, last_successful, record_deployment, set_contract_id, set_duration, update_status,
+        DeployRecord, DeployStatus,
+    },
+    deployment_monitor, horizon, notifications, optimizer, print as p, soroban, wallet_signer,
+    wasm_hash::{compute_wasm_hash, BuildEnvironment},
+};
+
+use crate::utils::hardware_wallet::HardwareWalletKind;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -90,8 +100,8 @@ fn is_wasm_above_size_limit(wasm_size_kb: f64) -> bool {
 /// This matches the hash that `stellar contract inspect --wasm <file>` reports
 /// and that Soroban uses to identify uploaded contract bytecode on-chain.
 fn compute_local_wasm_hash(wasm_bytes: &[u8]) -> String {
-    let digest = Sha256::digest(wasm_bytes);
-    hex::encode(digest)
+    compute_wasm_hash(wasm_bytes, BuildEnvironment::current())
+        .unwrap_or_else(|e| panic!("failed to compute WASM hash: {e}"))
 }
 
 fn build_stellar_deploy_command(wasm: &std::path::Path, source: &str, network: &str) -> String {
