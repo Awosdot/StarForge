@@ -262,7 +262,7 @@ fn list() -> Result<()> {
     p::kv("StarForge core version", CORE_VERSION);
     p::separator();
 
-    let entries = crate::plugins::registry::plugin_list_entries(&reg);
+    let entries = reg.plugins.clone();
 
     let plugin_rows: Vec<Vec<String>> = entries
         .iter()
@@ -1026,7 +1026,7 @@ fn commands(name: Option<String>) -> Result<()> {
 
     let entries: Vec<_> = match &name {
         Some(n) => {
-            let found: Vec<_> = crate::plugins::registry::plugin_list_entries(&reg)
+            let found: Vec<_> = reg.plugins.clone()
                 .into_iter()
                 .filter(|entry| entry.name == *n)
                 .collect();
@@ -1038,7 +1038,7 @@ fn commands(name: Option<String>) -> Result<()> {
             }
             found
         }
-        None => crate::plugins::registry::plugin_list_entries(&reg),
+        None => reg.plugins.clone(),
     };
 
     let rows: Vec<Vec<String>> = entries

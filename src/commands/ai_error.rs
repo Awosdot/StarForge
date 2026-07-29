@@ -185,7 +185,7 @@ async fn handle_toggle_provider(provider: &str, enable: bool, disable: bool) -> 
                 provider,
                 providers
                     .iter()
-                    .map(|p| &p.name)
+                    .map(|p| p.name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

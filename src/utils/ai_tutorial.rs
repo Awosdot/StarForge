@@ -118,6 +118,7 @@ pub struct Tutorial {
 }
 
 /// Tutorial system manager
+#[derive(Clone)]
 pub struct TutorialManager {
     tutorials: Arc<RwLock<HashMap<String, Tutorial>>>,
     user_progress: Arc<RwLock<HashMap<String, UserProgress>>>,
@@ -292,7 +293,7 @@ impl TutorialManager {
                 exercise_scores: HashMap::new(),
                 total_time_spent_minutes: 0,
                 last_activity: Utc::now(),
-                learning_path: self.generate_learning_path(SkillLevel::Beginner),
+                learning_path: TutorialManager::generate_learning_path(SkillLevel::Beginner),
             };
 
             let mut progress_map = self.user_progress.write().await;
@@ -464,7 +465,7 @@ impl TutorialManager {
 
                     // Update learning path
                     progress.learning_path =
-                        self.generate_learning_path(progress.skill_level.clone());
+                        TutorialManager::generate_learning_path(progress.skill_level.clone());
                 }
             }
         }

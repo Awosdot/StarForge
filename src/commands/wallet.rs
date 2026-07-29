@@ -602,9 +602,9 @@ async fn create(
     use_mnemonic: bool,
     words: String,
     account_index: u32,
-    _mem: Option<u32>,
-    _iterations: Option<u32>,
-    _parallelism: Option<u32>,
+    mem: Option<u32>,
+    iterations: Option<u32>,
+    parallelism: Option<u32>,
 ) -> Result<()> {
     let mut cfg = config::load()?;
 

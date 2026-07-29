@@ -220,13 +220,13 @@ pub struct DataProtectionArgs {
     pub format: String,
 }
 
-pub fn handle(cmd: SecurityCommands) -> Result<()> {
+pub async fn handle(cmd: SecurityCommands) -> Result<()> {
     match cmd {
         SecurityCommands::Harden(args) => handle_harden(args),
         SecurityCommands::Checklist(args) => handle_checklist(args),
         SecurityCommands::Validate(args) => handle_validate(args),
         SecurityCommands::Report(args) => handle_report(args),
-        SecurityCommands::Monitor(args) => handle_monitor(args).await,
+        SecurityCommands::Monitor(args) => handle_monitor(args).await.await,
         SecurityCommands::Incident(args) => handle_incident(args),
         SecurityCommands::Audit(args) => handle_audit(args),
         SecurityCommands::ThreatDetect(args) => handle_threat_detect(args),

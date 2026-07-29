@@ -1,3 +1,4 @@
+use colored::Colorize;
 use crate::utils::compliance::{
     self, build_default_policies, delete_policy, generate_compliance_statistics,
     generate_compliance_summary, get_policy, get_recent_reports, get_reports_by_contract,
@@ -348,9 +349,9 @@ fn handle_check(args: CheckArgs) -> Result<()> {
         p::kv(
             "Approved for Deployment",
             if risk.approved_for_deployment {
-                (&"yes".green().to_string()).to_string()
+                (&"yes".green().to_string())
             } else {
-                (&"no".red().to_string()).to_string()
+                (&"no".red().to_string())
             },
         );
 
@@ -585,9 +586,9 @@ fn handle_show_report(args: ShowReportArgs) -> Result<()> {
     p::kv(
         "Status",
         if report.all_passed {
-            (&"PASSED".green().to_string()).to_string()
+            (&"PASSED".green().to_string())
         } else {
-            (&"FAILED".red().to_string()).to_string()
+            (&"FAILED".red().to_string())
         },
     );
     p::kv("Blocking issues", &report.blocking_count.to_string());
@@ -755,9 +756,9 @@ fn handle_risk(args: RiskArgs) -> Result<()> {
         p::kv(
             "Approved for Deployment",
             if risk.approved_for_deployment {
-                (&"yes".green().to_string()).to_string()
+                (&"yes".green().to_string())
             } else {
-                (&"no".red().to_string()).to_string()
+                (&"no".red().to_string())
             },
         );
 

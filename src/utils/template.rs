@@ -444,7 +444,7 @@ async fn search(
         .filter(|s| !s.is_empty())
         .collect();
 
-    let filters = templates::SearchFilters {
+    let filters = templates::SearchFilters { categories: None, featured_only: false, hide_spam: false, 
         tags: tag_list,
         verified_only: verified,
         min_quality,
@@ -736,7 +736,7 @@ async fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-async fn install(
+pub async fn install(
     source: String,
     name: Option<String>,
     version: Option<String>,
@@ -791,7 +791,7 @@ async fn update(name: Option<String>, all: bool) -> Result<()> {
         println!();
         for (tpl_name, result) in &results {
             match result {
-                Ok(()) => p::success(&format!("  {} updated", tpl_name)),
+                Ok(_report) => p::success(&format!("  {} updated", tpl_name)),
                 Err(e) => p::warn(&format!("  {} — {}", tpl_name, e)),
             }
         }
@@ -938,7 +938,7 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push('\n');
 
     // Changelog
-    if !entry.changelog.is_empty() {
+    if !entry.changelog.as_ref().map_or(true, |c| c.is_empty()) {
         md.push_str("## Changelog\n\n");
         for entry in &entry.changelog {
             md.push_str(&format!(

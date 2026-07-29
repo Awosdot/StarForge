@@ -330,7 +330,7 @@ impl TestOptimizer {
             .partition(|t| t.resource_profile.io_intensity > 0.6);
         let cpu_bound = vec![];
         let memory_bound = vec![];
-        let general = vec![];
+        let general: Vec<crate::utils::test_optimizer::TestCaseTiming> = vec![];
         let (cpu_only, general): (Vec<_>, Vec<_>) = general
             .into_iter()
             .partition(|t| t.resource_profile.cpu_intensity > 0.6);

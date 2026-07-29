@@ -887,7 +887,7 @@ pub async fn ai_narrative_summary(report: &CommunityAnalysisReport) -> Option<St
     if !crate::utils::ollama::is_ollama_running().await {
         return None;
     }
-    let prompt = crate::utils::ollama::prompts::community_analysis_prompt(&report.to_text());
+    let prompt = format!("Analyze this community report: {}", report.to_text());
     crate::utils::ollama::generate(crate::utils::ollama::DEFAULT_MODEL, &prompt, None)
         .await
         .ok()

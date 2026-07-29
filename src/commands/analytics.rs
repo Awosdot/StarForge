@@ -1,3 +1,4 @@
+use colored::Colorize;
 use crate::utils::{config, print as p};
 use anyhow::Result;
 use chrono::Utc;
@@ -716,7 +717,7 @@ pub fn calculate_contract_health(
     };
 
     // Calculate overall score (weighted average)
-    let overall_score = (reliability_score * 0.5 + performance_score * 0.3 + activity_score * 0.2);
+    let overall_score = reliability_score * 0.5 + performance_score * 0.3 + activity_score * 0.2;
 
     // Determine risk level
     let risk_level = if overall_score >= 80.0 {
@@ -1184,9 +1185,9 @@ fn handle_trends(args: TrendsArgs) -> Result<()> {
     p::kv(
         "Next deployment success",
         if pred.next_deployment_likely_success {
-            (&"Likely ✓".green().to_string()).to_string()
+            (&"Likely ✓".green().to_string())
         } else {
-            (&"At risk ✗".red().to_string()).to_string()
+            (&"At risk ✗".red().to_string())
         },
     );
     p::kv(

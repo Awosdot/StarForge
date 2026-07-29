@@ -76,7 +76,15 @@ impl MaintenanceStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityReview {
+    pub status: String,
+    pub auditor: Option<String>,
+    pub audited_at: Option<String>,
+    pub findings: Option<String>,
+    pub score: Option<f64>,
+}
 pub struct ChangelogEntry {
     pub version: String,
     pub date: String,
@@ -87,7 +95,7 @@ pub struct ChangelogEntry {
 pub struct TemplateEntry {
     pub name: String,
     pub repository: Option<String>,
-    pub security_review: Option<String>,
+    pub security_review: Option<SecurityReview>,
     pub changelog: Option<Vec<ChangelogEntry>>,
     pub description: String,
     pub version: String,
@@ -382,7 +390,7 @@ fn build_update_report(
             latest_version
         );
 
-        if let Some(latest) = entry.changelog.first() {
+        if let Some(latest) = entry.changelog.as_ref().and_then(|c| c.first()) {
             let notes = latest.notes.clone();
             if notes.to_lowercase().contains("breaking")
                 || notes.to_lowercase().contains("migration")
@@ -1076,7 +1084,7 @@ pub async fn search_templates(query: &str, tags: Option<&[String]>) -> Result<Ve
 }
 
 pub async fn get_template(name: &str) -> Result<TemplateEntry> {
-    let mut versions = get_templates_by_name(name).await?;
+    let versions = get_templates_by_name(name).await?;
     versions
         .into_iter()
         .next()
@@ -1084,7 +1092,7 @@ pub async fn get_template(name: &str) -> Result<TemplateEntry> {
 }
 
 pub async fn get_templates_by_name(name: &str) -> Result<Vec<TemplateEntry>> {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let mut matching: Vec<TemplateEntry> = registry
         .templates
         .into_iter()
@@ -1204,7 +1212,7 @@ fn semver_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 pub async fn add_template(entry: TemplateEntry) -> Result<()> {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
 
     if let Some(existing) = registry
         .templates
@@ -1223,7 +1231,7 @@ pub async fn add_template(entry: TemplateEntry) -> Result<()> {
 /// Remove a template from the registry.
 /// If `purge` is true, also deletes any cached/downloaded assets.
 pub async fn remove_template(name: &str, purge: bool) -> Result<()> {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let before = registry.templates.len();
 
     registry.templates.retain(|t| t.name != name);
@@ -1467,7 +1475,7 @@ pub async fn publish_template_versioned(
     let storage_root = template_storage_dir()?.join(&name);
     let dest = storage_root.join(&version);
 
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let same_version_exists = registry
         .templates
         .iter()
@@ -1722,7 +1730,7 @@ async fn install_from_git_url(
             .to_string()
     });
 
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1792,7 +1800,7 @@ async fn install_from_local_path(
             .to_string()
     });
 
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1921,7 +1929,7 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
 
             fetch_git_template(url, branch.as_deref(), &dest)?;
 
-            let mut registry = load_registry().await?;
+            let registry = load_registry().await?;
             if let Some(t) = registry.templates.iter_mut().find(|t| t.name == name) {
                 t.path = Some(dest.to_string_lossy().to_string());
                 t.updated_at = String::new();

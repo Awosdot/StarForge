@@ -472,7 +472,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
         }
 
         // Run tests with optimization tracking
-        let timing_results = if args.parallel {
+        let timing_results: Vec<_> = if args.parallel {
             p::info("Running optimized tests in parallel...");
             let runner = test_automation::ParallelTestRunner::new(args.workers);
             if let Some(contract_path) = &args.contract_path {
@@ -504,7 +504,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                             duration_ms: r.duration_ms,
                             passed: matches!(r.status, test_automation::TestStatus::Passed),
                         })
-                        .collect();
+                        .collect::<Vec<_>>();
 
                     // Export report
                     if let Some(report_format) = &args.report {
@@ -580,7 +580,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                     duration_ms: r.duration_ms,
                     passed: r.passed,
                 })
-                .collect()
+                .collect::<Vec<_>>()
         } else {
             // Sequential run with tracking
             let cases: Vec<String> = ordered_tests.clone();
@@ -598,7 +598,7 @@ pub async fn handle(args: TestArgs) -> Result<()> {
                     duration_ms: r.duration_ms,
                     passed: r.passed,
                 })
-                .collect()
+                .collect::<Vec<_>>()
         };
 
         // Generate optimization report

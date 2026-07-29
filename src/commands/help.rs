@@ -69,7 +69,7 @@ pub async fn handle(args: HelpArgs) -> Result<()> {
         return handle_why(&args).await;
     }
     if args.workflow {
-        return handle_workflow(&args);
+        return handle_workflow(&args).await;
     }
     if let Some(cmd) = args.command.as_deref() {
         return handle_command(cmd, &args).await;

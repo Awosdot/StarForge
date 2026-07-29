@@ -1,3 +1,5 @@
+use crate::utils::template_integration;
+use crate::utils::template_performance;
 use crate::utils::{print as p, registry, template_customization_ai, templates};
 use anyhow::{Context, Result};
 use clap::Subcommand;
@@ -309,7 +311,7 @@ async fn template_assist(
     };
     if let Some(path) = output {
         std::fs::write(&path, rendered)
-            .context(|| format!("Failed to write {}", path.display()))?;
+            .with_context(|| format!("Failed to write {}", path.display()))?;
         p::success(&format!("Integration report written to {}", path.display()));
     } else {
         println!("{rendered}");
@@ -844,7 +846,7 @@ async fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
+async fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
     p::header("Template Install");
     p::kv("Source", &source);
     if let Some(ref n) = name {
@@ -1057,7 +1059,7 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push('\n');
 
     // Changelog
-    if !entry.changelog.is_empty() {
+    if !entry.changelog.as_ref().map_or(true, |c| c.is_empty()) {
         md.push_str("## Changelog\n\n");
         for entry in &entry.changelog {
             md.push_str(&format!(

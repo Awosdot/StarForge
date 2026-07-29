@@ -1,3 +1,4 @@
+use colored::Colorize;
 //! AI-driven code refactoring for Soroban contracts.
 //!
 //! Uses a local Ollama LLM to automatically improve code quality,
@@ -516,7 +517,7 @@ async fn handle_refactor(
     if out_path == file {
         let backup_path = file.with_extension("rs.bak");
         fs::write(&backup_path, &code)?;
-        p::kv("Backup", backup_path.display().to_string());
+        p::kv("Backup", &backup_path.display().to_string());
     }
 
     fs::write(out_path, refactored)?;
@@ -578,7 +579,7 @@ fn handle_diff(session_id: String) -> Result<()> {
     if session.original_content.lines().count() > 20 {
         println!(
             "  {} ... ({} more lines)",
-            ".".dimmed(),
+            ".".dim(),
             session.original_content.lines().count() - 20
         );
     }
@@ -591,7 +592,7 @@ fn handle_diff(session_id: String) -> Result<()> {
     if session.refactored_content.lines().count() > 20 {
         println!(
             "  {} ... ({} more lines)",
-            ".".dimmed(),
+            ".".dim(),
             session.refactored_content.lines().count() - 20
         );
     }
@@ -674,10 +675,10 @@ fn handle_sessions() -> Result<()> {
 
     println!(
         "  {:<30}  {:<20}  {:<15}  {}",
-        "ID".dimmed(),
-        "Type".dimmed(),
-        "File".dimmed(),
-        "Timestamp".dimmed()
+        "ID".dim(),
+        "Type".dim(),
+        "File".dim(),
+        "Timestamp".dim()
     );
     println!("  {}", "-".repeat(100).dimmed());
 

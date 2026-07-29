@@ -48,6 +48,11 @@ pub enum ProjectCommands {
 // ══════════════════════════════════════════════════════════════════
 
 #[derive(Subcommand)]
+#[derive(clap::Subcommand)]
+pub enum RiskCommands {}
+#[derive(clap::Subcommand)]
+pub enum TimelineCommands {}
+
 pub enum TaskCommands {
     /// Create a new task
     Create(CreateTaskArgs),
