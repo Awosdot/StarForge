@@ -1059,13 +1059,15 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push('\n');
 
     // Changelog
-    if !entry.changelog.as_ref().map_or(true, |c| c.is_empty()) {
-        md.push_str("## Changelog\n\n");
-        for entry in &entry.changelog {
-            md.push_str(&format!(
-                "### {} — {}\n\n",
-                entry.version, entry.date
-            ));
+    if let Some(changelogs) = &entry.changelog {
+        if !changelogs.is_empty() {
+            md.push_str("## Changelog\n\n");
+            for changelog_entry in changelogs {
+                md.push_str(&format!(
+                    "### {} — {}\n\n",
+                    changelog_entry.version, changelog_entry.date
+                ));
+            }
         }
     }
 
@@ -1121,7 +1123,7 @@ async fn template_audit(name: Option<String>) -> Result<()> {
         let (status, findings, score) = match &entry.security_review {
             Some(sr) => (
                 sr.status.as_str(),
-                sr.findings
+                sr.findings.clone()
                     .map(|f| f.to_string())
                     .unwrap_or_else(|| "—".to_string()),
                 sr.score

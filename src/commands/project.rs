@@ -52,6 +52,7 @@ pub enum RiskCommands {}
 #[derive(clap::Subcommand)]
 pub enum TimelineCommands {}
 
+#[derive(Subcommand)]
 pub enum TaskCommands {
     /// Create a new task
     Create(CreateTaskArgs),

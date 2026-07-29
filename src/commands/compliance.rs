@@ -349,9 +349,9 @@ fn handle_check(args: CheckArgs) -> Result<()> {
         p::kv(
             "Approved for Deployment",
             if risk.approved_for_deployment {
-                format!("{}", "yes".green())
+                format!("{}", "yes".green()).as_str()
             } else {
-                format!("{}", "no".red())
+                format!("{}", "no".red()).as_str()
             },
         );
 
@@ -586,9 +586,9 @@ fn handle_show_report(args: ShowReportArgs) -> Result<()> {
     p::kv(
         "Status",
         if report.all_passed {
-            format!("{}", "PASSED".green())
+            format!("{}", "PASSED".green()).as_str()
         } else {
-            format!("{}", "FAILED".red())
+            format!("{}", "FAILED".red()).as_str()
         },
     );
     p::kv("Blocking issues", &report.blocking_count.to_string());
@@ -756,9 +756,9 @@ fn handle_risk(args: RiskArgs) -> Result<()> {
         p::kv(
             "Approved for Deployment",
             if risk.approved_for_deployment {
-                format!("{}", "yes".green())
+                format!("{}", "yes".green()).as_str()
             } else {
-                format!("{}", "no".red())
+                format!("{}", "no".red()).as_str()
             },
         );
 

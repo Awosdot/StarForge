@@ -328,7 +328,7 @@ impl TestOptimizer {
             .iter()
             .cloned()
             .partition(|t| t.resource_profile.io_intensity > 0.6);
-        let cpu_bound = vec![];
+        let cpu_bound: Vec<OptimizedTestCase> = vec![];
         let memory_bound = vec![];
         let general: Vec<OptimizedTestCase> = vec![];
         let (cpu_only, general): (Vec<_>, Vec<_>) = general
@@ -596,8 +596,9 @@ impl TestOptimizer {
         entries.sort_by(|a, b| a.1.cached_at.cmp(&b.1.cached_at));
 
         let remove_count = (entries.len() as f64 * 0.2) as usize;
-        for (key, _) in entries.iter().take(remove_count) {
-            self.cache.remove(key);
+        let keys_to_remove: Vec<String> = entries.iter().take(remove_count).map(|(k, _)| k.clone()).collect();
+        for key in keys_to_remove {
+            self.cache.remove(&key);
         }
     }
 

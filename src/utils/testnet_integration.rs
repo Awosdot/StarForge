@@ -200,6 +200,7 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
         "params": params,
     });
 
+    let body_string = body.clone();
     let url_owned = url.to_string();
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
     let text = rt.block_on(async move {
@@ -217,7 +218,6 @@ fn rpc_post(url: &str, method: &str, params: serde_json::Value) -> Result<serde_
     })?;
 
     let url = url.to_string();
-    let body_string = body.clone();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let result = (|| {

@@ -938,13 +938,15 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push('\n');
 
     // Changelog
-    if !entry.changelog.as_ref().map_or(true, |c| c.is_empty()) {
-        md.push_str("## Changelog\n\n");
-        for entry in &entry.changelog {
-            md.push_str(&format!(
-                "### {} — {}\n\n",
-                entry.version, entry.date
-            ));
+    if let Some(changelogs) = &entry.changelog {
+        if !changelogs.is_empty() {
+            md.push_str("## Changelog\n\n");
+            for changelog_entry in changelogs {
+                md.push_str(&format!(
+                    "### {} — {}\n\n",
+                    changelog_entry.version, changelog_entry.date
+                ));
+            }
         }
     }
 

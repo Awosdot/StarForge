@@ -601,7 +601,7 @@ fn build_issue_detection(entries: &[TemplateEntry], feedback: &[FeedbackEntry]) 
         }
         if let Some(sr) = &e.security_review {
             if let Some(findings) = sr.findings {
-                if findings > 0 {
+                if findings.len() > 0 {
                     reasons.push(format!("{} unresolved security finding(s)", findings));
                 }
             }

@@ -84,6 +84,7 @@ pub struct SecurityReview {
     pub findings: Option<String>,
     pub score: Option<f64>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangelogEntry {
     pub version: String,
     pub date: String,
@@ -807,7 +808,7 @@ pub fn fetch_template_cached(entry: &TemplateEntry, force_refresh: bool) -> Resu
 ///
 /// Returns `None` when the template name is not found in the registry.
 pub async fn template_source_content(name: &str, force_refresh: bool) -> Result<Option<String>> {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let entry = match registry.templates.into_iter().find(|t| t.name == name) {
         Some(e) => e,
         None => return Ok(None),
@@ -1008,7 +1009,7 @@ pub async fn search_templates_ranked(
     query: &str,
     filters: &SearchFilters,
 ) -> Result<Vec<SearchResult>> {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let query_lower = query.trim().to_lowercase();
 
     let mut results: Vec<SearchResult> = registry
@@ -1091,7 +1092,7 @@ pub async fn get_template(name: &str) -> Result<TemplateEntry> {
 }
 
 pub async fn get_templates_by_name(name: &str) -> Result<Vec<TemplateEntry>> {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let mut matching: Vec<TemplateEntry> = registry
         .templates
         .into_iter()
@@ -1474,7 +1475,7 @@ pub async fn publish_template_versioned(
     let storage_root = template_storage_dir()?.join(&name);
     let dest = storage_root.join(&version);
 
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let same_version_exists = registry
         .templates
         .iter()
@@ -1509,6 +1510,9 @@ pub async fn publish_template_versioned(
 
     let entry = TemplateEntry {
         name: name.clone(),
+        changelog: None,
+        repository: None,
+        security_review: None,
         version: version.clone(),
         description,
         author,
@@ -1729,7 +1733,7 @@ async fn install_from_git_url(
             .to_string()
     });
 
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1751,6 +1755,9 @@ async fn install_from_git_url(
 
     let entry = TemplateEntry {
         name: name.clone(),
+        changelog: None,
+        repository: None,
+        security_review: None,
         description: String::new(),
         version: "1.0.0".to_string(),
         source: TemplateSource::Git {
@@ -1799,7 +1806,7 @@ async fn install_from_local_path(
             .to_string()
     });
 
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     if registry.templates.iter().any(|t| t.name == name) && !force {
         anyhow::bail!(
             "Template '{}' is already installed. Use --force to overwrite.",
@@ -1821,6 +1828,9 @@ async fn install_from_local_path(
 
     let entry = TemplateEntry {
         name: name.clone(),
+        changelog: None,
+        repository: None,
+        security_review: None,
         description: String::new(),
         version: "1.0.0".to_string(),
         source: TemplateSource::Local {
@@ -1928,7 +1938,7 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
 
             fetch_git_template(url, branch.as_deref(), &dest)?;
 
-            let mut registry = load_registry().await?;
+            let registry = load_registry().await?;
             if let Some(t) = registry.templates.iter_mut().find(|t| t.name == name) {
                 t.path = Some(dest.to_string_lossy().to_string());
                 t.updated_at = String::new();
@@ -1959,7 +1969,7 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
 /// Update all git-sourced templates. Returns a list of (name, result) pairs.
 pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<TemplateUpdateReport>)>>
 {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let git_names: Vec<String> = registry
         .templates
         .iter()
