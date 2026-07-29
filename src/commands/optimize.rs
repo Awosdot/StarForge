@@ -344,20 +344,6 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
         }
 
         // Suggest soroban_sdk::Vec instead of std::vec::Vec
-<<<<<<< HEAD
-        if trimmed.contains("Vec<")
-            && !trimmed.starts_with("//")
-            && (trimmed.contains("std::vec")
-                || (trimmed.contains("Vec<") && trimmed.contains("use std")))
-        {
-            suggestions.push(TransformSuggestion {
-                file: file.to_string(),
-                line: line_no,
-                original: line.to_string(),
-                suggested: line.replace("std::vec::Vec", "soroban_sdk::Vec").to_string(),
-                reason: "Prefer soroban_sdk::Vec over std::vec::Vec in contract code for Soroban compatibility.".to_string(),
-            });
-=======
         if trimmed.contains("Vec<") && !trimmed.starts_with("//") {
             if trimmed.contains("std::vec")
                 || (trimmed.contains("Vec<") && trimmed.contains("use std"))
@@ -370,7 +356,6 @@ pub fn analyse_source(content: &str, file: &str) -> Vec<TransformSuggestion> {
                     reason: "Prefer soroban_sdk::Vec over std::vec::Vec in contract code for Soroban compatibility.".to_string(),
                 });
             }
->>>>>>> origin/master
         }
 
         // Flag large string literals in contract code

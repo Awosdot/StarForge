@@ -60,14 +60,10 @@ fn signature_validation_rejects_invalid_and_duplicate_signatures() {
 
     proposal.add_signature("bob".to_string(), "not-a-valid-signature".to_string());
 
-<<<<<<< HEAD
-    assert_eq!(proposal.signatures.len(), 2);
-=======
     let validation_err = validate_for_submit(&proposal).unwrap_err();
     assert!(validation_err
         .to_string()
         .contains("Invalid signature format"));
->>>>>>> origin/master
 }
 
 #[test]
@@ -87,13 +83,8 @@ fn validation_marks_ready_when_threshold_is_met() {
         .add_signature_checked("bob".to_string(), bob_signature)
         .unwrap();
 
-<<<<<<< HEAD
-    assert!(proposal.is_complete());
-    let (_bar, percent) = render_progress_bar(proposal.signatures.len(), proposal.threshold);
-=======
     assert!(validate_for_submit(&proposal).is_ok());
     assert!(proposal.is_complete());
     let (_, percent) = render_progress_bar(proposal.signatures.len(), proposal.threshold);
->>>>>>> origin/master
     assert_eq!(percent, 100);
 }

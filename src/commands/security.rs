@@ -790,11 +790,6 @@ fn handle_compliance(args: ComplianceArgs) -> Result<()> {
     score -= (open_remediation as i32) * 5;
     let score = score.max(0);
 
-<<<<<<< HEAD
-        println!();
-        p::kv("Security score", &format!("{}/100", score));
-        println!();
-=======
     println!();
     p::kv("Security score", &format!("{}/100", score));
     println!();
@@ -804,7 +799,6 @@ fn handle_compliance(args: ComplianceArgs) -> Result<()> {
     println!("  Total open incidents    : {}", open_incidents);
     println!("  Open remediation items  : {}", open_remediation);
     println!();
-
     p::header("Incident Timeline (most recent)");
     if incidents.is_empty() {
         p::info("No incidents recorded");
@@ -819,7 +813,6 @@ fn handle_compliance(args: ComplianceArgs) -> Result<()> {
         }
     }
     println!();
->>>>>>> origin/master
 
     p::header("Compliance Status");
     p::kv(
