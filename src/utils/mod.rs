@@ -130,3 +130,6 @@ pub mod ai_rate_limiter;
 pub mod ai_cache;
 // AI Test Analytics (#570)
 pub mod ai_test_analytics;
+
+// Contract monitoring and alerting (#374)
+pub mod contract_health_monitor;
