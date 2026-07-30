@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod ai_accessibility;
 pub mod ai_audit;
 pub mod ai_cache_cmd;
 pub mod ai_chat;
@@ -9,8 +10,10 @@ pub mod ai_deployment_test;
 pub mod ai_error;
 pub mod ai_feedback;
 pub mod ai_ide;
+pub mod ai_model_router;
 pub mod ai_navigate;
 pub mod ai_profile;
+pub mod ai_plan;
 pub mod ai_property_test;
 pub mod ai_quality_gate;
 pub mod ai_recommend;

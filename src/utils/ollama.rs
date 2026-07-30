@@ -534,6 +534,34 @@ Cover:\n\
             SYSTEM_CONTEXT, baseline_json, candidate_json
         )
     }
+
+    /// Prompt for AI project planning enhancement.
+    pub fn project_planning_prompt(plan_json: &str) -> String {
+        format!(
+            "{}\
+Review the following Soroban project plan (JSON) and provide actionable \
+recommendations. Cover:\n\
+1. **Requirement gaps** — missing functional or non-functional requirements.\n\
+2. **Architecture review** — validate the recommended architecture for this use case.\n\
+3. **Timeline realism** — flag optimistic estimates and suggest adjustments.\n\
+4. **Risk coverage** — identify risks not yet captured.\n\
+5. **Testing & deployment** — suggest improvements to the testing and deployment strategy.\n\n\
+```json\n{}\n```",
+            SYSTEM_CONTEXT, plan_json
+        )
+    }
+
+    /// Prompt for plain-language text simplification (accessibility).
+    pub fn text_simplification_prompt(text: &str) -> String {
+        format!(
+            "{}\
+Rewrite the following text in plain, simple language suitable for developers \
+with cognitive disabilities or screen reader users. Use short sentences, common \
+words, and clear structure. Preserve all technical meaning.\n\n\
+{}",
+            SYSTEM_CONTEXT, text
+        )
+    }
 }
 
 // ─── Cloud fallback ────────────────────────────────────────────────────────────
