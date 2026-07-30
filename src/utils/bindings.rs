@@ -83,6 +83,22 @@ pub fn generate_bindings(wasm_path: &Path, language: BindingLanguage) -> Result<
     }
 }
 
+#[cfg(test)]
+pub fn read_spec_entries(wasm: &[u8]) -> Result<Vec<ScSpecEntry>> {
+    let spec = contract_spec_section(wasm)?;
+    let cursor = Cursor::new(spec);
+    let entries = ScSpecEntry::read_xdr_iter(&mut Limited::new(
+        cursor,
+        Limits {
+            depth: 500,
+            len: 0x1000000,
+        },
+    ))
+    .collect::<std::result::Result<Vec<_>, _>>()
+    .context("Failed to decode contractspecv0 XDR metadata")?;
+    Ok(entries)
+}
+
 fn read_spec_entries(wasm: &[u8]) -> Result<Vec<ScSpecEntry>> {
     let spec = contract_spec_section(wasm)?;
     let cursor = Cursor::new(spec);
@@ -102,7 +118,7 @@ fn parse_spec_entries(entries: &[ScSpecEntry]) -> ContractMetadata {
     let mut functions = Vec::new();
     let mut structs = Vec::new();
     let mut enums = Vec::new();
-    let events = Vec::new();
+    let mut events = Vec::new();
 
     for entry in entries {
         match entry {
@@ -115,8 +131,21 @@ fn parse_spec_entries(entries: &[ScSpecEntry]) -> ContractMetadata {
             ScSpecEntry::UdtEnumV0(udt) => {
                 enums.push(contract_enum(udt));
             }
+            ScSpecEntry::UdtErrorEnumV0(error_enum) => {
+                // Extract error enums as events
+                events.push(ContractEvent {
+                    name: error_enum.name.to_string(),
+                    fields: error_enum
+                        .cases
+                        .iter()
+                        .map(|case| ContractField {
+                            name: case.name.to_string(),
+                            type_name: "String".to_string(), // Error messages as strings
+                        })
+                        .collect(),
+                });
+            }
             ScSpecEntry::UdtUnionV0(_) => {}
-            ScSpecEntry::UdtErrorEnumV0(_) => {}
             #[allow(unreachable_patterns)]
             _ => {}
         }
@@ -278,7 +307,7 @@ fn read_var_u32(bytes: &[u8], offset: &mut usize) -> Result<u32> {
 
 fn generate_rust(metadata: &ContractMetadata) -> String {
     let mut out = String::from(
-        "use std::process::Command;\n\n\
+        "use std::process::Command;\nuse std::io::{self, Write};\nuse anyhow::{Result, Context};\n\n\
          pub struct ContractClient {\n\
          \tpub contract_id: String,\n\
          \tpub network: String,\n\
@@ -291,6 +320,15 @@ fn generate_rust(metadata: &ContractMetadata) -> String {
          \tpub fn with_wallet(mut self, wallet: impl Into<String>) -> Self {\n\
          \t\tself.wallet = Some(wallet.into());\n\
          \t\tself\n\
+         \t}\n\n\
+         \tfn execute_command(&self, mut cmd: Command) -> Result<String> {\n\
+         \t\tlet output = cmd.output().context(\"Failed to execute command\")?;\n\
+         \t\tif output.status.success() {\n\
+         \t\t\tOk(String::from_utf8_lossy(&output.stdout).trim().to_string())\n\
+         \t\t} else {\n\
+         \t\t\tlet stderr = String::from_utf8_lossy(&output.stderr);\n\
+         \t\t\tanyhow::bail!(\"Command failed: {}\", stderr)\n\
+         \t\t}\n\
          \t}\n\n",
     );
 
@@ -299,21 +337,28 @@ fn generate_rust(metadata: &ContractMetadata) -> String {
         let params = function
             .inputs
             .iter()
-            .map(|input| format!("{}: impl ToString", sanitize_ident(&input.name)))
+            .map(|input| format!("{}: {}", sanitize_ident(&input.name), rust_type(&input.type_name)))
             .collect::<Vec<_>>()
             .join(", ");
+        let return_type = function
+            .output
+            .as_deref()
+            .map(rust_type)
+            .unwrap_or_else(|| "()".to_string());
         let comma = if params.is_empty() { "" } else { ", " };
+        
         out.push_str(&format!(
-            "\tpub fn {rust_name}(&self{comma}{params}) -> Command {{\n\
+            "\tpub fn {rust_name}(&self{comma}{params}) -> Result<{return_type}> {{\n\
              \t\tlet mut cmd = Command::new(\"starforge\");\n\
              \t\tcmd.args([\"contract\", \"invoke\", &self.contract_id, \"{name}\", \"--network\", &self.network]);\n",
-            name = function.name
+            name = function.name,
+            return_type = return_type
         ));
 
         for input in &function.inputs {
             let ident = sanitize_ident(&input.name);
             out.push_str(&format!(
-                "\t\tcmd.arg(\"--arg\").arg({ident}.to_string()).arg(\"--type\").arg(\"{ty}\");\n",
+                "\t\tcmd.arg(\"--arg\").arg(self.serialize_arg(&{ident})?).arg(\"--type\").arg(\"{ty}\");\n",
                 ty = input.type_name
             ));
         }
@@ -322,12 +367,26 @@ fn generate_rust(metadata: &ContractMetadata) -> String {
             "\t\tif let Some(wallet) = &self.wallet {\n\
              \t\t\tcmd.arg(\"--wallet\").arg(wallet).arg(\"--submit\");\n\
              \t\t}\n\
-             \t\tcmd\n\
+             \t\tlet result = self.execute_command(cmd)?;\n\
+             \t\t// Parse result based on return type\n\
+             \t\tOk(self.parse_result::<{return_type}>(&result)?)\n\
              \t}\n\n",
         );
     }
 
-    out.push_str("}\n\n");
+    // Add serialization/deserialization helper methods
+    out.push_str(
+        "\tfn serialize_arg<T: std::fmt::Display>(&self, value: &T) -> Result<String> {\n\
+         \t\tOk(value.to_string())\n\
+         \t}\n\n\
+         \tfn parse_result<T>(&self, result: &str) -> Result<T> \n\
+         \twhere T: std::str::FromStr,\n\
+         \t      T::Err: std::error::Error + Send + Sync + 'static,\n\
+         \t{\n\
+         \t\tresult.parse().context(\"Failed to parse result\")\n\
+         \t}\n\n\
+         }\n\n"
+    );
 
     for struct_def in &metadata.structs {
         let struct_name = pascal_case(&struct_def.name);
@@ -352,6 +411,21 @@ fn generate_rust(metadata: &ContractMetadata) -> String {
             }
         }
         out.push_str("}\n\n");
+    }
+
+    // Generate event type definitions
+    if !metadata.events.is_empty() {
+        out.push_str("// Event type definitions\n");
+        for event in &metadata.events {
+            let event_name = pascal_case(&event.name);
+            out.push_str(&format!("pub struct {}Event {{\n", event_name));
+            for field in &event.fields {
+                let field_name = sanitize_ident(&field.name);
+                let rust_ty = rust_type(&field.type_name);
+                out.push_str(&format!("\tpub {}: {},\n", field_name, rust_ty));
+            }
+            out.push_str("}\n\n");
+        }
     }
 
     out
@@ -392,8 +466,7 @@ fn generate_typescript(metadata: &ContractMetadata) -> String {
             .output
             .as_deref()
             .map(ts_type)
-            .unwrap_or("void")
-            .to_string();
+            .unwrap_or_else(|| "void".to_string());
         out.push_str(&format!(
             "\t{name}({params}): string[] /* returns CLI args; expected result: {return_type} */ {{\n\
              \t\treturn this.invokeArgs(\"{source}\", [",
@@ -443,6 +516,21 @@ fn generate_typescript(metadata: &ContractMetadata) -> String {
         out.push('\n');
     }
 
+    // Generate event type definitions
+    if !metadata.events.is_empty() {
+        out.push_str("// Event type definitions\n");
+        for event in &metadata.events {
+            let event_name = pascal_case(&event.name);
+            out.push_str(&format!("export interface {}Event {{\n", event_name));
+            for field in &event.fields {
+                let field_name = camel_case(&field.name);
+                let ts_ty = ts_type(&field.type_name);
+                out.push_str(&format!("\t{}: {};\n", field_name, ts_ty));
+            }
+            out.push_str("}\n\n");
+        }
+    }
+
     out
 }
 
@@ -486,8 +574,7 @@ fn generate_python(metadata: &ContractMetadata) -> String {
             .output
             .as_deref()
             .map(python_type)
-            .unwrap_or("None")
-            .to_string();
+            .unwrap_or_else(|| "None".to_string());
         out.push_str(&format!(
             "    def {}(self, {}) -> List[str]:\n\
              \"\"\"Returns CLI args; expected result type: {}\"\"\"\n\
@@ -527,6 +614,21 @@ fn generate_python(metadata: &ContractMetadata) -> String {
             out.push_str(&format!("    {}: {}\n", field_name, py_ty));
         }
         out.push('\n');
+    }
+
+    // Generate event type definitions
+    if !metadata.events.is_empty() {
+        out.push_str("# Event type definitions\n");
+        for event in &metadata.events {
+            let event_name = pascal_case(&event.name);
+            out.push_str(&format!("@dataclass\nclass {}Event:\n", event_name));
+            for field in &event.fields {
+                let field_name = snake_case(&field.name);
+                let py_ty = python_type(&field.type_name);
+                out.push_str(&format!("    {}: {}\n", field_name, py_ty));
+            }
+            out.push('\n');
+        }
     }
 
     out
@@ -601,65 +703,188 @@ fn generate_go(metadata: &ContractMetadata) -> String {
         out.push_str("}\n\n");
     }
 
+    // Generate event type definitions
+    if !metadata.events.is_empty() {
+        out.push_str("// Event type definitions\n");
+        for event in &metadata.events {
+            let event_name = pascal_case(&event.name);
+            out.push_str(&format!("type {}Event struct {{\n", event_name));
+            for field in &event.fields {
+                let field_name = pascal_case(&field.name);
+                let go_ty = go_type(&field.type_name);
+                out.push_str(&format!("\t{} {}\n", field_name, go_ty));
+            }
+            out.push_str("}\n\n");
+        }
+    }
+
     out
 }
 
-fn rust_type(type_name: &str) -> &'static str {
+fn rust_type(type_name: &str) -> String {
     match type_name {
-        "bool" => "bool",
-        "u32" => "u32",
-        "i32" => "i32",
-        "u64" => "u64",
-        "i64" => "i64",
-        "u128" => "u128",
-        "i128" => "i128",
-        "String" => "String",
-        "Symbol" => "String",
-        "Address" => "String",
-        "Bytes" => "Vec<u8>",
-        "()" => "()",
-        _ => "String",
+        "bool" => "bool".to_string(),
+        "u32" => "u32".to_string(),
+        "i32" => "i32".to_string(),
+        "u64" => "u64".to_string(),
+        "i64" => "i64".to_string(),
+        "u128" => "u128".to_string(),
+        "i128" => "i128".to_string(),
+        "String" => "String".to_string(),
+        "Symbol" => "String".to_string(),
+        "Address" => "String".to_string(),
+        "Bytes" => "Vec<u8>".to_string(),
+        "()" => "()".to_string(),
+        "Val" => "i64".to_string(),
+        "Error" => "String".to_string(),
+        "U256" => "String".to_string(),
+        "I256" => "String".to_string(),
+        _ => {
+            // Handle complex types like Option<T>, Result<T, E>, Vec<T>, etc.
+            if type_name.starts_with("Option<") || type_name.starts_with("Result<") || 
+               type_name.starts_with("Vec<") || type_name.starts_with("Map<") ||
+               type_name.starts_with("BytesN<") {
+                type_name.to_string()
+            } else {
+                // Assume it's a custom type
+                type_name.to_string()
+            }
+        }
     }
 }
 
-fn ts_type(type_name: &str) -> &'static str {
+fn ts_type(type_name: &str) -> String {
     match type_name {
-        "bool" => "boolean",
-        "u32" | "i32" | "u64" | "i64" | "u128" | "i128" => "number | bigint",
-        "String" | "Symbol" | "Address" => "string",
-        "Bytes" => "Uint8Array",
-        "()" => "void",
-        _ => "unknown",
+        "bool" => "boolean".to_string(),
+        "u32" | "i32" | "u64" | "i64" | "u128" | "i128" => "number | bigint".to_string(),
+        "String" | "Symbol" | "Address" => "string".to_string(),
+        "Bytes" => "Uint8Array".to_string(),
+        "()" => "void".to_string(),
+        "Val" => "number".to_string(),
+        "Error" => "string".to_string(),
+        "U256" | "I256" => "string".to_string(),
+        _ => {
+            // Handle complex types
+            if type_name.starts_with("Option<") {
+                let inner = &type_name[7..type_name.len()-1]; // Remove "Option<>"
+                format!("{} | null", ts_type(inner))
+            } else if type_name.starts_with("Result<") {
+                "any".to_string()
+            } else if type_name.starts_with("Vec<") {
+                let inner = &type_name[4..type_name.len()-1]; // Remove "Vec<>"
+                format!("Array<{}>", ts_type(inner))
+            } else if type_name.starts_with("Map<") {
+                "Record<string, any>".to_string()
+            } else if type_name.starts_with("BytesN<") {
+                "Uint8Array".to_string()
+            } else if type_name.starts_with("(") && type_name.ends_with(")") {
+                // Tuple type
+                "any[]".to_string()
+            } else {
+                // Custom type
+                type_name.to_string()
+            }
+        }
     }
 }
 
-fn python_type(type_name: &str) -> &'static str {
+fn python_type(type_name: &str) -> String {
     match type_name {
-        "bool" => "bool",
-        "u32" | "i32" | "u64" | "i64" | "u128" | "i128" => "int",
-        "String" | "Symbol" | "Address" => "str",
-        "Bytes" => "bytes",
-        "()" => "None",
-        _ => "str",
+        "bool" => "bool".to_string(),
+        "u32" | "i32" | "u64" | "i64" | "u128" | "i128" => "int".to_string(),
+        "String" | "Symbol" | "Address" => "str".to_string(),
+        "Bytes" => "bytes".to_string(),
+        "()" => "None".to_string(),
+        "Val" => "int".to_string(),
+        "Error" => "str".to_string(),
+        "U256" | "I256" => "str".to_string(),
+        _ => {
+            // Handle complex types
+            if type_name.starts_with("Option<") {
+                let inner = &type_name[7..type_name.len()-1]; // Remove "Option<>"
+                format!("Optional[{}]", python_type(inner))
+            } else if type_name.starts_with("Result<") {
+                "Any".to_string()
+            } else if type_name.starts_with("Vec<") {
+                let inner = &type_name[4..type_name.len()-1]; // Remove "Vec<>"
+                format!("List[{}]", python_type(inner))
+            } else if type_name.starts_with("Map<") {
+                "Dict[str, Any]".to_string()
+            } else if type_name.starts_with("BytesN<") {
+                "bytes".to_string()
+            } else if type_name.starts_with("(") && type_name.ends_with(")") {
+                // Tuple type
+                "Tuple".to_string()
+            } else {
+                // Custom type
+                type_name.to_string()
+            }
+        }
     }
 }
 
-fn go_type(type_name: &str) -> &'static str {
+fn go_type(type_name: &str) -> String {
     match type_name {
-        "bool" => "bool",
-        "u32" => "uint32",
-        "i32" => "int32",
-        "u64" => "uint64",
-        "i64" => "int64",
-        "u128" => "string",
-        "i128" => "string",
-        "String" | "Symbol" | "Address" => "string",
-        "Bytes" => "[]byte",
-        "()" => "",
-        _ => "string",
+        "bool" => "bool".to_string(),
+        "u32" => "uint32".to_string(),
+        "i32" => "int32".to_string(),
+        "u64" => "uint64".to_string(),
+        "i64" => "int64".to_string(),
+        "u128" => "string".to_string(),
+        "i128" => "string".to_string(),
+        "String" | "Symbol" | "Address" => "string".to_string(),
+        "Bytes" => "[]byte".to_string(),
+        "()" => "".to_string(),
+        "Val" => "int64".to_string(),
+        "Error" => "string".to_string(),
+        "U256" | "I256" => "string".to_string(),
+        _ => {
+            // Handle complex types
+            if type_name.starts_with("Option<") {
+                // In Go, we can use pointer types for optional
+                let inner = &type_name[7..type_name.len()-1]; // Remove "Option<>"
+                format!("*{}", go_type(inner))
+            } else if type_name.starts_with("Result<") {
+                "interface{}".to_string()
+            } else if type_name.starts_with("Vec<") {
+                let inner = &type_name[4..type_name.len()-1]; // Remove "Vec<>"
+                format!("[]{}", go_type(inner))
+            } else if type_name.starts_with("Map<") {
+                "map[string]interface{}".to_string()
+            } else if type_name.starts_with("BytesN<") {
+                "[]byte".to_string()
+            } else if type_name.starts_with("(") && type_name.ends_with(")") {
+                // Tuple type
+                "[]interface{}".to_string()
+            } else {
+                // Custom type
+                type_name.to_string()
+            }
+        }
     }
 }
 
+#[cfg(test)]
+pub fn sanitize_ident(input: &str) -> String {
+    let mut out = String::new();
+    for (index, ch) in input.chars().enumerate() {
+        if ch == '_' || ch.is_ascii_alphanumeric() {
+            if index == 0 && ch.is_ascii_digit() {
+                out.push('_');
+            }
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() {
+        "_".to_string()
+    } else {
+        out
+    }
+}
+
+#[cfg(not(test))]
 fn sanitize_ident(input: &str) -> String {
     let mut out = String::new();
     for (index, ch) in input.chars().enumerate() {
