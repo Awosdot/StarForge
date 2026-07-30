@@ -7,6 +7,7 @@ pub use starforge::utils;
 
 use clap::{Parser, Subcommand};
 use colored::*;
+use std::sync::Once;
 
 #[derive(Parser)]
 #[command(
@@ -19,6 +20,10 @@ use colored::*;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Enable machine-readable JSON output for supported commands
+    #[arg(long, global = true)]
+    json: bool,
 
     /// Suppress the ASCII banner and decorative output
     #[arg(long, short = 'q', global = true)]
@@ -313,9 +318,13 @@ enum Commands {
     ContractMonitor(commands::contract_monitor::ContractMonitorCommands),
 }
 
+static OUTPUT_MODE_INIT: Once = Once::new();
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+    OUTPUT_MODE_INIT.call_once(|| {});
+    utils::output::set_json_mode(cli.json);
 
     // Initialise structured logging before anything else runs.
     let log_cfg =
