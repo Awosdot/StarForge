@@ -6,6 +6,7 @@
 // AI Service Abstraction Layer (#479)
 // AI Test Analytics (#570)
 pub mod ai;
+pub mod ai_accessibility;
 pub mod ai_cache;
 pub mod ai_context;
 pub mod ai_conversation;
@@ -19,8 +20,10 @@ pub mod ai_error_handler;
 pub mod ai_feedback;
 pub mod ai_gas_estimation;
 pub mod ai_ide_integration;
+pub mod ai_model_router;
 pub mod ai_navigation;
 pub mod ai_performance_profiler;
+pub mod ai_project_planner;
 pub mod ai_property_testing;
 pub mod ai_quality_gates;
 pub mod ai_rate_limiter;

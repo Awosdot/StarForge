@@ -15,6 +15,7 @@ use clap::Args;
 use colored::*;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use tokio::process::Command as TokioCommand;
 
 // ── CLI Arguments ──────────────────────────────────────────────────────────
 
@@ -120,6 +121,8 @@ pub struct ExtractedEntities {
     pub contract_id: Option<String>,
     pub network: Option<String>,
     pub function_name: Option<String>,
+    pub file_path: Option<String>,
+    pub amount: Option<String>,
     pub keywords: Vec<String>,
 }
 
@@ -382,7 +385,7 @@ fn extract_entities(input: &str) -> ExtractedEntities {
         if matches!(words[i], "call" | "run" | "execute" | "invoke") {
             if i + 1 < words.len() {
                 let func = words[i + 1]
-                    .trim_matches(|c: char| !c.is_alphanumeric() && *c != '_');
+                    .trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
                 if !func.is_empty() {
                     entities.function_name = Some(func.to_string());
                     break;
@@ -853,9 +856,8 @@ pub async fn handle(args: NlArgs) -> Result<()> {
         p::info("Press Enter to continue or Ctrl+C to cancel.");
         println!();
 
-        use tokio::process::Command as TokioCommand;
-use std::io::{self, Write};
         print!("  {} ", "?".yellow().bold());
+        use std::io::{self, Write};
         io::stdout().flush()?;
         let mut buffer = String::new();
         io::stdin().read_line(&mut buffer)?;
