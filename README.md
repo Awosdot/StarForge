@@ -560,3 +560,52 @@ starforge template remove my-template
 
 # Remove template + delete all local files
 starforge template remove my-template --purge
+## Enhanced Binding Generator (Issue #336)
+
+The binding generator now provides comprehensive type-safe interfaces for contract interaction:
+
+### Features:
+- **Multi-language support**: Rust, TypeScript, Python, Go
+- **Type-safe interfaces**: Proper type annotations for all parameters
+- **Event type definitions**: Extract and generate event types from contract metadata
+- **Complex type support**: Options, Results, Vectors, Maps, custom UDTs
+- **Comprehensive testing**: Full test coverage for all languages
+
+### Usage:
+```bash
+# Generate Rust bindings
+starforge contract generate-bindings ./contract.wasm --lang rust > client.rs
+
+# Generate TypeScript bindings  
+starforge contract generate-bindings ./contract.wasm --lang ts > client.ts
+
+# Generate Python bindings
+starforge contract generate-bindings ./contract.wasm --lang python > client.py
+
+# Generate Go bindings
+starforge contract generate-bindings ./contract.wasm --lang go > client.go
+```
+
+### Example Generated Rust Code:
+```rust
+pub struct ContractClient {
+    pub contract_id: String,
+    pub network: String,
+    pub wallet: Option<String>,
+}
+
+impl ContractClient {
+    pub fn transfer(&self, from: String, to: String, amount: u128) -> Result<()> {
+        // Type-safe method implementation
+    }
+}
+
+// Generated event types
+pub struct TransferEvent {
+    pub from: String,
+    pub to: String,
+    pub amount: String,
+}
+```
+
+See `examples/binding_generator_example.md` for complete examples.
