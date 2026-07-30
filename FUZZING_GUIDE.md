@@ -44,6 +44,9 @@ in the contract crate and use the same `PROPTEST_CASES` setting as this guide.
 # Run property tests with default 256 cases per property.
 cargo test --test property_tests
 
+# Run contract property tests.
+cargo test --test contract_property_tests
+
 # Increase cases for a deeper search.
 PROPTEST_CASES=5000 cargo test --test property_tests
 
@@ -62,6 +65,9 @@ cargo fuzz list --fuzz-dir fuzz
 
 # Run a specific target for 60 seconds.
 cargo fuzz run fuzz_validate_public_key --fuzz-dir fuzz -- -max_total_time=60
+
+# Run a contract fuzz target.
+cargo fuzz run fuzz_wasm_validation --fuzz-dir fuzz -- -max_total_time=60
 
 # Run with a size cap (good for initial exploration).
 cargo fuzz run fuzz_passphrase_strength --fuzz-dir fuzz \
@@ -120,6 +126,7 @@ Additional property suites live in their own files:
 |---|---|---|
 | [`tests/config_property_tests.rs`](tests/config_property_tests.rs) | Config round trips | TOML/JSON serialization preserves every value; merging is identity-on-empty, idempotent, and overlay-wins; malformed combinations (unknown network, duplicate wallet, non-HTTP endpoint, unknown overlay key) are rejected |
 | [`tests/wallet_import_property_tests.rs`](tests/wallet_import_property_tests.rs) | Wallet import/backup | The same invariants the wallet fuzz targets assert, run on stable in every `cargo test` sweep |
+| [`tests/contract_property_tests.rs`](tests/contract_property_tests.rs) | Contract testing infrastructure | WASM validation, WASM hash computation, mock contract invocation, mock storage, mock addresses, and mock environment invariants |
 
 ### Writing new properties
 
@@ -164,6 +171,10 @@ macro that receives raw bytes and should **never panic** regardless of input.
 | `fuzz_wallet_backup_parse` | Wallet backup documents: malformed JSON, truncated files, invalid StrKeys, oversized inputs, Unicode names |
 | `fuzz_wallet_import_envelope` | Encrypted backup envelopes: base64 fields, salt/nonce lengths, truncated ciphertext, KDF parameters, plaintext/encrypted classification |
 | `fuzz_wallet_backup_structured` | Near-valid backup documents built with `arbitrary::Arbitrary`, to reach the semantic checks the byte-level harness rarely hits |
+| `fuzz_wasm_validation` | WASM binary validation: magic header, minimum size, panic-freedom |
+| `fuzz_contract_invocation` | Mock contract client invocation: call counting, return/error determinism, reset |
+| `fuzz_contract_spec_parse` | Contract test spec JSON parsing: malformed JSON, truncated docs, hostile Unicode |
+| `fuzz_test_generator` | Test case generation from source: malformed Rust, empty files, arbitrary fragments |
 
 ### Wallet import & backup harnesses
 
@@ -202,6 +213,46 @@ The invariants asserted by the harnesses:
   parameters.
 - **No misclassification** — a JSON document is never treated as an encrypted
   bundle, which would prompt for a passphrase that does not exist.
+
+### Contract fuzzing harnesses
+
+The contract fuzzing harnesses target the Soroban contract testing infrastructure
+in StarForge. These harnesses exercise the mock Soroban environment, WASM
+validation, contract spec parsing, and test case generation — all of which
+process inputs that could come from untrusted contract source files or test
+specifications.
+
+```bash
+# WASM validation: magic header, minimum size, panic-freedom.
+cargo fuzz run fuzz_wasm_validation --fuzz-dir fuzz -- -max_total_time=60
+
+# Mock contract invocation: call counting, return/error determinism.
+cargo fuzz run fuzz_contract_invocation --fuzz-dir fuzz -- -max_total_time=60
+
+# Contract test spec JSON parsing: malformed JSON, truncated docs.
+cargo fuzz run fuzz_contract_spec_parse --fuzz-dir fuzz -- -max_total_time=60
+
+# Test case generation from source: malformed Rust, empty files.
+cargo fuzz run fuzz_test_generator --fuzz-dir fuzz -- -max_total_time=60
+```
+
+Seed corpora ship under `fuzz/corpus/fuzz_wasm_validation/`,
+`fuzz/corpus/fuzz_contract_spec_parse/`, and
+`fuzz/corpus/fuzz_test_generator/`, covering valid WASM binaries, valid
+contract test specs, and valid Rust source fragments respectively.
+
+The invariants asserted by the contract harnesses:
+
+- **Totality** — every input is handled gracefully; nothing panics.
+- **WASM validation** — inputs shorter than 8 bytes or without the `\0asm`
+  magic header are rejected; valid headers with sufficient length are accepted.
+- **Mock invocation** — call counts always match the number of invocations;
+  pre-configured return values and errors are returned deterministically;
+  errors take priority over return values; reset clears all state.
+- **Spec parsing** — malformed JSON, truncated documents, and hostile Unicode
+  produce errors, never panics.
+- **Test generation** — malformed Rust source, empty files, and arbitrary
+  fragments produce errors or empty results, never panics.
 
 ### Running a target
 
@@ -313,7 +364,7 @@ The fuzzing CI pipeline is defined in
 
 | Job | Trigger | What it does |
 |---|---|---|
-| `property-tests` | Every push / PR | Runs `cargo test --test property_tests` with 2 000 cases |
+| `property-tests` | Every push / PR | Runs `cargo test --test property_tests` and `cargo test --test contract_property_tests` with 2 000 cases |
 | `fuzz-build` | Every push / PR | Compiles all fuzz targets (catches compilation errors) |
 | `fuzz-smoke` | Every push / PR | 30-second smoke run per target in a matrix |
 | `coverage` | Every push / PR | Generates LCOV + JSON; uploads to Codecov |
@@ -335,7 +386,7 @@ both systems:
 ### Property test
 
 ```rust
-// In tests/property_tests.rs
+// In tests/contract_property_tests.rs
 proptest! {
     #[test]
     fn prop_my_contract_validates_input(amount in valid_amount_string()) {
@@ -377,3 +428,8 @@ because they process untrusted external input or handle cryptographic material:
 | `check_passphrase_strength` | `utils/crypto.rs` | zxcvbn integration, minimum length gate |
 | `compute_local_wasm_hash` | `commands/deploy.rs` | On-chain hash consistency |
 | `validate_contract_id` | `utils/config.rs` | Contract address validation |
+| `validate_wasm` | `utils/mock_soroban.rs` | WASM binary validation, magic header checks |
+| `compute_wasm_hash` | `utils/wasm_hash.rs` | WASM hash computation, environment validation |
+| `MockContractClient::invoke` | `utils/contract_mocks.rs` | Mock contract invocation, call logging |
+| `load_contract_test_spec` | `utils/contract_testing.rs` | Contract test spec parsing (JSON/TOML) |
+| `generate_from_source` | `utils/test_generator.rs` | Test case generation from Rust source |

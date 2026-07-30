@@ -25,6 +25,9 @@ hex  = "0.4"
 # JSON assembly for the structured wallet-backup harness.
 serde_json = "1.0"
 
+# Temp-file creation for harnesses that write fuzzer input to disk.
+tempfile = "3.8"
+
 # ── Fuzz targets ─────────────────────────────────────────────────────────────
 # Each [[bin]] entry corresponds to a file under fuzz/fuzz_targets/.
 # Run a specific target with:
@@ -99,5 +102,33 @@ doc  = false
 [[bin]]
 name = "fuzz_wallet_backup_structured"
 path = "fuzz_targets/fuzz_wallet_backup_structured.rs"
+test = false
+doc  = false
+
+# ── Contract fuzzing harnesses ───────────────────────────────────────────────
+# These harnesses target Soroban contract testing infrastructure: WASM
+# validation, mock contract invocation, spec parsing, and test generation.
+
+[[bin]]
+name = "fuzz_wasm_validation"
+path = "fuzz_targets/fuzz_wasm_validation.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_contract_invocation"
+path = "fuzz_targets/fuzz_contract_invocation.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_contract_spec_parse"
+path = "fuzz_targets/fuzz_contract_spec_parse.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_test_generator"
+path = "fuzz_targets/fuzz_test_generator.rs"
 test = false
 doc  = false
