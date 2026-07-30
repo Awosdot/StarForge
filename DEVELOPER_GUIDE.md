@@ -15,6 +15,7 @@ Complete guide for developers contributing to or extending StarForge.
 9. [Common Tasks](#common-tasks)
 10. [Debugging](#debugging)
 11. [Release Process](#release-process)
+12. [Database Migrations](#database-migrations)
 
 ---
 
@@ -1129,6 +1130,177 @@ fn test_boundary_conditions() { /* ... */ }
 fn creates_wallet_with_encrypted_key_when_encrypt_flag_is_true() {
     // ...
 }
+```
+
+---
+
+## Database Migrations
+
+StarForge uses a transactional database migration system to manage schema changes over time. This ensures that database upgrades are safe, reversible, and can be rolled back if needed.
+
+### Overview
+
+The migration system is implemented in `src/utils/database.rs` and provides:
+
+- **Version tracking**: Each schema change has a unique version number
+- **Transaction safety**: Migrations run within SQLite transactions for atomicity
+- **Rollback capability**: Failed migrations can be rolled back to the previous version
+- **Migration history**: All applied migrations are recorded in the `schema_migrations` table
+- **Checksum validation**: Each migration has a checksum to detect changes
+
+### Current Schema Version
+
+The current schema version is defined by `CURRENT_SCHEMA_VERSION` constant in `src/utils/database.rs`.
+
+### Adding a New Migration
+
+When you need to modify the database schema, follow these steps:
+
+1. **Increment the schema version**
+
+   Update `CURRENT_SCHEMA_VERSION` in `src/utils/database.rs`:
+
+   ```rust
+   pub const CURRENT_SCHEMA_VERSION: i64 = 2; // Increment from 1 to 2
+   ```
+
+2. **Implement the migration struct**
+
+   Add a new migration struct that implements the `Migration` trait:
+
+   ```rust
+   struct MigrationV2;
+
+   impl Migration for MigrationV2 {
+       fn version(&self) -> i64 {
+           2
+       }
+       
+       fn description(&self) -> &str {
+           "add_wallet_encryption_index"
+       }
+       
+       fn up(&self, conn: &mut Connection) -> Result<()> {
+           // Apply schema changes
+           conn.execute(
+               "CREATE INDEX IF NOT EXISTS idx_wallets_encryption ON wallets(encryption_status)",
+               [],
+           )?;
+           Ok(())
+       }
+       
+       fn down(&self, conn: &mut Connection) -> Result<()> {
+           // Rollback schema changes
+           conn.execute(
+               "DROP INDEX IF EXISTS idx_wallets_encryption",
+               [],
+           )?;
+           Ok(())
+       }
+   }
+   ```
+
+3. **Register the migration**
+
+   Add the migration to the `get_migration` method:
+
+   ```rust
+   fn get_migration(&self, version: i64) -> Option<Box<dyn Migration>> {
+       match version {
+           1 => Some(Box::new(MigrationV1 {})),
+           2 => Some(Box::new(MigrationV2 {})), // Add this line
+           _ => None,
+       }
+   }
+   ```
+
+4. **Write tests**
+
+   Add tests for your migration in the `tests` module:
+
+   ```rust
+   #[test]
+   fn migration_v2_adds_index() {
+       let db = in_memory_db();
+       let migration = MigrationV2 {};
+       let mut conn = db.conn;
+       
+       migration.up(&mut conn).unwrap();
+       
+       // Verify the index exists
+       let index_exists: bool = conn
+           .query_row(
+               "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='index' AND name='idx_wallets_encryption'",
+               [],
+               |row| row.get(0),
+           )
+           .unwrap();
+       assert!(index_exists);
+   }
+   ```
+
+### Migration Lifecycle
+
+1. **Fresh Database**: When a new database is created, it starts at the current schema version
+2. **Existing Database**: On startup, the system checks the current version and applies any pending migrations
+3. **Migration Application**: Each migration runs in a transaction. If it fails, the transaction is rolled back
+4. **Migration Recording**: Successful migrations are recorded in `schema_migrations` table
+5. **Rollback**: The latest migration can be rolled back using `rollback_migration()`
+
+### Migration API
+
+Key methods in the `Database` struct:
+
+- `get_current_schema_version()` - Returns the current schema version
+- `get_applied_migrations()` - Returns all applied migrations
+- `run_migrations()` - Applies pending migrations to reach current version
+- `rollback_migration(version)` - Rolls back a specific migration
+
+### Best Practices
+
+- **Always implement `down()`**: Every migration must have a rollback implementation
+- **Keep migrations idempotent**: Use `IF NOT EXISTS` and similar patterns
+- **Test thoroughly**: Test both `up()` and `down()` methods
+- **Document changes**: Update this guide when adding migrations
+- **Version monotonicity**: Versions must always increase, never reuse old numbers
+- **Transaction safety**: All schema changes should be within the migration transaction
+
+### Troubleshooting
+
+**Migration fails to apply**:
+- Check the error message for specific SQL or logic errors
+- Verify the migration's `up()` method is correct
+- Ensure the database is not locked by another process
+
+**Rollback fails**:
+- Ensure you're rolling back the latest migration only
+- Check that the `down()` method correctly reverses the `up()` changes
+- Verify no data constraints prevent rollback
+
+**Schema version mismatch**:
+- Check `CURRENT_SCHEMA_VERSION` matches your expectations
+- Verify all migrations are properly registered in `get_migration()`
+- Review the `schema_migrations` table for applied versions
+
+### Testing Migrations
+
+Run migration-specific tests:
+
+```bash
+cargo test --lib database::tests::migration
+```
+
+Test with a real database:
+
+```bash
+# Backup your database first
+cp ~/.starforge/starforge.db ~/.starforge/starforge.db.backup
+
+# Run the application to trigger migrations
+starforge wallet list
+
+# Check the schema version
+starforge db stats
 ```
 
 ---
