@@ -1,6 +1,6 @@
 use crate::utils::template_integration;
 use crate::utils::template_performance;
-use crate::utils::{print as p, registry, template_customization_ai, templates};
+use crate::utils::{output, print as p, registry, template_customization_ai, templates};
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
@@ -27,7 +27,11 @@ pub enum TemplateCommands {
         refresh: bool,
     },
     /// List all available templates
-    List,
+    List {
+        /// Emit a machine-readable JSON object instead of the human-readable output
+        #[arg(long)]
+        json: bool,
+    },
     /// Show details of a specific template
     Show {
         /// Template name
@@ -237,7 +241,7 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             )
             .await
         }
-        TemplateCommands::List => list().await,
+        TemplateCommands::List { json } => list(json).await,
         TemplateCommands::Search {
             query,
             tags,
@@ -426,10 +430,55 @@ async fn publish(
     Ok(())
 }
 
-async fn list() -> Result<()> {
+async fn list(json: bool) -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
     let registry = templates::load_registry().await?;
+    let emit_json = json || output::is_json_mode_enabled();
+
+    if emit_json {
+        #[derive(serde::Serialize)]
+        struct TemplateListResponse {
+            template_count: usize,
+            templates: Vec<TemplateSummary>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct TemplateSummary {
+            name: String,
+            version: String,
+            description: String,
+            source: String,
+            tags: Vec<String>,
+            path: Option<String>,
+            compatible: bool,
+        }
+
+        let templates: Vec<TemplateSummary> = registry
+            .templates
+            .iter()
+            .map(|template| {
+                let compatible = matches!(
+                    check_template_compatibility(template),
+                    CompatibilityStatus::Compatible
+                );
+                TemplateSummary {
+                    name: template.name.clone(),
+                    version: template.version.clone(),
+                    description: template.description.clone(),
+                    source: template.source.to_string(),
+                    tags: template.tags.clone(),
+                    path: template.path.clone(),
+                    compatible,
+                }
+            })
+            .collect();
+
+        return output::print_json(&TemplateListResponse {
+            template_count: templates.len(),
+            templates,
+        });
+    }
     p::header("Template Registry");
     if registry.templates.is_empty() {
         p::info("No templates found. Publish one with: starforge template publish <path>");

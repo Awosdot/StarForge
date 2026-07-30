@@ -1,4 +1,4 @@
-use crate::utils::{config, http_client, print as p};
+use crate::utils::{config, http_client, output, print as p};
 use anyhow::Result;
 use clap::Subcommand;
 use std::time::Duration;
@@ -6,7 +6,11 @@ use std::time::Duration;
 #[derive(Subcommand)]
 pub enum NetworkCommands {
     /// Show the current active network and available networks
-    Show,
+    Show {
+        /// Emit a machine-readable JSON object instead of the human-readable output
+        #[arg(long)]
+        json: bool,
+    },
     /// Switch the active network (testnet, mainnet, or custom)
     Switch {
         /// Target network to switch to
@@ -51,7 +55,7 @@ pub enum NetworkCommands {
 
 pub async fn handle(cmd: NetworkCommands) -> Result<()> {
     match cmd {
-        NetworkCommands::Show => show(),
+        NetworkCommands::Show { json } => show(json),
         NetworkCommands::Switch { network } => switch(network),
         NetworkCommands::Add {
             name,
@@ -72,8 +76,44 @@ pub async fn handle(cmd: NetworkCommands) -> Result<()> {
     }
 }
 
-fn show() -> Result<()> {
+fn show(json: bool) -> Result<()> {
     let cfg = config::load()?;
+    let emit_json = json || output::is_json_mode_enabled();
+
+    if emit_json {
+        #[derive(serde::Serialize)]
+        struct NetworkEntry {
+            name: String,
+            horizon_url: String,
+            soroban_rpc_url: Option<String>,
+            friendbot_url: Option<String>,
+            active: bool,
+        }
+
+        #[derive(serde::Serialize)]
+        struct NetworkResponse {
+            active_network: String,
+            networks: Vec<NetworkEntry>,
+        }
+
+        let networks = cfg
+            .networks
+            .iter()
+            .map(|(name, net_cfg)| NetworkEntry {
+                name: name.clone(),
+                horizon_url: net_cfg.horizon_url.clone(),
+                soroban_rpc_url: net_cfg.soroban_rpc_url.clone(),
+                friendbot_url: net_cfg.friendbot_url.clone(),
+                active: cfg.network == *name,
+            })
+            .collect();
+
+        return output::print_json(&NetworkResponse {
+            active_network: cfg.network.clone(),
+            networks,
+        });
+    }
+
     p::header("Networks");
     p::separator();
 

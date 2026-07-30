@@ -1,5 +1,5 @@
 use crate::utils::{
-    config, confirmation, crypto, hardware_wallet, horizon, mnemonic, multisig, print as p,
+    config, confirmation, crypto, hardware_wallet, horizon, mnemonic, multisig, output, print as p,
 };
 use anyhow::{Context, Result};
 use bip39::{Language, Mnemonic};
@@ -93,7 +93,11 @@ pub enum WalletCommands {
         parallelism: Option<u32>,
     },
     /// List all saved wallets
-    List,
+    List {
+        /// Emit a machine-readable JSON object instead of the human-readable table
+        #[arg(long)]
+        json: bool,
+    },
     /// Show details of a saved wallet including live balance
     Show {
         /// Wallet name
@@ -348,7 +352,7 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
             )
             .await
         }
-        WalletCommands::List => list(),
+        WalletCommands::List { json } => list(json),
         WalletCommands::Show { name, reveal } => show(name, reveal).await,
         WalletCommands::Fund { name } => fund_wallet(name).await,
         WalletCommands::Remove { name } => remove(name),
@@ -705,8 +709,45 @@ async fn create(
     Ok(())
 }
 
-fn list() -> Result<()> {
+fn list(json: bool) -> Result<()> {
     let cfg = config::load()?;
+    let emit_json = json || output::is_json_mode_enabled();
+
+    if emit_json {
+        #[derive(Serialize)]
+        struct WalletListResponse {
+            network: String,
+            wallet_count: usize,
+            wallets: Vec<WalletSummary>,
+        }
+
+        #[derive(Serialize)]
+        struct WalletSummary {
+            name: String,
+            public_key: String,
+            network: String,
+            funded: bool,
+            created_at: String,
+        }
+
+        let wallets: Vec<WalletSummary> = cfg
+            .wallets
+            .iter()
+            .map(|w| WalletSummary {
+                name: w.name.clone(),
+                public_key: w.public_key.clone(),
+                network: w.network.clone(),
+                funded: w.funded,
+                created_at: w.created_at.clone(),
+            })
+            .collect();
+
+        return output::print_json(&WalletListResponse {
+            network: cfg.network.clone(),
+            wallet_count: wallets.len(),
+            wallets,
+        });
+    }
 
     p::header("Saved Wallets");
 

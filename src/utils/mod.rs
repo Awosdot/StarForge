@@ -106,6 +106,7 @@ pub mod notifications;
 pub mod ollama;
 pub mod optimizer;
 pub mod orchestration;
+pub mod output;
 pub mod pattern_library;
 pub mod performance;
 pub mod pipeline_builder;

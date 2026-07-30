@@ -3,6 +3,7 @@ use crate::plugins::manifest;
 use crate::plugins::registry::{self, RegisteredCommand, TrustLevel, UninstallOptions};
 use crate::plugins::{PluginLoadError, PluginManager};
 use crate::utils::config;
+use crate::utils::output;
 use crate::utils::print as p;
 use anyhow::{Context, Result};
 use clap::Subcommand;
@@ -28,7 +29,11 @@ pub enum PluginCommands {
         force: bool,
     },
     /// List installed plugins from the local registry
-    List,
+    List {
+        /// Emit a machine-readable JSON object instead of the human-readable output
+        #[arg(long)]
+        json: bool,
+    },
     /// Load installed plugins and show those successfully loaded
     Load,
     /// Remove a plugin from the registry
@@ -98,7 +103,7 @@ pub async fn handle(cmd: PluginCommands) -> Result<()> {
             source,
             force,
         } => install(name, path, source, force),
-        PluginCommands::List => list(),
+        PluginCommands::List { json } => list(json),
         PluginCommands::Load => load(),
         PluginCommands::Uninstall { name, purge, yes } => uninstall(name, purge, yes),
         PluginCommands::Verify {
@@ -251,9 +256,58 @@ async fn search(query: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn list() -> Result<()> {
-    p::header("Installed Plugins");
+fn list(json: bool) -> Result<()> {
+    let emit_json = json || output::is_json_mode_enabled();
     let reg = registry::load_registry().unwrap_or_default();
+
+    if emit_json {
+        #[derive(serde::Serialize)]
+        struct PluginListResponse {
+            plugin_count: usize,
+            plugins: Vec<PluginSummary>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct PluginSummary {
+            name: String,
+            version: String,
+            trust: String,
+            source: String,
+            commands: Vec<PluginCommandSummary>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct PluginCommandSummary {
+            name: String,
+            description: String,
+        }
+
+        let plugins: Vec<PluginSummary> = reg
+            .plugins
+            .iter()
+            .map(|entry| PluginSummary {
+                name: entry.name.clone(),
+                version: entry.plugin_version.clone(),
+                trust: entry.trust.label().to_string(),
+                source: entry.source.clone(),
+                commands: entry
+                    .commands
+                    .iter()
+                    .map(|cmd| PluginCommandSummary {
+                        name: cmd.name.clone(),
+                        description: cmd.description.clone(),
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        return output::print_json(&PluginListResponse {
+            plugin_count: plugins.len(),
+            plugins,
+        });
+    }
+
+    p::header("Installed Plugins");
     if reg.plugins.is_empty() {
         p::info("No plugins installed. Use: starforge plugin install <name> --path <lib>");
         return Ok(());
