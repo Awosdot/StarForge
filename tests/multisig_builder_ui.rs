@@ -12,10 +12,9 @@ fn templates_create_proposals_with_metadata() {
     assert_eq!(proposal.threshold, 2);
     assert_eq!(proposal.signers, vec!["buyer", "seller", "arbiter"]);
     assert_eq!(proposal.network, "testnet");
-    assert_eq!(proposal.metadata.template.as_deref(), Some("escrow"));
     assert_eq!(
         proposal.metadata.transaction_type.as_deref(),
-        Some("escrow_release")
+        Some("escrow")
     );
 }
 

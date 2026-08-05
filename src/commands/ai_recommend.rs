@@ -317,10 +317,7 @@ fn handle_category(args: CategoryArgs) -> Result<()> {
         }
         _ => {
             println!();
-            p::kv(
-                "Recommendations",
-                &result.recommendations.len().to_string(),
-            );
+            p::kv("Recommendations", &result.recommendations.len().to_string());
             println!();
 
             for rec in &result.recommendations {
@@ -335,10 +332,7 @@ fn handle_category(args: CategoryArgs) -> Result<()> {
                     "  {} {} [{}]",
                     "●".cyan(),
                     rec.title.bright_white().bold(),
-                    rec.severity
-                        .to_string()
-                        .color(severity_color)
-                        .bold()
+                    rec.severity.to_string().color(severity_color).bold()
                 );
                 println!("    {}", rec.description);
                 if let Some(ref issue) = rec.current_issue {
@@ -371,7 +365,10 @@ async fn handle_plan(args: PlanArgs) -> Result<()> {
 
     if args.use_ai && ollama::is_ollama_running().await {
         let prompt = air::build_analysis_prompt(&source_code);
-        p::info(&format!("Generating AI improvement plan with {}...", args.model));
+        p::info(&format!(
+            "Generating AI improvement plan with {}...",
+            args.model
+        ));
         let response = ollama::generate(
             &args.model,
             &prompt,
@@ -446,10 +443,7 @@ fn print_analysis_result(result: &air::BestPracticeResult, format: &str) {
                 println!(
                     "  {} [{}] {} — {}",
                     rec.id.dimmed(),
-                    rec.severity
-                        .to_string()
-                        .color(severity_color)
-                        .bold(),
+                    rec.severity.to_string().color(severity_color).bold(),
                     rec.title.bright_white().bold(),
                     rec.category.to_string().dimmed()
                 );

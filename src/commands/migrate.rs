@@ -20,7 +20,7 @@
 //! audited or reversed later, mirroring the `upgrade` command's proposal
 //! history model.
 
-use crate::utils::{config, print as p, state_diff};
+use crate::utils::{config, migration_testing, print as p, state_diff, state_transition};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use clap::{Args, Subcommand};
@@ -36,13 +36,19 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum MigrateCommands {
+    /// Create or capture a storage snapshot with metadata
+    Snapshot(SnapshotArgs),
+    /// Restore a storage snapshot from file or backup
+    Restore(RestoreArgs),
     /// Generate a starter migration rules file
     Init(InitArgs),
+    /// Generate a migration script from state diff or template
+    Generate(GenerateArgs),
     /// Run a migration against a storage snapshot
     Run(RunArgs),
-    /// Validate a (migrated) snapshot against a rules file's expected schema
+    /// Validate a (migrated) snapshot against a rules file and transition invariants
     Validate(ValidateArgs),
-    /// Dry-run migration rules against sample data without writing output
+    /// Dry-run migration rules against sample data using testing framework
     Test(TestArgs),
     /// Restore a snapshot from an automatic pre-migration backup
     Rollback(RollbackArgs),
@@ -55,8 +61,59 @@ pub enum MigrateCommands {
 }
 
 #[derive(Args)]
+pub struct SnapshotArgs {
+    /// Contract ID for the snapshot
+    #[arg(
+        long,
+        default_value = "C0000000000000000000000000000000000000000000000000000000"
+    )]
+    pub contract_id: String,
+    /// Version label for the snapshot
+    #[arg(long, default_value = "v1")]
+    pub version: String,
+    /// Output file path for the snapshot JSON
+    #[arg(long, default_value = "snapshot.json")]
+    pub output: PathBuf,
+    /// Optional key-value entries as JSON string (e.g. '{"balance":"100"}')
+    #[arg(long)]
+    pub entries: Option<String>,
+}
+
+#[derive(Args)]
+pub struct RestoreArgs {
+    /// Source snapshot or backup file path to restore from
+    #[arg(long)]
+    pub source: PathBuf,
+    /// Target destination file path
+    #[arg(long)]
+    pub destination: PathBuf,
+    /// Skip confirmation prompt
+    #[arg(long, default_value = "false")]
+    pub yes: bool,
+}
+
+#[derive(Args)]
 pub struct InitArgs {
     /// Where to write the generated rules template
+    #[arg(long, default_value = "migration-rules.json")]
+    pub output: PathBuf,
+    /// Version label the migration starts from
+    #[arg(long, default_value = "v1")]
+    pub from_version: String,
+    /// Version label the migration targets
+    #[arg(long, default_value = "v2")]
+    pub to_version: String,
+}
+
+#[derive(Args)]
+pub struct GenerateArgs {
+    /// Path to older state snapshot (JSON)
+    #[arg(long)]
+    pub before: PathBuf,
+    /// Path to newer state snapshot (JSON)
+    #[arg(long)]
+    pub after: PathBuf,
+    /// Where to save the generated migration rules JSON
     #[arg(long, default_value = "migration-rules.json")]
     pub output: PathBuf,
     /// Version label the migration starts from
@@ -97,6 +154,9 @@ pub struct ValidateArgs {
     /// Path to the migration rules file the snapshot should conform to
     #[arg(long)]
     pub rules: PathBuf,
+    /// Optional path to older pre-migration snapshot for transition validation
+    #[arg(long)]
+    pub before: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -107,6 +167,9 @@ pub struct TestArgs {
     /// Path to the migration rules file to test
     #[arg(long)]
     pub rules: PathBuf,
+    /// Optional path to expected output snapshot file for scenario assertion
+    #[arg(long)]
+    pub expected: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -533,9 +596,14 @@ pub fn validate_snapshot(snapshot: &StorageSnapshot, rules: &MigrationRules) -> 
 
 // ── Command handlers ──────────────────────────────────────────────────────────
 
+// ── Command handlers ──────────────────────────────────────────────────────────
+
 pub fn handle(cmd: MigrateCommands) -> Result<()> {
     match cmd {
+        MigrateCommands::Snapshot(args) => handle_snapshot(args),
+        MigrateCommands::Restore(args) => handle_restore(args),
         MigrateCommands::Init(args) => handle_init(args),
+        MigrateCommands::Generate(args) => handle_generate(args),
         MigrateCommands::Run(args) => handle_run(args),
         MigrateCommands::Validate(args) => handle_validate(args),
         MigrateCommands::Test(args) => handle_test(args),
@@ -544,6 +612,80 @@ pub fn handle(cmd: MigrateCommands) -> Result<()> {
         MigrateCommands::Docs(args) => handle_docs(args),
         MigrateCommands::Diff(args) => handle_diff(args),
     }
+}
+
+fn handle_snapshot(args: SnapshotArgs) -> Result<()> {
+    p::header("Create Storage Snapshot");
+
+    let entries: BTreeMap<String, Value> = if let Some(ref raw_json) = args.entries {
+        serde_json::from_str(raw_json)
+            .with_context(|| format!("Failed to parse JSON entries string: {}", raw_json))?
+    } else {
+        let mut default_entries = BTreeMap::new();
+        default_entries.insert(
+            "schema_version".to_string(),
+            Value::String(args.version.clone()),
+        );
+        default_entries.insert("balance".to_string(), Value::String("1000".to_string()));
+        default_entries.insert(
+            "owner".to_string(),
+            Value::String("G0000000000000000000000000000000000000000000000000000000".to_string()),
+        );
+        default_entries
+    };
+
+    let snapshot = StorageSnapshot {
+        contract_id: Some(args.contract_id.clone()),
+        version: Some(args.version.clone()),
+        captured_at: Some(Utc::now().to_rfc3339()),
+        entries,
+    };
+
+    save_snapshot(&snapshot, &args.output)?;
+
+    p::success(&format!(
+        "Storage snapshot written to {}",
+        args.output.display()
+    ));
+    p::kv("Contract ID", &args.contract_id);
+    p::kv("Version", &args.version);
+    p::kv("Entries count", &snapshot.entries.len().to_string());
+    p::kv("Checksum", &snapshot_checksum(&snapshot));
+    Ok(())
+}
+
+fn handle_restore(args: RestoreArgs) -> Result<()> {
+    p::header("Restore Storage Snapshot");
+
+    let snapshot = load_snapshot(&args.source)?;
+    p::kv("Source", &args.source.display().to_string());
+    p::kv("Entries", &snapshot.entries.len().to_string());
+    p::kv("Destination", &args.destination.display().to_string());
+
+    if !args.yes {
+        println!();
+        print!(
+            "  Restore snapshot to {}? [y/N] ",
+            args.destination.display()
+        );
+        use std::io::BufRead;
+        let line = std::io::stdin()
+            .lock()
+            .lines()
+            .next()
+            .unwrap_or(Ok(String::new()))?;
+        if !matches!(line.trim().to_lowercase().as_str(), "y" | "yes") {
+            p::info("Restore cancelled.");
+            return Ok(());
+        }
+    }
+
+    save_snapshot(&snapshot, &args.destination)?;
+    p::success(&format!(
+        "Snapshot restored to {}",
+        args.destination.display()
+    ));
+    Ok(())
 }
 
 fn handle_init(args: InitArgs) -> Result<()> {
@@ -595,6 +737,66 @@ fn handle_init(args: InitArgs) -> Result<()> {
         )
         .cyan()
     );
+    Ok(())
+}
+
+fn handle_generate(args: GenerateArgs) -> Result<()> {
+    p::header("Generate Migration Rules from Diff");
+
+    let before_snapshot = load_snapshot(&args.before)?;
+    let after_snapshot = load_snapshot(&args.after)?;
+
+    let report = state_diff::diff_snapshots(
+        &before_snapshot.entries,
+        &after_snapshot.entries,
+        Some(args.from_version.clone()),
+        Some(args.to_version.clone()),
+    );
+
+    let diff_rules = state_diff::generate_migration_rules_from_diff(&report);
+    let ops: Vec<TransformOp> = diff_rules
+        .iter()
+        .map(|r| match r.op.as_str() {
+            "rename_key" => TransformOp::RenameKey {
+                from: r.from_key.clone().unwrap_or_default(),
+                to: r.key.clone(),
+            },
+            "remove_field" => TransformOp::RemoveField { key: r.key.clone() },
+            "add_field" => TransformOp::AddField {
+                key: r.key.clone(),
+                default: r.default_value.clone().unwrap_or(Value::Null),
+            },
+            "cast_type" => TransformOp::CastType {
+                key: r.key.clone(),
+                to_type: r
+                    .target_type
+                    .clone()
+                    .unwrap_or_else(|| "string".to_string()),
+            },
+            _ => TransformOp::RemoveField { key: r.key.clone() },
+        })
+        .collect();
+
+    let migration_rules = MigrationRules {
+        from_version: args.from_version.clone(),
+        to_version: args.to_version.clone(),
+        ops,
+        required_keys: after_snapshot.entries.keys().cloned().collect(),
+        forbidden_keys: report.removed.iter().map(|e| e.key.clone()).collect(),
+    };
+
+    fs::write(
+        &args.output,
+        serde_json::to_string_pretty(&migration_rules)?,
+    )?;
+
+    p::success(&format!(
+        "Wrote generated migration rules to {}",
+        args.output.display()
+    ));
+    p::kv("From version", &args.from_version);
+    p::kv("To version", &args.to_version);
+    p::kv("Operations count", &migration_rules.ops.len().to_string());
     Ok(())
 }
 
@@ -738,6 +940,41 @@ fn handle_validate(args: ValidateArgs) -> Result<()> {
     p::kv("Entries", &snapshot.entries.len().to_string());
     println!();
 
+    if let Some(ref before_path) = args.before {
+        let before_snapshot = load_snapshot(before_path)?;
+        let mut inv_rules = Vec::new();
+
+        for key in &rules.required_keys {
+            inv_rules
+                .push(state_transition::TransitionInvariantRule::RequiredKey { key: key.clone() });
+        }
+        for key in &rules.forbidden_keys {
+            inv_rules
+                .push(state_transition::TransitionInvariantRule::ForbiddenKey { key: key.clone() });
+        }
+
+        let options = state_transition::TransitionValidationOptions {
+            from_version: Some(rules.from_version.clone()),
+            to_version: Some(rules.to_version.clone()),
+            rules: inv_rules,
+            check_checksum_integrity: true,
+        };
+
+        let transition_report = state_transition::validate_state_transition(
+            &before_snapshot.entries,
+            &snapshot.entries,
+            &options,
+        );
+
+        if !transition_report.valid {
+            for err in &transition_report.errors {
+                p::warn(&format!("[Transition Error] {}: {}", err.key, err.message));
+            }
+        } else {
+            p::success("State transition invariant check passed.");
+        }
+    }
+
     if report.is_ok() {
         p::success("Snapshot satisfies all rules: required keys present, forbidden keys absent, types match.");
         return Ok(());
@@ -761,7 +998,7 @@ fn handle_validate(args: ValidateArgs) -> Result<()> {
 }
 
 fn handle_test(args: TestArgs) -> Result<()> {
-    p::header("Migration Dry Run");
+    p::header("Migration Dry Run & Framework Test");
 
     let sample = load_snapshot(&args.sample)?;
     let rules = load_rules(&args.rules)?;
@@ -769,6 +1006,39 @@ fn handle_test(args: TestArgs) -> Result<()> {
 
     let report = apply_rules(&sample, &rules);
     let after_keys: Vec<String> = report.snapshot.entries.keys().cloned().collect();
+
+    if let Some(ref expected_path) = args.expected {
+        let expected_snapshot = load_snapshot(expected_path)?;
+        let tc = migration_testing::MigrationTestCase {
+            name: "cli_dry_run_test".to_string(),
+            description: Some("Dry run test scenario".to_string()),
+            initial_state: sample.entries.clone(),
+            expected_state: Some(expected_snapshot.entries.clone()),
+            invariant_rules: vec![],
+        };
+
+        let test_res = migration_testing::MigrationTestRunner::run_test_case(&tc, |init| {
+            let rep = apply_rules(
+                &StorageSnapshot {
+                    contract_id: sample.contract_id.clone(),
+                    version: sample.version.clone(),
+                    captured_at: None,
+                    entries: init.clone(),
+                },
+                &rules,
+            );
+            (rep.snapshot.entries, rep.warnings)
+        });
+
+        if test_res.passed {
+            p::success("Migration framework test scenario PASSED expected assertions.");
+        } else {
+            p::warn("Migration framework test scenario FAILED expected assertions:");
+            for err in &test_res.errors {
+                p::warn(err);
+            }
+        }
+    }
 
     let added: Vec<_> = after_keys
         .iter()
@@ -1368,5 +1638,25 @@ mod tests {
         // mutates the source.
         assert!(original.entries.contains_key("old_field_name"));
         assert!(original.entries.contains_key("deprecated_field"));
+    }
+
+    #[test]
+    fn snapshot_and_restore_file_io() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let snap_file = temp_dir.path().join("snap.json");
+        let restored_file = temp_dir.path().join("restored.json");
+
+        let snap = snapshot_with(vec![("key1", Value::String("val1".into()))]);
+        save_snapshot(&snap, &snap_file).unwrap();
+
+        let loaded = load_snapshot(&snap_file).unwrap();
+        assert_eq!(
+            loaded.entries.get("key1"),
+            Some(&Value::String("val1".into()))
+        );
+
+        save_snapshot(&loaded, &restored_file).unwrap();
+        let restored = load_snapshot(&restored_file).unwrap();
+        assert_eq!(snapshot_checksum(&snap), snapshot_checksum(&restored));
     }
 }

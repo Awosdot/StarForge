@@ -1,5 +1,7 @@
-use crate::utils::{print as p, registry, templates, template_customization_ai};
-use anyhow::Result;
+use crate::utils::template_integration;
+use crate::utils::template_performance;
+use crate::utils::{output, print as p, registry, template_customization_ai, templates};
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -25,7 +27,11 @@ pub enum TemplateCommands {
         refresh: bool,
     },
     /// List all available templates
-    List,
+    List {
+        /// Emit a machine-readable JSON object instead of the human-readable output
+        #[arg(long)]
+        json: bool,
+    },
     /// Show details of a specific template
     Show {
         /// Template name
@@ -183,7 +189,7 @@ pub enum TemplateCommands {
 
 pub async fn handle(cmd: TemplateCommands) -> Result<()> {
     match cmd {
-        TemplateCommands::Import {
+        TemplateCommands::Install {
             path,
             name,
             description,
@@ -235,7 +241,7 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
             )
             .await
         }
-        TemplateCommands::List => list().await,
+        TemplateCommands::List { json } => list(json).await,
         TemplateCommands::Search {
             query,
             tags,
@@ -246,21 +252,25 @@ pub async fn handle(cmd: TemplateCommands) -> Result<()> {
         TemplateCommands::Show { name } => show(name).await,
         TemplateCommands::Remove { name, purge } => remove(name, purge).await,
         TemplateCommands::Init => init(),
-        TemplateCommands::Info { name } => info(name),
+        TemplateCommands::Info { name } => info(name).await,
         TemplateCommands::Fetch {
             source,
             name,
             version,
             force,
-        } => install(source, name, version, force).await,
+        } => crate::utils::template::install(source, name, version, force).await,
         TemplateCommands::Update { name, all } => update(name, all).await,
         TemplateCommands::Rollback { name } => rollback(name).await,
         TemplateCommands::Test { name, verbose } => template_test(name, verbose).await,
         TemplateCommands::Docs { name, output } => template_docs(name, output).await,
         TemplateCommands::Audit { name } => template_audit(name).await,
-        TemplateCommands::Customize { path, requirements } => template_customize(path, requirements).await,
+        TemplateCommands::Customize { path, requirements } => {
+            template_customize(path, requirements).await
+        }
         TemplateCommands::CustomizeHistory { path } => template_customize_history(path).await,
-        TemplateCommands::CustomizeRollback { path, index } => template_customize_rollback(path, index).await,
+        TemplateCommands::CustomizeRollback { path, index } => {
+            template_customize_rollback(path, index).await
+        }
     }
 }
 
@@ -276,7 +286,10 @@ async fn template_assist(
         direct
     } else {
         let entry = templates::get_template(&template).await.with_context(|| {
-            format!("Template '{}' was not found. Pass a directory or run `starforge template list`.", template)
+            format!(
+                "Template '{}' was not found. Pass a directory or run `starforge template list`.",
+                template
+            )
         })?;
         entry.path.map(PathBuf::from).filter(|path| path.is_dir()).or_else(|| {
             if let templates::TemplateSource::Local { path } = entry.source {
@@ -301,7 +314,8 @@ async fn template_assist(
         report.to_markdown()
     };
     if let Some(path) = output {
-        std::fs::write(&path, rendered).with_context(|| format!("Failed to write {}", path.display()))?;
+        std::fs::write(&path, rendered)
+            .with_context(|| format!("Failed to write {}", path.display()))?;
         p::success(&format!("Integration report written to {}", path.display()));
     } else {
         println!("{rendered}");
@@ -416,10 +430,55 @@ async fn publish(
     Ok(())
 }
 
-async fn list() -> Result<()> {
+async fn list(json: bool) -> Result<()> {
     use crate::utils::templates::{check_template_compatibility, CompatibilityStatus};
 
     let registry = templates::load_registry().await?;
+    let emit_json = json || output::is_json_mode_enabled();
+
+    if emit_json {
+        #[derive(serde::Serialize)]
+        struct TemplateListResponse {
+            template_count: usize,
+            templates: Vec<TemplateSummary>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct TemplateSummary {
+            name: String,
+            version: String,
+            description: String,
+            source: String,
+            tags: Vec<String>,
+            path: Option<String>,
+            compatible: bool,
+        }
+
+        let templates: Vec<TemplateSummary> = registry
+            .templates
+            .iter()
+            .map(|template| {
+                let compatible = matches!(
+                    check_template_compatibility(template),
+                    CompatibilityStatus::Compatible
+                );
+                TemplateSummary {
+                    name: template.name.clone(),
+                    version: template.version.clone(),
+                    description: template.description.clone(),
+                    source: template.source.to_string(),
+                    tags: template.tags.clone(),
+                    path: template.path.clone(),
+                    compatible,
+                }
+            })
+            .collect();
+
+        return output::print_json(&TemplateListResponse {
+            template_count: templates.len(),
+            templates,
+        });
+    }
     p::header("Template Registry");
     if registry.templates.is_empty() {
         p::info("No templates found. Publish one with: starforge template publish <path>");
@@ -673,20 +732,47 @@ fn init() -> Result<()> {
 async fn optimize(path: PathBuf, name: Option<String>) -> Result<()> {
     let analysis = template_performance::analyze_template_directory(&path, name.as_deref())?;
 
-    p::header(&format!("Template Performance Analysis: {}", analysis.template_name));
+    p::header(&format!(
+        "Template Performance Analysis: {}",
+        analysis.template_name
+    ));
     p::separator();
     p::kv("Path", &analysis.path);
     p::kv("Overall score", &format!("{}/100", analysis.overall_score));
-    p::kv("Estimated gas reduction", &format!("{}%", analysis.estimated_gas_reduction_percent));
-    p::kv("Estimated speedup", &format!("{}%", analysis.estimated_speedup_percent));
-    p::kv("Estimated memory savings", &format!("{}%", analysis.estimated_memory_savings_percent));
+    p::kv(
+        "Estimated gas reduction",
+        &format!("{}%", analysis.estimated_gas_reduction_percent),
+    );
+    p::kv(
+        "Estimated speedup",
+        &format!("{}%", analysis.estimated_speedup_percent),
+    );
+    p::kv(
+        "Estimated memory savings",
+        &format!("{}%", analysis.estimated_memory_savings_percent),
+    );
     println!();
     p::info("Optimization focus areas");
-    p::kv("Storage layout", &format!("{}/100", analysis.storage_layout_score));
-    p::kv("Function efficiency", &format!("{}/100", analysis.function_efficiency_score));
-    p::kv("Loop optimization", &format!("{}/100", analysis.loop_optimization_score));
-    p::kv("External call optimization", &format!("{}/100", analysis.external_call_score));
-    p::kv("Batch operations", &format!("{}/100", analysis.batch_operations_score));
+    p::kv(
+        "Storage layout",
+        &format!("{}/100", analysis.storage_layout_score),
+    );
+    p::kv(
+        "Function efficiency",
+        &format!("{}/100", analysis.function_efficiency_score),
+    );
+    p::kv(
+        "Loop optimization",
+        &format!("{}/100", analysis.loop_optimization_score),
+    );
+    p::kv(
+        "External call optimization",
+        &format!("{}/100", analysis.external_call_score),
+    );
+    p::kv(
+        "Batch operations",
+        &format!("{}/100", analysis.batch_operations_score),
+    );
     println!();
     p::info("Benchmark summary");
     p::kv("Summary", &analysis.benchmark_summary);
@@ -696,7 +782,11 @@ async fn optimize(path: PathBuf, name: Option<String>) -> Result<()> {
     } else {
         p::info("Actionable suggestions");
         for suggestion in analysis.suggestions {
-            println!("  • [{}] {}", suggestion.priority.to_uppercase(), suggestion.title);
+            println!(
+                "  • [{}] {}",
+                suggestion.priority.to_uppercase(),
+                suggestion.title
+            );
             println!("    {}", suggestion.detail);
             println!("    Impact: {}", suggestion.estimated_impact);
         }
@@ -805,7 +895,12 @@ async fn info(name: String) -> Result<()> {
     Ok(())
 }
 
-fn fetch(source: String, name: Option<String>, version: Option<String>, force: bool) -> Result<()> {
+async fn fetch(
+    source: String,
+    name: Option<String>,
+    version: Option<String>,
+    force: bool,
+) -> Result<()> {
     p::header("Template Install");
     p::kv("Source", &source);
     if let Some(ref n) = name {
@@ -1006,7 +1101,7 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
             md.push_str(&format!("- **Auditor:** {}\n", auditor));
             md.push_str(&format!("- **Audited at:** {}\n", date));
         }
-        if let Some(findings) = sr.findings {
+        if let Some(findings) = &sr.findings {
             md.push_str(&format!("- **Findings:** {}\n", findings));
         }
         if let Some(score) = sr.score {
@@ -1018,13 +1113,15 @@ async fn template_docs(name: String, output: Option<std::path::PathBuf>) -> Resu
     md.push('\n');
 
     // Changelog
-    if !entry.changelog.is_empty() {
-        md.push_str("## Changelog\n\n");
-        for entry in &entry.changelog {
-            md.push_str(&format!(
-                "### {} — {}\n\n{}\n\n",
-                entry.version, entry.date, entry.notes
-            ));
+    if let Some(changelogs) = &entry.changelog {
+        if !changelogs.is_empty() {
+            md.push_str("## Changelog\n\n");
+            for changelog_entry in changelogs {
+                md.push_str(&format!(
+                    "### {} — {}\n\n",
+                    changelog_entry.version, changelog_entry.date
+                ));
+            }
         }
     }
 
@@ -1081,6 +1178,7 @@ async fn template_audit(name: Option<String>) -> Result<()> {
             Some(sr) => (
                 sr.status.as_str(),
                 sr.findings
+                    .clone()
                     .map(|f| f.to_string())
                     .unwrap_or_else(|| "—".to_string()),
                 sr.score

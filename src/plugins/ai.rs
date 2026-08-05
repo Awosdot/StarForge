@@ -18,7 +18,7 @@ pub struct AIRequest {
 
 #[derive(Debug, Clone)]
 pub struct AIResponse {
-    pub text: String, 
+    pub text: String,
     pub error: Option<String>,
 }
 

@@ -213,10 +213,7 @@ pub fn discover_properties(source_code: &str) -> Result<Vec<DiscoveredProperty>>
                 .collect();
             properties.push(DiscoveredProperty {
                 name: format!("{}_preconditions", func.name),
-                description: format!(
-                    "Function '{}' should validate preconditions",
-                    func.name
-                ),
+                description: format!("Function '{}' should validate preconditions", func.name),
                 property_type: PropertyType::Precondition,
                 target_function: Some(func.name.clone()),
                 invariants: preconditions,
@@ -321,8 +318,9 @@ pub fn generate_strategies(properties: &[DiscoveredProperty]) -> Vec<GeneratedSt
                 {
                     strategies.push(GeneratedStrategy {
                         type_name: "Amount (i64/u64)".to_string(),
-                        strategy_code: r#"prop::num::i64::ANY.prop_filter("non-negative", |v| *v >= 0)"#
-                            .to_string(),
+                        strategy_code:
+                            r#"prop::num::i64::ANY.prop_filter("non-negative", |v| *v >= 0)"#
+                                .to_string(),
                         description: "Generate amounts including boundaries and edge cases"
                             .to_string(),
                         edge_cases: vec![
@@ -387,9 +385,7 @@ fn generate_test_code_for_property(
     include_shrink: bool,
 ) -> String {
     let shrink_section = if include_shrink {
-        format!(
-            "\n    // Shrink strategy: minimize counterexample to smallest failing input"
-        )
+        format!("\n    // Shrink strategy: minimize counterexample to smallest failing input")
     } else {
         String::new()
     };
@@ -422,10 +418,7 @@ fn generate_test_code_for_property(
         prop_assert!(true, "Property should hold");
     }}
 }}"#,
-        prop.name,
-        invariant_block,
-        shrink_section,
-        prop.description,
+        prop.name, invariant_block, shrink_section, prop.description,
     )
 }
 
@@ -477,14 +470,9 @@ fn test_invariant_{}() {{
 // ── Full Pipeline ────────────────────────────────────────────────────────────
 
 /// Run the full property-based testing pipeline on a contract.
-pub fn run_pipeline(
-    source_code: &str,
-    config: &PropertyTestConfig,
-) -> Result<PropertyTestResult> {
-    let properties = discover_properties(source_code)
-        .context("Failed to discover properties")?;
-    let invariants = extract_invariants(source_code)
-        .context("Failed to extract invariants")?;
+pub fn run_pipeline(source_code: &str, config: &PropertyTestConfig) -> Result<PropertyTestResult> {
+    let properties = discover_properties(source_code).context("Failed to discover properties")?;
+    let invariants = extract_invariants(source_code).context("Failed to extract invariants")?;
     let strategies = generate_strategies(&properties);
     let test_cases = generate_test_cases(&properties, &invariants, config);
 

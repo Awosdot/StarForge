@@ -1,5 +1,5 @@
 use crate::utils::{
-    config, confirmation, crypto, hardware_wallet, horizon, mnemonic, multisig, print as p,
+    config, confirmation, crypto, hardware_wallet, horizon, mnemonic, multisig, output, print as p,
 };
 use anyhow::{Context, Result};
 use bip39::{Language, Mnemonic};
@@ -14,7 +14,10 @@ use std::fs;
 use std::path::PathBuf;
 use stellar_strkey::ed25519::{PrivateKey as StellarPrivateKey, PublicKey as StellarPublicKey};
 
-const WALLET_BACKUP_VERSION: &str = "1";
+// The backup document types and their parsers live in `utils::wallet_import`,
+// where they can be unit-tested, property-tested, and fuzzed without going
+// through prompting or the filesystem.
+use crate::utils::wallet_import::{self, WalletBackup, WalletBackupEntry, WALLET_BACKUP_VERSION};
 
 fn kdf_options(
     mem: Option<u32>,
@@ -39,34 +42,15 @@ fn kdf_options(
     Some(options)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct WalletBackup {
-    version: String,
-    exported_at: String,
-    wallets: Vec<WalletBackupEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct WalletBackupEntry {
-    name: String,
-    public_key: String,
-    secret_key: Option<String>,
-    network: String,
-    created_at: String,
-    funded: bool,
-}
-
-impl From<&config::WalletEntry> for WalletBackupEntry {
-    // This was already correct, no change needed here.
-    fn from(entry: &config::WalletEntry) -> Self {
-        Self {
-            name: entry.name.clone(),
-            public_key: entry.public_key.clone(),
-            secret_key: entry.secret_key.clone(),
-            network: entry.network.clone(),
-            created_at: entry.created_at.clone(),
-            funded: entry.funded,
-        }
+/// Build a backup entry from a stored wallet.
+fn backup_entry_from(entry: &config::WalletEntry) -> WalletBackupEntry {
+    WalletBackupEntry {
+        name: entry.name.clone(),
+        public_key: entry.public_key.clone(),
+        secret_key: entry.secret_key.clone(),
+        network: entry.network.clone(),
+        created_at: entry.created_at.clone(),
+        funded: entry.funded,
     }
 }
 
@@ -109,7 +93,11 @@ pub enum WalletCommands {
         parallelism: Option<u32>,
     },
     /// List all saved wallets
-    List,
+    List {
+        /// Emit a machine-readable JSON object instead of the human-readable table
+        #[arg(long)]
+        json: bool,
+    },
     /// Show details of a saved wallet including live balance
     Show {
         /// Wallet name
@@ -364,7 +352,7 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
             )
             .await
         }
-        WalletCommands::List => list(),
+        WalletCommands::List { json } => list(json),
         WalletCommands::Show { name, reveal } => show(name, reveal).await,
         WalletCommands::Fund { name } => fund_wallet(name).await,
         WalletCommands::Remove { name } => remove(name),
@@ -386,17 +374,20 @@ pub async fn handle(cmd: WalletCommands) -> Result<()> {
             iterations,
             parallelism,
             backup,
-        } => rotate_wallet(
-            name,
-            fund,
-            network,
-            encrypt,
-            strict,
-            mem,
-            iterations,
-            parallelism,
-            backup,
-        ),
+        } => {
+            rotate_wallet(
+                name,
+                fund,
+                network,
+                encrypt,
+                strict,
+                mem,
+                iterations,
+                parallelism,
+                backup,
+            )
+            .await
+        }
         WalletCommands::Export {
             name,
             all,
@@ -602,9 +593,9 @@ async fn create(
     use_mnemonic: bool,
     words: String,
     account_index: u32,
-    _mem: Option<u32>,
-    _iterations: Option<u32>,
-    _parallelism: Option<u32>,
+    mem: Option<u32>,
+    iterations: Option<u32>,
+    parallelism: Option<u32>,
 ) -> Result<()> {
     let mut cfg = config::load()?;
 
@@ -718,8 +709,45 @@ async fn create(
     Ok(())
 }
 
-fn list() -> Result<()> {
+fn list(json: bool) -> Result<()> {
     let cfg = config::load()?;
+    let emit_json = json || output::is_json_mode_enabled();
+
+    if emit_json {
+        #[derive(Serialize)]
+        struct WalletListResponse {
+            network: String,
+            wallet_count: usize,
+            wallets: Vec<WalletSummary>,
+        }
+
+        #[derive(Serialize)]
+        struct WalletSummary {
+            name: String,
+            public_key: String,
+            network: String,
+            funded: bool,
+            created_at: String,
+        }
+
+        let wallets: Vec<WalletSummary> = cfg
+            .wallets
+            .iter()
+            .map(|w| WalletSummary {
+                name: w.name.clone(),
+                public_key: w.public_key.clone(),
+                network: w.network.clone(),
+                funded: w.funded,
+                created_at: w.created_at.clone(),
+            })
+            .collect();
+
+        return output::print_json(&WalletListResponse {
+            network: cfg.network.clone(),
+            wallet_count: wallets.len(),
+            wallets,
+        });
+    }
 
     p::header("Saved Wallets");
 
@@ -1179,7 +1207,7 @@ async fn rotate_wallet(
         let snapshot = WalletBackup {
             version: WALLET_BACKUP_VERSION.to_string(),
             exported_at: Utc::now().to_rfc3339(),
-            wallets: vec![WalletBackupEntry::from(&cfg.wallets[wallet_index])],
+            wallets: vec![backup_entry_from(&cfg.wallets[wallet_index])],
         };
         let json = serde_json::to_string_pretty(&snapshot)
             .context("Failed to serialize backup snapshot")?;
@@ -1368,10 +1396,7 @@ fn wallet_history(name: String, reveal: bool) -> Result<()> {
 fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf, strict: bool) -> Result<()> {
     let cfg = config::load()?;
     let wallets_to_export: Vec<WalletBackupEntry> = if all {
-        cfg.wallets
-            .iter()
-            .map(|w| WalletBackupEntry::from(w))
-            .collect()
+        cfg.wallets.iter().map(backup_entry_from).collect()
     } else {
         let name = name_opt
             .as_ref()
@@ -1382,7 +1407,7 @@ fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf, strict: b
             .iter()
             .find(|w| &w.name == name)
             .ok_or_else(|| anyhow::anyhow!("Wallet '{}' not found", name))?;
-        vec![WalletBackupEntry::from(wallet)]
+        vec![backup_entry_from(wallet)]
     };
 
     if output.exists() && output.is_dir() {
@@ -1634,43 +1659,32 @@ fn import_wallets(file: PathBuf) -> Result<()> {
     config::validate_file_path(&file, Some("json"))?;
     let raw_contents =
         fs::read_to_string(&file).with_context(|| format!("Failed to read {}", file.display()))?;
-    // Detect encrypted format (salt:nonce:ciphertext)
-    let contents = if raw_contents.matches(':').count() == 2 {
-        let passphrase = crypto::prompt_password("Enter passphrase to decrypt backup", false)?;
-        crypto::decrypt_secret(&passphrase, &raw_contents)?
-    } else {
-        raw_contents
-    };
-    let backup: WalletBackup =
-        serde_json::from_str(&contents).with_context(|| "Invalid backup JSON format")?;
 
-    if backup.version != WALLET_BACKUP_VERSION {
-        anyhow::bail!(
-            "Unsupported backup version '{}'. Expected '{}'.",
-            backup.version,
-            WALLET_BACKUP_VERSION
-        );
-    }
-
-    if backup.wallets.is_empty() {
-        anyhow::bail!("Backup file contains no wallets.");
-    }
-
-    let mut seen = HashSet::new();
-    for wallet in &backup.wallets {
-        if !seen.insert(wallet.name.clone()) {
-            anyhow::bail!("Duplicate wallet '{}' in backup file", wallet.name);
+    // Encrypted bundles have 3, 5, or 6 base64 parts depending on whether
+    // custom Argon2 parameters were used. The envelope is structurally checked
+    // before a passphrase is requested, so a corrupt file fails fast instead of
+    // after an Argon2 derivation.
+    let contents = match wallet_import::classify_payload(&raw_contents) {
+        wallet_import::PayloadKind::Encrypted => {
+            wallet_import::parse_encrypted_envelope(&raw_contents).map_err(|e| {
+                anyhow::anyhow!("Backup file is not a readable encrypted bundle: {}", e)
+            })?;
+            let passphrase = crypto::prompt_password("Enter passphrase to decrypt backup", false)?;
+            crypto::decrypt_secret(&passphrase, raw_contents.trim())?
         }
+        wallet_import::PayloadKind::Plaintext => raw_contents,
+    };
+
+    let parsed = wallet_import::parse_wallet_backup(&contents)
+        .map_err(|e| anyhow::anyhow!("Backup file rejected: {}", e))?;
+    for warning in &parsed.warnings {
+        p::warn(warning);
     }
+    let backup = parsed.backup;
 
     let mut cfg = config::load()?;
 
     for wallet in &backup.wallets {
-        config::validate_wallet_name(&wallet.name)?;
-        config::validate_public_key(&wallet.public_key)?;
-        if let Some(secret) = &wallet.secret_key {
-            config::validate_secret_key(secret)?;
-        }
         config::validate_network_exists(&cfg, &wallet.network)?;
 
         if cfg.wallets.iter().any(|w| w.name == wallet.name) {
@@ -2053,7 +2067,7 @@ fn multisig_sign(
                 )
             })?;
 
-        let signing_request = wallet_signer::SigningRequest::from_options(
+        let signing_request = crate::utils::wallet_signer::SigningRequest::from_options(
             Some(wallet_ref),
             Some(device),
             Some(&hd_path),

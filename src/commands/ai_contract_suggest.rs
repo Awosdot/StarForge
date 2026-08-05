@@ -115,7 +115,10 @@ fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
 
     p::info("Contract Analysis");
     p::kv("Type", &context.contract_type.to_string());
-    p::kv("Existing Functions", &context.existing_functions.len().to_string());
+    p::kv(
+        "Existing Functions",
+        &context.existing_functions.len().to_string(),
+    );
     p::kv("Storage Keys", &context.storage_keys.len().to_string());
     p::kv("Events", &context.events.len().to_string());
     p::kv("Errors", &context.errors.len().to_string());
@@ -164,10 +167,7 @@ fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
                     "  {}. {} [{}] ({})",
                     (i + 1).to_string().bright_white().bold(),
                     suggestion.name.bright_white().bold(),
-                    suggestion.priority
-                        .to_string()
-                        .color(priority_color)
-                        .bold(),
+                    suggestion.priority.to_string().color(priority_color).bold(),
                     suggestion.category.to_string().dimmed()
                 );
                 println!("     {}", suggestion.description);
@@ -249,11 +249,18 @@ fn handle_best_practices(args: BestPracticesArgs) -> Result<()> {
     } else if let Some(category) = args.category {
         let practices = engine.get_best_practices(&category);
         if practices.is_empty() {
-            p::warn(&format!("No best practices found for category: {}", category));
+            p::warn(&format!(
+                "No best practices found for category: {}",
+                category
+            ));
         } else {
             p::info(&format!("Best Practices for '{}' :", category));
             for (i, practice) in practices.iter().enumerate() {
-                println!("  {}. {}", (i + 1).to_string().bright_white().bold(), practice);
+                println!(
+                    "  {}. {}",
+                    (i + 1).to_string().bright_white().bold(),
+                    practice
+                );
             }
         }
     }
@@ -267,15 +274,36 @@ fn handle_categories() -> Result<()> {
     p::separator();
 
     let categories = vec![
-        ("standard", "Standard functions (initialize, mint, transfer)"),
-        ("access_control", "Access control functions (admin, owner, permissions)"),
-        ("storage", "Storage pattern suggestions (get, set, has, remove)"),
+        (
+            "standard",
+            "Standard functions (initialize, mint, transfer)",
+        ),
+        (
+            "access_control",
+            "Access control functions (admin, owner, permissions)",
+        ),
+        (
+            "storage",
+            "Storage pattern suggestions (get, set, has, remove)",
+        ),
         ("events", "Event emission patterns (publish, emit)"),
-        ("error_handling", "Error handling functions (validate, check, assert)"),
+        (
+            "error_handling",
+            "Error handling functions (validate, check, assert)",
+        ),
         ("queries", "Query functions (read-only, getters)"),
-        ("initialization", "Initialization functions (constructor, setup)"),
-        ("token", "Token-related functions (mint, burn, transfer, approve)"),
-        ("governance", "Governance functions (propose, vote, execute)"),
+        (
+            "initialization",
+            "Initialization functions (constructor, setup)",
+        ),
+        (
+            "token",
+            "Token-related functions (mint, burn, transfer, approve)",
+        ),
+        (
+            "governance",
+            "Governance functions (propose, vote, execute)",
+        ),
     ];
 
     for (slug, description) in &categories {
@@ -331,10 +359,7 @@ mod tests {
 
     #[test]
     fn test_parse_priority() {
-        assert_eq!(
-            parse_priority("critical"),
-            cs::SuggestionPriority::Critical
-        );
+        assert_eq!(parse_priority("critical"), cs::SuggestionPriority::Critical);
         assert_eq!(parse_priority("high"), cs::SuggestionPriority::High);
         assert_eq!(parse_priority("medium"), cs::SuggestionPriority::Medium);
         assert_eq!(parse_priority("low"), cs::SuggestionPriority::Low);

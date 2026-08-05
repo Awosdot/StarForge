@@ -1,4 +1,7 @@
 use crate::utils::config::{self, WalletEntry};
+use crate::utils::simulation_resources::{
+    self, ResourceFeePlan, SimulationResourceError, SimulationResources,
+};
 use crate::utils::wallet_signer::{self, SigningRequest};
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -27,10 +30,35 @@ static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SimulationResult {
     pub return_value: String,
+    /// Minimum resource fee (stroops) reported by simulation, falling back to
+    /// [`FALLBACK_FEE_STROOPS`] when the RPC server did not report one.
     pub fee: u64,
     pub events: Vec<String>,
     #[serde(default)]
     pub errors: Vec<String>,
+    /// Full resource accounting (CPU, memory, footprint, minimum resource fee)
+    /// when the response carried it. `None` on servers that do not implement
+    /// Soroban resource reporting, or when the payload could not be parsed —
+    /// in that case the reason is appended to `errors`.
+    #[serde(default)]
+    pub resources: Option<SimulationResources>,
+}
+
+impl SimulationResult {
+    /// Build a fee plan from the simulated resources.
+    ///
+    /// Returns `None` when the response carried no resource accounting, so
+    /// callers can fall back to their own estimate instead of reporting a
+    /// fabricated number.
+    pub fn fee_plan(&self, margin_percent: u32) -> Option<ResourceFeePlan> {
+        let resources = self.resources.as_ref()?;
+        simulation_resources::plan_fee(
+            resources,
+            margin_percent,
+            simulation_resources::DEFAULT_INCLUSION_FEE_STROOPS,
+        )
+        .ok()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -150,17 +178,8 @@ pub async fn simulate_transaction(
         .await
         .context("Simulation request failed")?;
 
-    // Parse the simulation result
-    let return_value = decode_return_value(&result)?;
-    let fee = extract_fee(&result)?;
-    let events = extract_events(&result)?;
-
-    Ok(SimulationResult {
-        return_value,
-        fee,
-        events,
-        errors: extract_simulation_errors(&result),
-    })
+    // Parse the simulation result (resources, fee, events, errors).
+    build_simulation_result(&result)
 }
 
 pub async fn simulate_deploy_transaction(
@@ -182,12 +201,7 @@ pub async fn simulate_deploy_transaction(
         .await
         .context("Deploy simulation request failed")?;
 
-    Ok(SimulationResult {
-        return_value: decode_return_value(&result)?,
-        fee: extract_fee(&result)?,
-        events: extract_events(&result)?,
-        errors: extract_simulation_errors(&result),
-    })
+    build_simulation_result(&result)
 }
 
 pub async fn submit_transaction(
@@ -533,14 +547,56 @@ fn decode_return_value(result: &serde_json::Value) -> Result<String> {
     }
 }
 
-fn extract_fee(result: &serde_json::Value) -> Result<u64> {
-    // Extract fee from simulation result
-    if let Some(cost) = result.get("cost") {
-        if let Some(fee) = cost.get("cpuInsns") {
-            return Ok(fee.as_u64().unwrap_or(100000)); // Default fee
+/// Fee used when the RPC server reports no resource accounting at all.
+///
+/// Only a last resort: a real `minResourceFee` from simulation always wins.
+pub const FALLBACK_FEE_STROOPS: u64 = 100_000;
+
+/// Parse the resource accounting out of a `simulateTransaction` response.
+///
+/// The parse failure is deliberately not fatal: a fee estimate is still more
+/// useful than aborting, so the caller surfaces the reason through
+/// `SimulationResult::errors` and falls back to [`FALLBACK_FEE_STROOPS`].
+fn extract_resources(
+    result: &serde_json::Value,
+) -> std::result::Result<SimulationResources, SimulationResourceError> {
+    simulation_resources::parse_simulation_resources(result)
+}
+
+/// Minimum resource fee in stroops for this simulation.
+///
+/// Prefers the `minResourceFee` the RPC server reported. Previous releases
+/// mistakenly reported `cost.cpuInsns` (an instruction count, not a fee) here.
+fn extract_fee(resources: Option<&SimulationResources>) -> u64 {
+    resources
+        .map(|r| r.min_resource_fee_stroops)
+        .unwrap_or(FALLBACK_FEE_STROOPS)
+}
+
+/// Assemble a [`SimulationResult`] from a raw RPC response.
+fn build_simulation_result(result: &serde_json::Value) -> Result<SimulationResult> {
+    let mut errors = extract_simulation_errors(result);
+
+    let resources = match extract_resources(result) {
+        Ok(resources) => Some(resources),
+        Err(e) => {
+            // A host-level simulation failure is already reported through
+            // `errors`; only add parse problems that are not duplicates.
+            let message = format!("resource accounting unavailable: {}", e);
+            if !errors.iter().any(|existing| existing.contains(&message)) {
+                errors.push(message);
+            }
+            None
         }
-    }
-    Ok(100000) // Default fee in stroops
+    };
+
+    Ok(SimulationResult {
+        return_value: decode_return_value(result)?,
+        fee: extract_fee(resources.as_ref()),
+        events: extract_events(result)?,
+        errors,
+        resources,
+    })
 }
 
 fn extract_events(result: &serde_json::Value) -> Result<Vec<String>> {
@@ -711,6 +767,222 @@ fn extract_rpc_error_message(error: &serde_json::Value) -> String {
         .to_string()
 }
 
+// ── Transaction status polling (#689) ─────────────────────────────────────────
+
+/// Terminal or observable status of a Soroban transaction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TxStatus {
+    /// Transaction is in the mempool or awaiting ledger inclusion.
+    Pending,
+    /// The same transaction hash was already submitted.
+    Duplicate,
+    /// Transaction was applied but failed (contract error, auth failure, etc.).
+    Error,
+    /// Transaction was not found — either expired TTL or never accepted.
+    NotFound,
+    /// Transaction was applied successfully to a ledger.
+    Success,
+}
+
+impl std::fmt::Display for TxStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TxStatus::Pending => "PENDING",
+            TxStatus::Duplicate => "DUPLICATE",
+            TxStatus::Error => "ERROR",
+            TxStatus::NotFound => "NOT_FOUND",
+            TxStatus::Success => "SUCCESS",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+/// Result of polling `getTransaction` to a terminal state (or budget exhaustion).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TxStatusResult {
+    pub hash: String,
+    pub status: TxStatus,
+    /// Ledger number the transaction was included in, if known.
+    pub ledger: Option<u32>,
+    /// Return value from the contract call, if successful.
+    pub return_value: Option<String>,
+    /// Human-readable error message for non-success statuses.
+    pub error_message: Option<String>,
+    /// Total number of `getTransaction` RPC calls made.
+    pub polls: u32,
+}
+
+/// Controls how long `poll_transaction_status` keeps trying.
+#[derive(Debug, Clone)]
+pub struct PollConfig {
+    /// Maximum number of `getTransaction` RPC calls (default: 30).
+    pub max_polls: u32,
+    /// Milliseconds to wait between calls (default: 2 000 ms).
+    pub poll_interval_ms: u64,
+}
+
+impl Default for PollConfig {
+    fn default() -> Self {
+        Self {
+            max_polls: 30,
+            poll_interval_ms: 2_000,
+        }
+    }
+}
+
+/// Poll `getTransaction` until the transaction reaches a terminal state
+/// (`Success`, `Error`, `Duplicate`, or `NotFound`/expired) or the poll
+/// budget defined by `config` is exhausted.
+///
+/// Returns `Err` only on network/RPC protocol failures. All terminal statuses
+/// (including `Error` and `NotFound`) are surfaced as `Ok(TxStatusResult)` so
+/// callers can display the right message to the user.
+pub async fn poll_transaction_status(
+    hash: &str,
+    network: &str,
+    config: &PollConfig,
+) -> Result<TxStatusResult> {
+    let rpc_url = get_rpc_url(network)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .context("Failed to build HTTP client for transaction polling")?;
+
+    let mut not_found_streak = 0u32;
+
+    for poll_number in 1..=config.max_polls {
+        let request = SorobanRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: poll_number as u64,
+            method: "getTransaction".to_string(),
+            params: serde_json::json!({ "hash": hash }),
+        };
+
+        let response: SorobanRpcResponse<serde_json::Value> = client
+            .post(&rpc_url)
+            .json(&request)
+            .send()
+            .await
+            .with_context(|| {
+                format!(
+                    "Poll {}/{} failed for hash {}",
+                    poll_number, config.max_polls, hash
+                )
+            })?
+            .json()
+            .await
+            .context("Failed to decode getTransaction response")?;
+
+        if let Some(rpc_error) = response.error {
+            anyhow::bail!(
+                "Soroban RPC getTransaction error: {}",
+                extract_rpc_error_message(&rpc_error)
+            );
+        }
+
+        let result = response.result.ok_or_else(|| {
+            anyhow::anyhow!("getTransaction returned no result for hash {}", hash)
+        })?;
+
+        let status_str = result
+            .get("status")
+            .and_then(|s| s.as_str())
+            .unwrap_or("PENDING");
+
+        match status_str {
+            "SUCCESS" => {
+                return Ok(TxStatusResult {
+                    hash: hash.to_string(),
+                    status: TxStatus::Success,
+                    ledger: result
+                        .get("ledger")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as u32),
+                    return_value: result
+                        .get("returnValue")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    error_message: None,
+                    polls: poll_number,
+                });
+            }
+            "FAILED" | "ERROR" => {
+                let err_msg = result
+                    .get("resultXdr")
+                    .or_else(|| result.get("errorResult"))
+                    .map(|v| v.to_string());
+                return Ok(TxStatusResult {
+                    hash: hash.to_string(),
+                    status: TxStatus::Error,
+                    ledger: result
+                        .get("ledger")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as u32),
+                    return_value: None,
+                    error_message: err_msg,
+                    polls: poll_number,
+                });
+            }
+            "DUPLICATE" => {
+                return Ok(TxStatusResult {
+                    hash: hash.to_string(),
+                    status: TxStatus::Duplicate,
+                    ledger: None,
+                    return_value: None,
+                    error_message: Some(
+                        "Duplicate transaction: this hash was already submitted.".to_string(),
+                    ),
+                    polls: poll_number,
+                });
+            }
+            "NOT_FOUND" => {
+                // NOT_FOUND on the very first poll is normal propagation lag —
+                // wait for a few consecutive NOT_FOUNDs before declaring expiry.
+                not_found_streak += 1;
+                if not_found_streak >= 3 {
+                    return Ok(TxStatusResult {
+                        hash: hash.to_string(),
+                        status: TxStatus::NotFound,
+                        ledger: None,
+                        return_value: None,
+                        error_message: Some(
+                            "Transaction not found — it may have expired or was never accepted \
+                             by the network. Check the sequence number and retry."
+                                .to_string(),
+                        ),
+                        polls: poll_number,
+                    });
+                }
+            }
+            _ => {
+                // PENDING or any unknown status — reset the not-found streak
+                not_found_streak = 0;
+            }
+        }
+
+        if poll_number < config.max_polls {
+            tokio::time::sleep(std::time::Duration::from_millis(config.poll_interval_ms)).await;
+        }
+    }
+
+    // Budget exhausted while still pending.
+    Ok(TxStatusResult {
+        hash: hash.to_string(),
+        status: TxStatus::Pending,
+        ledger: None,
+        return_value: None,
+        error_message: Some(format!(
+            "Transaction still pending after {} polls ({} s total). \
+             Check later with: starforge tx {}",
+            config.max_polls,
+            config.max_polls as u64 * config.poll_interval_ms / 1000,
+            hash
+        )),
+        polls: config.max_polls,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -739,8 +1011,11 @@ mod tests {
         let return_value = decode_return_value(&result).unwrap();
         assert_eq!(return_value, "success_value");
 
-        let fee = extract_fee(&result).unwrap();
-        assert_eq!(fee, 150000);
+        // The fee is the RPC's `minResourceFee`, not the CPU instruction count.
+        let resources = extract_resources(&result).unwrap();
+        assert_eq!(extract_fee(Some(&resources)), 58_181);
+        assert_eq!(resources.cpu_instructions, Some(150_000));
+        assert_eq!(resources.memory_bytes, Some(2_048));
 
         let events = extract_events(&result).unwrap();
         assert_eq!(events.len(), 2);
@@ -749,6 +1024,62 @@ mod tests {
 
         let errors = extract_simulation_errors(&result);
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn simulation_result_reports_resources_and_fee_plan() {
+        let fixture = read_fixture("simulate_success.json");
+        let response: SorobanRpcResponse<serde_json::Value> =
+            serde_json::from_str(&fixture).expect("failed to deserialize simulate_success.json");
+        let result = response.result.expect("missing result in response");
+
+        let simulation = build_simulation_result(&result).unwrap();
+
+        assert_eq!(simulation.fee, 58_181);
+        let resources = simulation.resources.as_ref().expect("resources parsed");
+        assert_eq!(resources.cpu_instructions, Some(150_000));
+        assert_eq!(resources.memory_bytes, Some(2_048));
+
+        let footprint = resources.footprint.as_ref().expect("footprint decoded");
+        assert_eq!(footprint.read_only_entries, 2);
+        assert_eq!(footprint.read_write_entries, 1);
+        assert_eq!(footprint.read_bytes, 8_192);
+        assert_eq!(footprint.write_bytes, 1_024);
+
+        let plan = simulation.fee_plan(20).expect("fee plan");
+        assert_eq!(plan.min_resource_fee_stroops, 58_181);
+        assert!(plan.recommended_fee_stroops > 58_181);
+    }
+
+    #[test]
+    fn simulation_without_resource_accounting_falls_back_to_default_fee() {
+        // A response from a non-Soroban endpoint: no minResourceFee, no
+        // transactionData. The fee must fall back rather than be invented.
+        let result = serde_json::json!({ "returnValue": "ok", "events": [] });
+        let simulation = build_simulation_result(&result).unwrap();
+
+        assert_eq!(simulation.fee, FALLBACK_FEE_STROOPS);
+        assert!(simulation.resources.is_none());
+        assert!(simulation
+            .errors
+            .iter()
+            .any(|e| e.contains("resource accounting unavailable")));
+    }
+
+    #[test]
+    fn simulation_surfaces_host_errors_without_resources() {
+        let result = serde_json::json!({
+            "error": "HostError: Error(Budget, ExceededLimit)",
+            "events": [],
+        });
+        let simulation = build_simulation_result(&result).unwrap();
+
+        assert!(simulation.resources.is_none());
+        assert!(simulation.fee_plan(20).is_none());
+        assert!(simulation
+            .errors
+            .iter()
+            .any(|e| e.contains("ExceededLimit")));
     }
 
     #[test]

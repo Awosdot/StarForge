@@ -5,6 +5,6 @@ pub fn assign_category(name: &str, description: &str) -> String {
     } else if combined.contains("api") || combined.contains("server") {
         "Backend".to_string()
     } else {
-        "General".to_string() 
+        "General".to_string()
     }
 }

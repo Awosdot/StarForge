@@ -10,6 +10,7 @@ use crate::utils::network_simulator::{
     simulator::NetworkSimulator,
 };
 use crate::utils::print as p;
+use crate::utils::simulation_resources;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::*;
@@ -61,6 +62,10 @@ pub enum SimulateCommands {
 
     /// Show simulator status (ledger, accounts, contracts)
     Status,
+
+    /// Report CPU, memory, footprint, and minimum resource fee from a
+    /// `simulateTransaction` response, and derive a submittable fee
+    Resources(ResourcesArgs),
 
     /// Deploy a simulated contract
     Deploy(DeploySimArgs),
@@ -235,6 +240,51 @@ pub struct DeploySimArgs {
     pub name: Option<String>,
 }
 
+/// Arguments for `starforge simulate resources`.
+///
+/// Either `--file` (offline: a saved `simulateTransaction` response) or
+/// `--contract` + `--function` (live: simulate against a Soroban RPC endpoint)
+/// must be supplied.
+#[derive(Args)]
+pub struct ResourcesArgs {
+    /// Path to a saved `simulateTransaction` JSON response (offline planning,
+    /// e.g. a response captured in CI)
+    #[arg(long, conflicts_with = "contract")]
+    pub file: Option<PathBuf>,
+
+    /// Contract ID to simulate against a live Soroban RPC endpoint
+    #[arg(long)]
+    pub contract: Option<String>,
+
+    /// Contract function to simulate (required with --contract)
+    #[arg(long)]
+    pub function: Option<String>,
+
+    /// Function argument (repeat for multiple arguments)
+    #[arg(long = "arg", value_name = "VALUE")]
+    pub args: Vec<String>,
+
+    /// Type for the corresponding --arg (repeat; defaults to inferred types)
+    #[arg(long = "arg-type", value_name = "TYPE")]
+    pub arg_types: Vec<String>,
+
+    /// Network to simulate against when using --contract
+    #[arg(long, default_value = "testnet")]
+    pub network: String,
+
+    /// Safety margin, in percent, applied to the minimum resource fee
+    #[arg(long, default_value_t = simulation_resources::DEFAULT_FEE_MARGIN_PERCENT)]
+    pub margin: u32,
+
+    /// Per-operation inclusion (base) fee in stroops
+    #[arg(long, default_value_t = simulation_resources::DEFAULT_INCLUSION_FEE_STROOPS)]
+    pub inclusion_fee: u64,
+
+    /// Emit the report as machine-readable JSON
+    #[arg(long, default_value = "false")]
+    pub json: bool,
+}
+
 #[derive(Args)]
 pub struct InvokeSimArgs {
     /// Contract ID to invoke
@@ -288,6 +338,7 @@ pub async fn handle(cmd: SimulateCommands) -> Result<()> {
         SimulateCommands::RemoveFailure(args) => remove_failure(args),
         SimulateCommands::ToggleFailure(args) => toggle_failure(args),
         SimulateCommands::Status => show_status(),
+        SimulateCommands::Resources(args) => resource_report(args).await,
         SimulateCommands::Deploy(args) => deploy_contract(args),
         SimulateCommands::Invoke(args) => invoke_contract(args),
         SimulateCommands::Accounts => list_accounts(),
@@ -798,6 +849,109 @@ fn show_status() -> Result<()> {
     Ok(())
 }
 
+// ── Resource reporting ────────────────────────────────────────────────────────
+
+/// Validate the argument combination for `simulate resources`.
+///
+/// Split out from the async handler so the input rules are unit-testable
+/// without a network or a filesystem.
+pub(crate) fn validate_resources_args(args: &ResourcesArgs) -> Result<()> {
+    if args.file.is_none() && args.contract.is_none() {
+        anyhow::bail!(
+            "Provide either --file <simulation.json> to read a saved simulateTransaction \
+             response, or --contract <id> --function <name> to simulate against a live \
+             Soroban RPC endpoint."
+        );
+    }
+    if args.contract.is_some() && args.function.is_none() {
+        anyhow::bail!("--function is required when simulating a live contract with --contract");
+    }
+    if args.margin > simulation_resources::MAX_FEE_MARGIN_PERCENT {
+        anyhow::bail!(
+            "--margin {} is out of range (expected 0..={})",
+            args.margin,
+            simulation_resources::MAX_FEE_MARGIN_PERCENT
+        );
+    }
+    if !args.arg_types.is_empty() && args.arg_types.len() != args.args.len() {
+        anyhow::bail!(
+            "--arg-type was supplied {} time(s) but --arg {} time(s); they must match one-to-one",
+            args.arg_types.len(),
+            args.args.len()
+        );
+    }
+    Ok(())
+}
+
+async fn resource_report(args: ResourcesArgs) -> Result<()> {
+    validate_resources_args(&args)?;
+
+    let resources = match (&args.file, &args.contract) {
+        (Some(path), _) => {
+            crate::utils::config::validate_file_path(path, Some("json"))?;
+            let raw = std::fs::read_to_string(path).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to read simulation response {}: {}",
+                    path.display(),
+                    e
+                )
+            })?;
+            simulation_resources::parse_simulation_response_str(&raw)
+                .map_err(|e| anyhow::anyhow!("{}", e))?
+        }
+        (None, Some(contract_id)) => {
+            crate::utils::config::validate_contract_id(contract_id)?;
+            crate::utils::config::validate_network(&args.network)?;
+
+            let function = args.function.as_deref().unwrap_or_default();
+            let arg_types = if args.arg_types.is_empty() {
+                vec!["auto".to_string(); args.args.len()]
+            } else {
+                args.arg_types.clone()
+            };
+
+            let simulation = crate::utils::soroban::simulate_transaction(
+                contract_id,
+                function,
+                &args.args,
+                &arg_types,
+                &args.network,
+            )
+            .await?;
+
+            simulation.resources.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Soroban RPC did not return resource accounting for this call{}",
+                    if simulation.errors.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", simulation.errors.join("; "))
+                    }
+                )
+            })?
+        }
+        (None, None) => unreachable!("validated above"),
+    };
+
+    let plan = simulation_resources::plan_fee(&resources, args.margin, args.inclusion_fee)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&simulation_resources::report_json(&resources, &plan))?
+        );
+    } else {
+        simulation_resources::render_report(&resources, &plan);
+        p::info(
+            "Submit with at least the recommended fee; ledger state can move between \
+             simulation and submission.",
+        );
+    }
+
+    Ok(())
+}
+
 // ── Contract commands ─────────────────────────────────────────────────────────
 
 fn deploy_contract(args: DeploySimArgs) -> Result<()> {
@@ -938,4 +1092,80 @@ fn reset_sim() -> Result<()> {
     sim.reset();
     p::success("Simulator reset to initial state");
     Ok(())
+}
+
+#[cfg(test)]
+mod resource_arg_tests {
+    use super::*;
+
+    fn args() -> ResourcesArgs {
+        ResourcesArgs {
+            file: None,
+            contract: None,
+            function: None,
+            args: Vec::new(),
+            arg_types: Vec::new(),
+            network: "testnet".to_string(),
+            margin: simulation_resources::DEFAULT_FEE_MARGIN_PERCENT,
+            inclusion_fee: simulation_resources::DEFAULT_INCLUSION_FEE_STROOPS,
+            json: false,
+        }
+    }
+
+    #[test]
+    fn accepts_offline_file_source() {
+        let mut a = args();
+        a.file = Some(PathBuf::from("sim.json"));
+        assert!(validate_resources_args(&a).is_ok());
+    }
+
+    #[test]
+    fn accepts_live_contract_source() {
+        let mut a = args();
+        a.contract = Some("C".repeat(56));
+        a.function = Some("balance".to_string());
+        assert!(validate_resources_args(&a).is_ok());
+    }
+
+    #[test]
+    fn rejects_missing_source() {
+        let err = validate_resources_args(&args()).unwrap_err();
+        assert!(err.to_string().contains("--file"));
+        assert!(err.to_string().contains("--contract"));
+    }
+
+    #[test]
+    fn rejects_contract_without_function() {
+        let mut a = args();
+        a.contract = Some("C".repeat(56));
+        let err = validate_resources_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--function"));
+    }
+
+    #[test]
+    fn accepts_boundary_margin_and_rejects_one_over() {
+        let mut a = args();
+        a.file = Some(PathBuf::from("sim.json"));
+        a.margin = simulation_resources::MAX_FEE_MARGIN_PERCENT;
+        assert!(validate_resources_args(&a).is_ok());
+
+        a.margin = simulation_resources::MAX_FEE_MARGIN_PERCENT + 1;
+        assert!(validate_resources_args(&a)
+            .unwrap_err()
+            .to_string()
+            .contains("--margin"));
+    }
+
+    #[test]
+    fn rejects_mismatched_arg_types() {
+        let mut a = args();
+        a.contract = Some("C".repeat(56));
+        a.function = Some("transfer".to_string());
+        a.args = vec!["1".to_string(), "2".to_string()];
+        a.arg_types = vec!["u32".to_string()];
+        assert!(validate_resources_args(&a)
+            .unwrap_err()
+            .to_string()
+            .contains("one-to-one"));
+    }
 }

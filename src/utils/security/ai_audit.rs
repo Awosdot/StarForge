@@ -175,7 +175,8 @@ impl SecurityPatterns {
         if !violations.is_empty() {
             return Some(StaticCheckResult {
                 pattern_name: "reentrancy_risk".to_string(),
-                description: "Token transfer before state update (CEI violation)".to_string(),
+                description: "Token transfer before state update (reentrancy and CEI violation)"
+                    .to_string(),
                 severity: "critical".to_string(),
                 line_numbers: violations.iter().map(|(n, _)| n).copied().collect(),
                 snippets: violations.iter().map(|(_, s)| s.clone()).collect(),
@@ -260,6 +261,7 @@ impl SecurityPatterns {
                 if line.contains(op)
                     && !line.contains(checked_fn)
                     && !line.contains(&format!("{}{}", op, op))
+                    && !line.contains("->")
                 {
                     // Avoid false positives on operators like +=, -=, etc in checked context
                     if !line.contains("string") {
@@ -273,7 +275,8 @@ impl SecurityPatterns {
         if !violations.is_empty() {
             return Some(StaticCheckResult {
                 pattern_name: "unchecked_arithmetic".to_string(),
-                description: "Arithmetic without checked_ operations".to_string(),
+                description: "potential arithmetic overflow without checked_ operations"
+                    .to_string(),
                 severity: "medium".to_string(),
                 line_numbers: violations.iter().map(|(n, _)| n).copied().collect(),
                 snippets: violations.iter().map(|(_, s)| s.clone()).collect(),
@@ -301,7 +304,7 @@ impl SecurityPatterns {
         if !violations.is_empty() {
             return Some(StaticCheckResult {
                 pattern_name: "privacy_leak".to_string(),
-                description: "Sensitive data stored on-chain (not private)".to_string(),
+                description: "sensitive data stored on-chain (not private)".to_string(),
                 severity: "high".to_string(),
                 line_numbers: violations.iter().map(|(n, _)| n).copied().collect(),
                 snippets: violations.iter().map(|(_, s)| s.clone()).collect(),

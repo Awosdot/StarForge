@@ -45,7 +45,10 @@ pub struct HistoricalTrend {
     pub direction: String,
 }
 
-pub fn analyze_deployments(network: &str, contract_id: Option<&str>) -> Result<DeploymentMonitoringReport> {
+pub fn analyze_deployments(
+    network: &str,
+    contract_id: Option<&str>,
+) -> Result<DeploymentMonitoringReport> {
     let records = load_history()?;
     let filtered: Vec<_> = records
         .into_iter()
@@ -86,7 +89,10 @@ pub fn analyze_deployments(network: &str, contract_id: Option<&str>) -> Result<D
         durations.iter().sum::<f64>() / durations.len() as f64
     };
 
-    let unique_wallets: HashSet<_> = filtered.iter().map(|record| record.wallet.clone()).collect();
+    let unique_wallets: HashSet<_> = filtered
+        .iter()
+        .map(|record| record.wallet.clone())
+        .collect();
     let unique_contracts: HashSet<_> = filtered
         .iter()
         .filter_map(|record| record.contract_id.clone())
@@ -199,6 +205,9 @@ mod tests {
         let report = analyze_deployments("testnet", None).unwrap();
         assert_eq!(report.total_deployments, 0);
         assert_eq!(report.success_rate, 0.0);
-        assert!(report.alerts.iter().any(|alert| alert.title.contains("No immediate")));
+        assert!(report
+            .alerts
+            .iter()
+            .any(|alert| alert.title.contains("No immediate")));
     }
 }

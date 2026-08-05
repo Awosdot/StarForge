@@ -9,6 +9,7 @@ Browse every top-level command and its most important flags. For wallet, templat
 | `-q, --quiet` | Suppress banner and decorative output |
 | `--log-format human\|json` | Structured log format (default: `human`) |
 | `--log-dir <PATH>` | Optional rotating log directory |
+| `--correlation-id <ID>` | Tie every log line of this invocation together (8–64 chars of `[A-Za-z0-9_-]`); defaults to `$STARFORGE_CORRELATION_ID` or a generated value — see [CORRELATION_IDS.md](CORRELATION_IDS.md) |
 | `-h, --help` | Command help |
 | `-V, --version` | CLI version |
 
@@ -49,6 +50,10 @@ starforge tutorial next
 | `import` | Import from file or `--mnemonic` |
 | `sign` | Sign a payload with a saved wallet |
 | `multisig` | Multisig helpers (create, add-signer, submit) |
+
+`import --file` accepts a plaintext backup JSON or an encrypted bundle, detected
+automatically. See [WALLET_IMPORT_SECURITY.md](WALLET_IMPORT_SECURITY.md) for the
+limits enforced on untrusted backup files.
 
 ---
 
@@ -95,6 +100,10 @@ starforge multisig notify proposal.json --message "Please sign the treasury paym
 | `deploy --wasm <FILE>` | Prepare Soroban deployment |
 
 **`deploy` flags:** `--network`, `--wallet`, `--optimize`, `--simulate`, `--yes`, `--execute`
+
+`--simulate` and `--dry-run` print the simulated CPU, memory, and ledger
+footprint alongside the minimum resource fee and a recommended fee that
+includes a safety margin. See [SIMULATION_RESOURCES.md](SIMULATION_RESOURCES.md).
 
 ```bash
 starforge deploy --wasm target/wasm32v1-none/release/token.wasm \
@@ -189,6 +198,27 @@ Coverage analysis tracks Soroban contract functions, line spans, branch paths, u
 | `gas analyze <WASM>` | Heuristic gas/cpu report (`--network`) |
 | `gas optimize --target <IN> --output <OUT>` | Lightweight WASM shrink pass |
 | `gas diff <OLD> <NEW>` | Compare estimated costs |
+
+---
+
+## `simulate` / `cost` — resource fees
+
+| Command | Purpose |
+|---------|---------|
+| `simulate resources --file <JSON>` | Report CPU, memory, footprint, and minimum resource fee from a saved `simulateTransaction` response |
+| `simulate resources --contract <ID> --function <NAME>` | The same, simulated live against Soroban RPC |
+| `cost resources --file <JSON>` | Price a simulation and check it against configured budgets (`--enforce` to gate CI) |
+
+Shared flags: `--margin <PERCENT>` (default `20`), `--inclusion-fee <STROOPS>`
+(default `100`). `simulate resources` also takes `--json`.
+
+```bash
+starforge simulate resources --file simulation.json --json
+starforge simulate resources --contract CCPYZ... --function balance --network testnet
+starforge cost resources --file simulation.json --network mainnet --enforce
+```
+
+Full reference: [SIMULATION_RESOURCES.md](SIMULATION_RESOURCES.md).
 
 ---
 
@@ -330,6 +360,48 @@ See [GOVERNANCE.md](GOVERNANCE.md) for the full workflow.
 | `plugin install/list/run` | Dynamic plugin management |
 | `completions <SHELL>` | bash/zsh/fish completions |
 
+### `monitor`
+
+Live monitoring of contracts or wallets, including Soroban event streaming, routing, alerting, persistence, replay, and dashboard output.
+
+| Option | Purpose |
+|--------|---------|
+| `--contract <ID>` | Contract ID to monitor via Soroban RPC |
+| `--events <EVENTS>` | Comma-separated event names to filter |
+| `--type <TYPE>` | Soroban event type filter (`contract`, `system`, `diagnostic`) |
+| `--topic <TOPIC>` | Topic segment matcher, comma-separated, with `*` wildcards |
+| `--value <VALUE>` | Match event payload text |
+| `--transport <TRANSPORT>` | `auto`, `websocket`, or `http` transport selection |
+| `--websocket-url <URL>` | Override the derived WebSocket endpoint |
+| `--route <NAME=PATTERN>` | Route matching events into named lanes; repeatable |
+| `--alert <RULE>` | Alert rule in `pattern`, `severity:pattern`, or `severity:pattern:message` form |
+| `--persist [PATH]` | Persist matching events to JSONL, using the default StarForge event store path when PATH is omitted |
+| `--replay <PATH>` | Replay events from a JSONL event store instead of connecting live |
+| `--dashboard` | Render the event analytics dashboard |
+| `--trigger <PATTERN=COMMAND>` | Execute a shell command when a pattern matches; repeatable |
+| `--allow-triggers` | Required explicit opt-in before event triggers execute shell commands |
+| `--wallet <NAME>` | Wallet name to monitor |
+| `--threshold <AMOUNT>` | XLM threshold for notifications |
+| `--balance-alert <AMOUNT>` | Alert when wallet balance drops below this amount |
+| `--network <NETWORK>` | Network to use |
+| `--interval <SECONDS>` | Poll interval in seconds |
+
+Examples:
+
+```bash
+starforge monitor --contract CCPYZ... --transport websocket --dashboard
+starforge monitor --contract CCPYZ... --route swaps=swap --alert high:mint --persist
+starforge monitor --contract CCPYZ... --replay ~/.starforge/events/testnet-CCPYZ....jsonl --dashboard
+starforge monitor --contract CCPYZ... --trigger mint=./on-mint.sh --allow-triggers
+```
+
+Event stores use JSON Lines. Replay skips malformed records and deduplicates events by
+network, contract ID, and Soroban event ID. Triggers inherit event metadata through
+`STARFORGE_NETWORK`, `STARFORGE_CONTRACT_ID`, `STARFORGE_EVENT_ID`,
+`STARFORGE_EVENT_LEDGER`, `STARFORGE_EVENT_TYPE`, `STARFORGE_EVENT_TOPIC`, and
+`STARFORGE_EVENT_VALUE`. Treat trigger commands as trusted local code; they are disabled
+unless `--allow-triggers` is explicitly provided.
+
 ---
 
 ## External plugins
@@ -343,3 +415,7 @@ starforge my-plugin <args>
 
 - [API_REFERENCE.md](../API_REFERENCE.md) — detailed per-command examples and output samples
 - [DEVELOPER_GUIDE.md](../DEVELOPER_GUIDE.md) — contributing and local development
+- [SIMULATION_RESOURCES.md](SIMULATION_RESOURCES.md) — CPU, memory, footprint, and resource fees
+- [CORRELATION_IDS.md](CORRELATION_IDS.md) — correlating structured logs across an invocation
+- [CONFIGURATION.md](CONFIGURATION.md) — config parsing, overlays, and validation rules
+- [WALLET_IMPORT_SECURITY.md](WALLET_IMPORT_SECURITY.md) — limits on untrusted wallet backups

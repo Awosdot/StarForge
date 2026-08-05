@@ -151,7 +151,10 @@ async fn handle_discover(args: DiscoverArgs) -> Result<()> {
     if args.use_ai {
         if ollama::is_ollama_running().await {
             let prompt = apt::build_property_discovery_prompt(&source_code);
-            p::info(&format!("Sending to {} for AI-enhanced discovery...", args.model));
+            p::info(&format!(
+                "Sending to {} for AI-enhanced discovery...",
+                args.model
+            ));
             let response = ollama::generate(
                 &args.model,
                 &prompt,
@@ -342,10 +345,7 @@ fn handle_edge_cases(args: EdgeCasesArgs) -> Result<()> {
                 for invariant in &prop.invariants {
                     println!("      → {}", invariant);
                 }
-                println!(
-                    "    Confidence: {:.0}%",
-                    prop.confidence * 100.0
-                );
+                println!("    Confidence: {:.0}%", prop.confidence * 100.0);
                 println!();
             }
         }
@@ -359,7 +359,10 @@ async fn handle_shrink(args: ShrinkArgs) -> Result<()> {
 
     if args.use_ai && ollama::is_ollama_running().await {
         let prompt = apt::build_shrink_prompt(&args.test_code);
-        p::info(&format!("Generating shrink strategy with {}...", args.model));
+        p::info(&format!(
+            "Generating shrink strategy with {}...",
+            args.model
+        ));
         let response = ollama::generate(
             &args.model,
             &prompt,
@@ -391,14 +394,11 @@ async fn handle_shrink(args: ShrinkArgs) -> Result<()> {
             confidence: 0.5,
         };
         let prop = properties.first().unwrap_or(&default_prop);
-        let shrink = apt::generate_test_cases(
-            &[prop.clone()],
-            &[],
-            &apt::PropertyTestConfig::default(),
-        )
-        .first()
-        .and_then(|tc| tc.shrink_strategy.clone())
-        .unwrap_or_else(|| "shrink numerics toward 0, strings toward empty".to_string());
+        let shrink =
+            apt::generate_test_cases(&[prop.clone()], &[], &apt::PropertyTestConfig::default())
+                .first()
+                .and_then(|tc| tc.shrink_strategy.clone())
+                .unwrap_or_else(|| "shrink numerics toward 0, strings toward empty".to_string());
 
         match args.format.as_str() {
             "json" => {
@@ -491,11 +491,7 @@ fn print_generation_result(result: &apt::PropertyTestResult, format: &str) {
             println!("{}", "Generated Test Cases:".bold());
             println!();
             for test in &result.test_cases {
-                println!(
-                    "  {} {}",
-                    "●".cyan(),
-                    test.name.bright_white().bold()
-                );
+                println!("  {} {}", "●".cyan(), test.name.bright_white().bold());
                 println!("    Property: {}", test.property);
                 println!("    Outcome: {:?}", test.expected_outcome);
                 if let Some(ref shrink) = test.shrink_strategy {

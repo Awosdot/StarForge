@@ -42,7 +42,7 @@ pub fn load_history(config_dir: &Path) -> Result<Vec<HistoryEntry>> {
 }
 
 /// Save command history to disk atomically
-pub fn save_history(entries: &[HistoryEntry], config_dir: &PathBuf) -> Result<()> {
+pub fn save_history(entries: &[HistoryEntry], config_dir: &Path) -> Result<()> {
     // Ensure the config directory exists
     fs::create_dir_all(config_dir)?;
 

@@ -2,11 +2,11 @@
 //!
 //! Collects, analyzes, and provides predictive insights on test execution data.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 
 /// Represents a single test result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,8 +37,15 @@ impl TestAnalyticsData {
         } else {
             self.total_failed += 1;
             // Simple flaky detection: if failed after passed
-            if self.test_results.iter().any(|r| r.name == result.name && r.success) {
-                *self.flaky_test_patterns.entry(result.name.clone()).or_insert(0) += 1;
+            if self
+                .test_results
+                .iter()
+                .any(|r| r.name == result.name && r.success)
+            {
+                *self
+                    .flaky_test_patterns
+                    .entry(result.name.clone())
+                    .or_insert(0) += 1;
             }
         }
         self.total_duration_ms += result.duration_ms;
@@ -46,8 +53,11 @@ impl TestAnalyticsData {
     }
 
     pub fn success_rate(&self) -> f64 {
-        if self.total_tests_run == 0 { 0.0 }
-        else { (self.total_passed as f64) / (self.total_tests_run as f64) }
+        if self.total_tests_run == 0 {
+            0.0
+        } else {
+            (self.total_passed as f64) / (self.total_tests_run as f64)
+        }
     }
 }
 
@@ -71,7 +81,7 @@ impl TestAnalyticsService {
     pub async fn get_analytics(&self) -> TestAnalyticsData {
         self.analytics.read().await.clone()
     }
-    
+
     // Predictive insight placeholder
     pub async fn get_predictive_insights(&self) -> String {
         let data = self.analytics.read().await;

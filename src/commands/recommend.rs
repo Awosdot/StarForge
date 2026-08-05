@@ -81,15 +81,23 @@ pub async fn handle(
         p::kv("Tags", &request.tags.join(", "));
     }
     p::kv("Skill level", skill_level.label());
-    p::kv("Personalisation", if request.personalise { "on" } else { "off" });
-    p::kv("Community boost", if request.community_boost { "on" } else { "off" });
+    p::kv(
+        "Personalisation",
+        if request.personalise { "on" } else { "off" },
+    );
+    p::kv(
+        "Community boost",
+        if request.community_boost { "on" } else { "off" },
+    );
     println!();
 
     // ── Run the recommendation engine ────────────────────────────────────────
     let recommendations = rec::recommend(&request).await?;
 
     if recommendations.is_empty() {
-        p::info("No templates found in the registry. Run `starforge template init` to populate it.");
+        p::info(
+            "No templates found in the registry. Run `starforge template init` to populate it.",
+        );
         return Ok(());
     }
 

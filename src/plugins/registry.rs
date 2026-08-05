@@ -266,13 +266,6 @@ pub struct UninstallOptions {
     pub assume_yes: bool,
 }
 
-/// A command registered by a plugin.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegisteredCommand {
-    pub name: String,
-    pub description: String,
-}
-
 /// Report returned after uninstalling a plugin.
 #[derive(Debug, Clone)]
 pub struct UninstallReport {

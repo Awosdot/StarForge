@@ -571,6 +571,76 @@ fn pattern_deployment_wasm_hash_mismatch() -> DebugFinding {
     }
 }
 
+// ── Compilation & configuration error patterns (Issue #511) ─────────────────
+
+fn pattern_compilation_error() -> DebugFinding {
+    DebugFinding {
+        id: "COMPILE001".into(),
+        severity: Severity::High,
+        category: "Compilation".into(),
+        title: "Rust compiler error in contract source".into(),
+        explanation: "The contract source failed to compile. This is typically a type \
+            mismatch, an unresolved import/module path, a missing trait implementation, or \
+            a borrow-checker violation reported by `rustc`/`cargo build`."
+            .into(),
+        root_cause: "Common causes: mismatched types between a function's declared return \
+            type and its actual returned value (E0308), a `use` path that doesn't resolve \
+            to an existing module/item (E0433), a missing `derive` or trait bound required by \
+            the soroban_sdk macros, or moving a value that is used again afterwards."
+            .into(),
+        fix_suggestion: "Run `cargo build --target wasm32-unknown-unknown 2>&1 | head -50` \
+            and read the first reported error — later errors are often just consequences of \
+            the first one. For E0308, check the exact types on both sides of the mismatch. \
+            For E0433/E0432, verify the `use` path and that the target module is declared \
+            with `pub mod` in its parent `mod.rs`. For borrow errors, consider cloning the \
+            value or restructuring so it is moved only once."
+            .into(),
+        reproduction_steps: vec![
+            "Run `cargo build --target wasm32-unknown-unknown`.".into(),
+            "Copy the first `error[EXXXX]` block reported.".into(),
+            "Apply the compiler's suggested fix, then rebuild.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Use `cargo check` for faster iteration than a full build.".into(),
+            "Run `rustc --explain EXXXX` for a detailed explanation of any error code.".into(),
+        ],
+        references: vec!["https://doc.rust-lang.org/error_codes/error-index.html".into()],
+    }
+}
+
+fn pattern_configuration_error() -> DebugFinding {
+    DebugFinding {
+        id: "CONFIG001".into(),
+        severity: Severity::Medium,
+        category: "Configuration".into(),
+        title: "Invalid or missing StarForge configuration".into(),
+        explanation: "StarForge could not read a required configuration value — typically \
+            an unset network entry, a malformed `~/.starforge/config.toml`, a missing wallet, \
+            or a required environment variable that isn't set."
+            .into(),
+        root_cause: "Common causes: `config.toml` has invalid TOML syntax or a network name \
+            that isn't defined under `[networks]`, the active `--network` doesn't match any \
+            configured network, a referenced wallet was never created, or an env var like \
+            `STARFORGE_AI_API_KEY` / `ANTHROPIC_API_KEY` is required but unset."
+            .into(),
+        fix_suggestion: "Run `starforge config show` to inspect the current configuration. \
+            Validate network settings with `starforge network show`. Re-create missing \
+            wallets with `starforge wallet create <name>`. If an API-key error is shown, \
+            export the required environment variable before retrying."
+            .into(),
+        reproduction_steps: vec![
+            "Run a command that depends on config (e.g. `starforge deploy`).".into(),
+            "Observe the configuration/parse error.".into(),
+            "Run `starforge config show` to locate the invalid or missing value.".into(),
+        ],
+        breakpoint_hints: vec![
+            "Inspect `~/.starforge/config.toml` for syntax errors.".into(),
+            "Check for required environment variables referenced in the error message.".into(),
+        ],
+        references: vec!["https://developers.stellar.org/docs/networks".into()],
+    }
+}
+
 // ── Pattern registry ─────────────────────────────────────────────────────────
 
 fn all_patterns() -> Vec<ErrorPattern> {
@@ -736,6 +806,36 @@ fn all_patterns() -> Vec<ErrorPattern> {
             ],
             finding: pattern_deployment_wasm_hash_mismatch,
         },
+        // Compilation & configuration patterns (Issue #511)
+        ErrorPattern {
+            keywords: &[
+                "error[e",
+                "expected `",
+                "mismatched types",
+                "cannot find",
+                "unresolved import",
+                "the trait bound",
+                "borrow checker",
+                "cargo build",
+                "rustc",
+                "compil",
+            ],
+            finding: pattern_compilation_error,
+        },
+        ErrorPattern {
+            keywords: &[
+                "config.toml",
+                "configuration",
+                "unknown network",
+                "no such network",
+                "config not found",
+                "missing wallet",
+                "environment variable",
+                "api key not configured",
+                "api_key not configured",
+            ],
+            finding: pattern_configuration_error,
+        },
     ]
 }
 
@@ -783,16 +883,15 @@ pub fn inspect_variable_state(variables: &[(String, String)]) -> Vec<String> {
         let value_lower = value.to_lowercase();
 
         // Detect potential zero-value bugs
-        if value == "0" || value == "0i128" || value == "0u128" {
-            if name_lower.contains("amount")
+        if (value == "0" || value == "0i128" || value == "0u128")
+            && (name_lower.contains("amount")
                 || name_lower.contains("balance")
-                || name_lower.contains("fee")
-            {
-                insights.push(format!(
-                    "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
-                    name
-                ));
-            }
+                || name_lower.contains("fee"))
+        {
+            insights.push(format!(
+                "⚠  '{}' is zero — confirm this is intentional for a value-carrying field.",
+                name
+            ));
         }
 
         // Detect max-value boundary conditions
@@ -1020,6 +1119,28 @@ mod tests {
     fn detects_storage_missing() {
         let report = analyse("storage key not found: DataKey::Balance", None, None, None);
         assert!(report.findings.iter().any(|f| f.id == "STORE001"));
+    }
+
+    #[test]
+    fn detects_compilation_error() {
+        let report = analyse(
+            "error[E0308]: mismatched types, expected `u64`, found `i128`",
+            None,
+            None,
+            None,
+        );
+        assert!(report.findings.iter().any(|f| f.id == "COMPILE001"));
+    }
+
+    #[test]
+    fn detects_configuration_error() {
+        let report = analyse(
+            "failed to load config.toml: unknown network 'foo'",
+            None,
+            None,
+            None,
+        );
+        assert!(report.findings.iter().any(|f| f.id == "CONFIG001"));
     }
 
     #[test]

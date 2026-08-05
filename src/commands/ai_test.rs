@@ -252,7 +252,7 @@ async fn handle_generate(args: GenerateArgs) -> Result<()> {
     p::header("AI Test Generation");
 
     let source_code = ata::read_source_file(&args.path)?;
-    let contract_name = args.name.unwrap_or_else(|| {
+    let contract_name = args.name.clone().unwrap_or_else(|| {
         args.path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -261,18 +261,24 @@ async fn handle_generate(args: GenerateArgs) -> Result<()> {
 
     let test_type = parse_test_type(&args.test_type)?;
 
-    let existing_tests = if let Some(test_path) = &args.existing_tests {
-        Some(fs::read_to_string(test_path)
-            .with_context(|| format!("Failed to read existing tests: {}", test_path.display()))?)
-    } else {
-        None
-    };
+    let existing_tests =
+        if let Some(test_path) = &args.existing_tests {
+            Some(fs::read_to_string(test_path).with_context(|| {
+                format!("Failed to read existing tests: {}", test_path.display())
+            })?)
+        } else {
+            None
+        };
 
     let coverage_data = if let Some(coverage_path) = &args.coverage_report {
-        let coverage_json = fs::read_to_string(coverage_path)
-            .with_context(|| format!("Failed to read coverage report: {}", coverage_path.display()))?;
-        let coverage: ata::CoverageInput = serde_json::from_str(&coverage_json)
-            .context("Failed to parse coverage report JSON")?;
+        let coverage_json = fs::read_to_string(coverage_path).with_context(|| {
+            format!(
+                "Failed to read coverage report: {}",
+                coverage_path.display()
+            )
+        })?;
+        let coverage: ata::CoverageInput =
+            serde_json::from_str(&coverage_json).context("Failed to parse coverage report JSON")?;
         Some(coverage)
     } else {
         None
@@ -362,7 +368,9 @@ fn generate_locally(
 
     for priority_suggestion in &priorities {
         if !request.focus_functions.is_empty()
-            && !request.focus_functions.contains(&priority_suggestion.function_name)
+            && !request
+                .focus_functions
+                .contains(&priority_suggestion.function_name)
         {
             continue;
         }
@@ -387,21 +395,13 @@ fn generate_locally(
             }
 
             let code = generate_test_code(func, &test_type, &request.contract_name);
-            let test_name = format!(
-                "test_{}_{}",
-                func.name,
-                test_type_str.replace('_', "")
-            );
+            let test_name = format!("test_{}_{}", func.name, test_type_str.replace('_', ""));
 
             tests.push(ata::GeneratedTest {
                 name: test_name,
                 test_type,
                 function_under_test: func.name.clone(),
-                description: format!(
-                    "{} test for {}",
-                    test_type_str.replace('_', " "),
-                    func.name
-                ),
+                description: format!("{} test for {}", test_type_str.replace('_', " "), func.name),
                 code,
                 priority: priority_suggestion.priority.clone(),
                 edge_cases_covered: generate_edge_case_descriptions(func),
@@ -448,35 +448,38 @@ fn test_{}_{}() {{
     {}
     {}
 }}",
-        test_suffix,
-        func.name,
-        func.name,
-        test_suffix,
-        setup,
-        assertions
+        test_suffix, func.name, func.name, test_suffix, setup, assertions
     )
 }
 
 fn generate_setup_code(func: &ata::FunctionInfo, contract_name: &str) -> String {
     let mut lines = Vec::new();
 
-    lines.push(format!(
-        "let contract_address = Address::random(&env);"
-    ));
+    lines.push(format!("let contract_address = Address::random(&env);"));
 
     for param in &func.params {
         match param.param_type.as_str() {
             t if t.contains("Address") => {
                 lines.push(format!("let {} = Address::random(&env);", param.name));
             }
-            t if t.contains("u64") || t.contains("i64") || t.contains("u32") || t.contains("i32") => {
+            t if t.contains("u64")
+                || t.contains("i64")
+                || t.contains("u32")
+                || t.contains("i32") =>
+            {
                 lines.push(format!("let {}: {} = 100;", param.name, param.param_type));
             }
             t if t.contains("String") => {
-                lines.push(format!("let {}: soroban_sdk::String = \"test\".into();", param.name));
+                lines.push(format!(
+                    "let {}: soroban_sdk::String = \"test\".into();",
+                    param.name
+                ));
             }
             _ => {
-                lines.push(format!("// TODO: set up {} ({})", param.name, param.param_type));
+                lines.push(format!(
+                    "// TODO: set up {} ({})",
+                    param.name, param.param_type
+                ));
             }
         }
     }
@@ -492,9 +495,15 @@ fn generate_assertions(func: &ata::FunctionInfo, test_type: &ata::TestType) -> S
                     func.name,
                     func.params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", &"))
             } else {
-                format!("contract.{}(&{});\n    // Assert state changes or event emission",
+                format!(
+                    "contract.{}(&{});\n    // Assert state changes or event emission",
                     func.name,
-                    func.params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", &"))
+                    func.params
+                        .iter()
+                        .map(|p| p.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", &")
+                )
             }
         }
         ata::TestType::EdgeCase => {
@@ -502,7 +511,8 @@ fn generate_assertions(func: &ata::FunctionInfo, test_type: &ata::TestType) -> S
             assertions.push("// Test with zero/empty values".to_string());
             assertions.push("let zero_env = Env::default();".to_string());
             assertions.push(format!("// Test {} with boundary values", func.name));
-            assertions.push("assert!(true); // Replace with specific boundary assertions".to_string());
+            assertions
+                .push("assert!(true); // Replace with specific boundary assertions".to_string());
             assertions.join("\n    ")
         }
         ata::TestType::Security => {
@@ -568,7 +578,11 @@ fn generate_security_checks(func: &ata::FunctionInfo) -> Vec<String> {
         checks.push("Failed auth must not mutate state".to_string());
         checks.push("Replay protection verified".to_string());
     }
-    if func.params.iter().any(|p| p.param_type.contains("i64") || p.param_type.contains("u64")) {
+    if func
+        .params
+        .iter()
+        .any(|p| p.param_type.contains("i64") || p.param_type.contains("u64"))
+    {
         checks.push("Overflow/underflow protection".to_string());
         checks.push("Negative amount handling".to_string());
     }
@@ -598,7 +612,8 @@ fn generate_warnings(analysis: &ata::ContractAnalysis) -> Vec<String> {
         ));
     }
     if analysis.storage_accesses.len() > 5 {
-        warnings.push("Contract has many storage accesses - ensure storage mock coverage".to_string());
+        warnings
+            .push("Contract has many storage accesses - ensure storage mock coverage".to_string());
     }
     if !analysis.external_calls.is_empty() {
         warnings.push("Contract makes external calls - consider integration tests".to_string());
@@ -642,15 +657,9 @@ fn handle_generate_output(
                     test.description
                 );
                 println!("    Function: {}", test.function_under_test);
-                println!(
-                    "    Edge cases: {}",
-                    test.edge_cases_covered.join(", ")
-                );
+                println!("    Edge cases: {}", test.edge_cases_covered.join(", "));
                 if !test.security_checks.is_empty() {
-                    println!(
-                        "    Security: {}",
-                        test.security_checks.join(", ")
-                    );
+                    println!("    Security: {}", test.security_checks.join(", "));
                 }
                 println!();
             }
@@ -691,10 +700,7 @@ fn handle_generate_output(
         }
     }
 
-    p::success(&format!(
-        "Generated {} test cases",
-        response.tests.len()
-    ));
+    p::success(&format!("Generated {} test cases", response.tests.len()));
 
     Ok(())
 }
@@ -703,7 +709,7 @@ fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
     p::header("Contract Analysis for Testing");
 
     let source_code = ata::read_source_file(&args.path)?;
-    let contract_name = args.name.unwrap_or_else(|| {
+    let contract_name = args.name.clone().unwrap_or_else(|| {
         args.path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -734,12 +740,21 @@ fn handle_analyze(args: AnalyzeArgs) -> Result<()> {
             p::kv("Total functions", &analysis.total_functions.to_string());
             p::kv("Public functions", &analysis.public_functions.to_string());
             p::kv("Entry points", &analysis.entry_points.to_string());
-            p::kv("Mutating functions", &analysis.mutating_functions.to_string());
-            p::kv("Read-only functions", &analysis.read_only_functions.to_string());
+            p::kv(
+                "Mutating functions",
+                &analysis.mutating_functions.to_string(),
+            );
+            p::kv(
+                "Read-only functions",
+                &analysis.read_only_functions.to_string(),
+            );
             p::kv("Complex functions", &analysis.complex_functions.to_string());
 
             if !analysis.storage_accesses.is_empty() {
-                p::kv("Storage accesses", &analysis.storage_accesses.len().to_string());
+                p::kv(
+                    "Storage accesses",
+                    &analysis.storage_accesses.len().to_string(),
+                );
             }
             if !analysis.external_calls.is_empty() {
                 p::kv("External calls", &analysis.external_calls.len().to_string());
@@ -788,20 +803,27 @@ async fn handle_optimize(args: OptimizeArgs) -> Result<()> {
     let test_code = fs::read_to_string(&args.tests)
         .with_context(|| format!("Failed to read tests: {}", args.tests.display()))?;
 
-    let goals: Vec<ata::OptimizationGoal> = args.goals.iter().map(|g| match g.as_str() {
-        "duplication" | "reduce_duplication" => ata::OptimizationGoal::ReduceDuplication,
-        "performance" | "improve_performance" => ata::OptimizationGoal::ImprovePerformance,
-        "coverage" | "increase_coverage" => ata::OptimizationGoal::IncreaseCoverage,
-        "assertions" | "better_assertions" => ata::OptimizationGoal::BetterAssertions,
-        "setup" | "simplify_setup" => ata::OptimizationGoal::SimplifySetup,
-        _ => ata::OptimizationGoal::All,
-    }).collect();
+    let goals: Vec<ata::OptimizationGoal> = args
+        .goals
+        .iter()
+        .map(|g| match g.as_str() {
+            "duplication" | "reduce_duplication" => ata::OptimizationGoal::ReduceDuplication,
+            "performance" | "improve_performance" => ata::OptimizationGoal::ImprovePerformance,
+            "coverage" | "increase_coverage" => ata::OptimizationGoal::IncreaseCoverage,
+            "assertions" | "better_assertions" => ata::OptimizationGoal::BetterAssertions,
+            "setup" | "simplify_setup" => ata::OptimizationGoal::SimplifySetup,
+            _ => ata::OptimizationGoal::All,
+        })
+        .collect();
 
     let quality_before = ata::calculate_test_quality_score(&test_code, &source_code);
 
     p::kv("Source", &args.source.display().to_string());
     p::kv("Tests", &args.tests.display().to_string());
-    p::kv("Current quality score", &format!("{:.1}/100", quality_before.overall));
+    p::kv(
+        "Current quality score",
+        &format!("{:.1}/100", quality_before.overall),
+    );
     p::kv("Goals", &args.goals.join(", "));
     println!();
 
@@ -809,7 +831,7 @@ async fn handle_optimize(args: OptimizeArgs) -> Result<()> {
         let prompt = ata::build_optimization_prompt(&ata::TestOptimizationRequest {
             test_code: test_code.clone(),
             contract_code: source_code.clone(),
-            optimization_goals: goals,
+            optimization_goals: goals.clone(),
         });
 
         if ollama::is_ollama_running().await {
@@ -850,13 +872,7 @@ async fn handle_optimize(args: OptimizeArgs) -> Result<()> {
     } else {
         let result = optimize_locally(&test_code, &source_code, &goals);
         let quality_after = ata::calculate_test_quality_score(&result, &source_code);
-        print_optimization_result(
-            &test_code,
-            &result,
-            &quality_before,
-            &quality_after,
-            &args,
-        )?;
+        print_optimization_result(&test_code, &result, &quality_before, &quality_after, &args)?;
     }
 
     Ok(())
@@ -874,7 +890,8 @@ fn optimize_locally(
     {
         let setup_pattern = "let env = Env::default();";
         if optimized.matches(setup_pattern).count() > 2 {
-            let helper = "fn setup_test_env() -> soroban_sdk::tests::Env {\n    Env::default()\n}\n\n";
+            let helper =
+                "fn setup_test_env() -> soroban_sdk::tests::Env {\n    Env::default()\n}\n\n";
             optimized = format!("{}\n{}", helper, optimized);
         }
     }
@@ -884,11 +901,11 @@ fn optimize_locally(
     {
         optimized = optimized.replace(
             "assert!(true);",
-            "assert!(result.is_ok(), \"Operation should succeed\");"
+            "assert!(result.is_ok(), \"Operation should succeed\");",
         );
         optimized = optimized.replace(
             "assert_eq!(1, 1);",
-            "assert_eq!(actual, expected, \"Values should match\");"
+            "assert_eq!(actual, expected, \"Values should match\");",
         );
     }
 
@@ -1065,12 +1082,16 @@ fn handle_coverage(args: CoverageArgs) -> Result<()> {
                     suggestion.description
                 );
                 println!("    Type: {:?}", suggestion.suggestion_type);
-                println!("    Estimated lines covered: {}", suggestion.estimated_lines_covered);
+                println!(
+                    "    Estimated lines covered: {}",
+                    suggestion.estimated_lines_covered
+                );
                 println!("    Difficulty: {}", suggestion.difficulty);
                 println!();
             }
 
-            let total_improvement: u32 = suggestions.iter().map(|s| s.estimated_lines_covered).sum();
+            let total_improvement: u32 =
+                suggestions.iter().map(|s| s.estimated_lines_covered).sum();
             p::separator();
             p::kv(
                 "Potential improvement",
@@ -1133,11 +1154,7 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
             vec![test_path.clone()]
         }
     } else {
-        let project_path = args
-            .path
-            .parent()
-            .unwrap_or(&args.path)
-            .to_path_buf();
+        let project_path = args.path.parent().unwrap_or(&args.path).to_path_buf();
         ata::find_test_files(&project_path)
     };
 
@@ -1146,18 +1163,18 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
         return Ok(());
     }
 
-    let mut all_outdated = Vec::new();
-    let mut all_broken = Vec::new();
-    let mut all_missing = Vec::new();
-    let mut all_recommendations = Vec::new();
+    let mut all_outdated: Vec<ata::OutdatedTest> = Vec::new();
+    let all_broken: Vec<ata::BrokenTest> = Vec::new();
+    let mut all_missing: Vec<ata::MissingTest> = Vec::new();
+    let all_recommendations: Vec<String> = Vec::new();
 
     for test_file in &test_files {
         let test_code = fs::read_to_string(test_file)
             .with_context(|| format!("Failed to read test file: {}", test_file.display()))?;
 
         let source_analysis = ata::analyze_contract_for_testing(&source_code)?;
-        let test_analysis = ata::analyze_contract_for_testing(&test_code)
-            .unwrap_or_else(|_| ata::ContractAnalysis {
+        let test_analysis = ata::analyze_contract_for_testing(&test_code).unwrap_or_else(|_| {
+            ata::ContractAnalysis {
                 total_functions: 0,
                 public_functions: 0,
                 entry_points: 0,
@@ -1167,7 +1184,8 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
                 functions: vec![],
                 storage_accesses: vec![],
                 external_calls: vec![],
-            });
+            }
+        });
 
         let source_func_names: Vec<String> = source_analysis
             .functions
@@ -1209,7 +1227,10 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
             });
         }
 
-        if test_code.lines().any(|l| l.contains("unwrap()") && l.contains("#[test]")) {
+        if test_code
+            .lines()
+            .any(|l| l.contains("unwrap()") && l.contains("#[test]"))
+        {
             all_outdated.push(ata::OutdatedTest {
                 test_name: "uses_unwrap_in_test".to_string(),
                 reason: "Test uses unwrap() which may panic silently".to_string(),
@@ -1244,7 +1265,10 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
             }
         }
         _ => {
-            p::kv("Maintenance score", &format!("{:.1}/100", maintenance_score));
+            p::kv(
+                "Maintenance score",
+                &format!("{:.1}/100", maintenance_score),
+            );
             println!();
 
             if !all_outdated.is_empty() {
@@ -1254,11 +1278,7 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
                     all_outdated.len()
                 );
                 for test in &all_outdated {
-                    println!(
-                        "  [{}] {}",
-                        test.severity.to_uppercase(),
-                        test.test_name
-                    );
+                    println!("  [{}] {}", test.severity.to_uppercase(), test.test_name);
                     println!("    Reason: {}", test.reason);
                     println!("    Fix: {}", test.suggested_fix);
                 }
@@ -1275,11 +1295,7 @@ fn handle_maintain(args: MaintainArgs) -> Result<()> {
             }
 
             if !all_missing.is_empty() {
-                println!(
-                    "{} ({})",
-                    "Missing Tests:".cyan().bold(),
-                    all_missing.len()
-                );
+                println!("{} ({})", "Missing Tests:".cyan().bold(), all_missing.len());
                 for test in &all_missing {
                     println!("  {} — {}", test.function_name, test.reason);
                 }
@@ -1300,14 +1316,18 @@ async fn handle_mocks(args: MocksArgs) -> Result<()> {
 
     let source_code = ata::read_source_file(&args.source)?;
 
-    let mock_types: Vec<ata::MockType> = args.types.iter().map(|t| match t.as_str() {
-        "address" => ata::MockType::Address,
-        "storage" => ata::MockType::Storage,
-        "contract" => ata::MockType::Contract,
-        "env" => ata::MockType::Env,
-        "events" => ata::MockType::Events,
-        _ => ata::MockType::All,
-    }).collect();
+    let mock_types: Vec<ata::MockType> = args
+        .types
+        .iter()
+        .map(|t| match t.as_str() {
+            "address" => ata::MockType::Address,
+            "storage" => ata::MockType::Storage,
+            "contract" => ata::MockType::Contract,
+            "env" => ata::MockType::Env,
+            "events" => ata::MockType::Events,
+            _ => ata::MockType::All,
+        })
+        .collect();
 
     let suggestions = ata::generate_mock_suggestions(&source_code);
 
@@ -1526,15 +1546,19 @@ async fn handle_test_data(args: TestDataArgs) -> Result<()> {
 
     let source_code = ata::read_source_file(&args.source)?;
 
-    let data_types: Vec<ata::DataType> = args.types.iter().map(|t| match t.as_str() {
-        "address" => ata::DataType::Address,
-        "amount" => ata::DataType::Amount,
-        "string" => ata::DataType::String,
-        "bytes" => ata::DataType::Bytes,
-        "timestamp" => ata::DataType::Timestamp,
-        "boolean" => ata::DataType::Boolean,
-        _ => ata::DataType::All,
-    }).collect();
+    let data_types: Vec<ata::DataType> = args
+        .types
+        .iter()
+        .map(|t| match t.as_str() {
+            "address" => ata::DataType::Address,
+            "amount" => ata::DataType::Amount,
+            "string" => ata::DataType::String,
+            "bytes" => ata::DataType::Bytes,
+            "timestamp" => ata::DataType::Timestamp,
+            "boolean" => ata::DataType::Boolean,
+            _ => ata::DataType::All,
+        })
+        .collect();
 
     let suggestions = ata::generate_test_data_suggestions(&source_code);
 
@@ -1595,8 +1619,7 @@ fn generate_local_test_data(suggestions: &[ata::TestDataSuggestion], count: u32)
                 code.push_str(&format!(
                     "pub fn generate_{}_addresses(env: &Env, count: u32) -> Vec<Address> {{\n\
                      \x20   (0..count).map(|_| Address::random(env)).collect()\n\
-                     }}\n\n"
-                    ,
+                     }}\n\n",
                     suggestion.field
                 ));
                 code.push_str(&format!(
@@ -1605,8 +1628,7 @@ fn generate_local_test_data(suggestions: &[ata::TestDataSuggestion], count: u32)
                      \x20       Address::random(env),  // Random valid address\n\
                      \x20       // TODO: Add zero address, self-referencing, contract address\n\
                      \x20   ]\n\
-                     }}\n\n"
-                    ,
+                     }}\n\n",
                     suggestion.field
                 ));
             }
@@ -1614,8 +1636,7 @@ fn generate_local_test_data(suggestions: &[ata::TestDataSuggestion], count: u32)
                 code.push_str(&format!(
                     "pub fn generate_{}_values(count: u32) -> Vec<i64> {{\n\
                      \x20   vec![0, 1, 100, 1_000, 1_000_000, i64::MAX]\n\
-                     }}\n\n"
-                    ,
+                     }}\n\n",
                     suggestion.field
                 ));
                 code.push_str(&format!(
@@ -1628,8 +1649,7 @@ fn generate_local_test_data(suggestions: &[ata::TestDataSuggestion], count: u32)
                      \x20       -1,          // Negative one\n\
                      \x20       1_000_000,   // Large amount\n\
                      \x20   ]\n\
-                     }}\n\n"
-                    ,
+                     }}\n\n",
                     suggestion.field
                 ));
             }
@@ -1637,8 +1657,7 @@ fn generate_local_test_data(suggestions: &[ata::TestDataSuggestion], count: u32)
                 code.push_str(&format!(
                     "pub fn generate_{}_values(count: u32) -> Vec<soroban_sdk::String> {{\n\
                      \x20   vec![\"test\".into(), \"hello\".into(), \"a\".repeat(100).into()]\n\
-                     }}\n\n"
-                    ,
+                     }}\n\n",
                     suggestion.field
                 ));
                 code.push_str(&format!(
@@ -1650,15 +1669,13 @@ fn generate_local_test_data(suggestions: &[ata::TestDataSuggestion], count: u32)
                      \x20       \"special!@#$%^&*()\".into(),          // Special characters\n\
                      \x20       \"unicode: 🚀 🔐 💰\".into(),       // Unicode\n\
                      \x20   ]\n\
-                     }}\n\n"
-                    ,
+                     }}\n\n",
                     suggestion.field
                 ));
             }
             _ => {
                 code.push_str(&format!(
-                    "// TODO: Implement generators for type '{}'\n\n"
-                    ,
+                    "// TODO: Implement generators for type '{}'\n\n",
                     suggestion.data_type
                 ));
             }
@@ -1749,7 +1766,11 @@ fn handle_quality(args: QualityArgs) -> Result<()> {
             );
             p::kv(
                 "Has error handling",
-                if score.has_error_handling { "✓" } else { "✗" },
+                if score.has_error_handling {
+                    "✓"
+                } else {
+                    "✗"
+                },
             );
             println!();
 

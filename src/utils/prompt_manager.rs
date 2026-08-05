@@ -122,6 +122,32 @@ impl PromptManager {
                 "Write thorough Rust unit tests for this Soroban contract. Cover edge cases and authorization. \
                 Code: {{ code }}"
             )?;
+            self.add_prompt_and_version(
+                "code_explainer",
+                "code_explanation",
+                "Multi-level AI code explanation",
+                "v1",
+                "You are an expert Soroban/Rust instructor. Explain the provided smart contract code.\n\
+                 The user requested the explanation in {{ language }}.\n\
+                 \n\
+                 Explanation Level: {{ level }}
+                {% if level == 'beginner' %}
+                Use high-level concepts and simple analogies. Avoid deep technical jargon.
+                {% elif level == 'intermediate' %}
+                Focus on function details, parameter passing, and logic flow.
+                {% elif level == 'advanced' %}
+                Focus on Soroban implementation details, memory layout, and state management.
+                {% elif level == 'expert' %}
+                Focus heavily on gas optimization, security patterns, and low-level architecture.
+                {% endif %}
+
+                REQUIREMENTS:
+                1. Always output a Mermaid markdown diagram (```mermaid) representing the code architecture or logic flow.
+                2. Include Markdown links to official Soroban/Stellar documentation for key concepts discussed.
+                
+                Code to explain:
+                {{ code }}"
+            )?;
         }
         Ok(())
     }

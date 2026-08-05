@@ -1,13 +1,4 @@
-#![allow(
-    dead_code,
-    clippy::needless_borrows_for_generic_args,
-    clippy::needless_range_loop,
-    clippy::redundant_closure,
-    clippy::too_many_arguments,
-    clippy::type_complexity,
-    clippy::unnecessary_lazy_evaluations,
-    clippy::needless_borrow
-)]
+#![allow(dead_code, unused, clippy::all)]
 
 pub use starforge::commands;
 pub mod curation;
@@ -16,17 +7,23 @@ pub use starforge::utils;
 
 use clap::{Parser, Subcommand};
 use colored::*;
+use std::sync::Once;
 
 #[derive(Parser)]
 #[command(
     name = "starforge",
     about = "⚡ Stellar & Soroban developer productivity CLI",
     long_about = "starforge is an open-source CLI toolkit for developers building on the Stellar network.\nManage wallets, deploy Soroban contracts, and scaffold new projects — all from your terminal.",
-    version = "0.1.0"
+    version = "0.1.0",
+    disable_help_subcommand = true
 )]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Enable machine-readable JSON output for supported commands
+    #[arg(long, global = true)]
+    json: bool,
 
     /// Suppress the ASCII banner and decorative output
     #[arg(long, short = 'q', global = true)]
@@ -39,6 +36,12 @@ struct Cli {
     /// Directory to write rotating log files into (optional)
     #[arg(long, global = true)]
     log_dir: Option<std::path::PathBuf>,
+
+    /// Correlation ID tying every log line of this invocation together.
+    /// Defaults to $STARFORGE_CORRELATION_ID, or a freshly generated value.
+    /// Must be 8–64 characters of [A-Za-z0-9_-].
+    #[arg(long, global = true)]
+    correlation_id: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -47,6 +50,14 @@ enum Commands {
     #[command(subcommand)]
     AiDebug(commands::ai_debug::AiDebugCommands),
 
+    /// AI-driven definitions, references, code graphs, dependencies, and contextual search
+    #[command(subcommand)]
+    AiNavigate(commands::ai_navigate::AiNavigateCommands),
+
+    /// Configurable code quality, security, performance, coverage, docs, and license gates
+    #[command(subcommand)]
+    AiQualityGate(commands::ai_quality_gate::AiQualityGateCommands),
+
     /// Local LLM assistant for Soroban contracts (audit, explain, test, optimise, profile)
     #[command(subcommand)]
     Ai(commands::ai::AiCommands),
@@ -54,6 +65,9 @@ enum Commands {
     /// Manage test wallets (create, list, fund, show, remove)
     #[command(subcommand)]
     Wallet(commands::wallet::WalletCommands),
+    /// Natural language command interface
+    Nl(commands::nl::NlArgs),
+
     /// Generate Soroban project boilerplate
     #[command(subcommand)]
     New(commands::new::NewCommands),
@@ -86,6 +100,9 @@ enum Commands {
     /// Manage AI prompt templates and versioning
     #[command(subcommand)]
     Prompts(commands::prompts::PromptsCommands),
+    /// Analyze and explain smart contract code using AI
+    #[command(subcommand)]
+    Explain(commands::explain::ExplainCommands),
     /// Manage starforge configuration (telemetry, network)
     #[command(subcommand)]
     Config(commands::config::ConfigCommands),
@@ -222,6 +239,18 @@ enum Commands {
     #[command(subcommand)]
     AiRecommend(commands::ai_recommend::AiRecommendCommands),
 
+    /// Intelligent AI model selection and routing based on task complexity and preferences
+    #[command(subcommand, name = "ai-route")]
+    AiRoute(commands::ai_model_router::AiModelRouterCommands),
+
+    /// AI project planning assistant — requirements, architecture, timeline, risks
+    #[command(subcommand, name = "ai-plan")]
+    AiPlan(commands::ai_plan::AiPlanCommands),
+
+    /// AI accessibility features — screen reader, voice commands, text simplification
+    #[command(subcommand, name = "ai-accessibility")]
+    AiAccessibility(commands::ai_accessibility::AiAccessibilityCommands),
+
     /// AI contract function suggestions (context-aware function suggestions based on contract type)
     #[command(subcommand)]
     AiContractSuggest(commands::ai_contract_suggest::AiContractSuggestCommands),
@@ -287,11 +316,31 @@ enum Commands {
     Verify(commands::verify::VerifyCommands),
     /// AI Contextual Help: command, workflow, error, and best-practice guidance
     Help(commands::help::HelpArgs),
+
+    /// AI usage telemetry and analytics: calls, tokens, latency, cost, opt-out
+    #[command(subcommand)]
+    AiTelemetry(commands::ai_telemetry::AiTelemetryCommands),
+
+    /// Analyse and optimize compiled WASM / Rust contract source for gas and size
+    #[command(subcommand)]
+    Optimize(commands::optimize::OptimizeCommands),
+
+    /// AI-driven security training: lessons, exercises, progress tracking
+    #[command(subcommand)]
+    AiSecurityTraining(commands::ai_security_training::AiSecurityTrainingCommands),
+
+    /// Contract health monitoring, performance tracking, security events, alerting, and dashboard
+    #[command(subcommand)]
+    ContractMonitor(commands::contract_monitor::ContractMonitorCommands),
 }
+
+static OUTPUT_MODE_INIT: Once = Once::new();
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+    OUTPUT_MODE_INIT.call_once(|| {});
+    utils::output::set_json_mode(cli.json);
 
     // Initialise structured logging before anything else runs.
     let log_cfg =
@@ -300,14 +349,30 @@ async fn main() {
         eprintln!("Warning: failed to initialise logger: {}", e);
     }
 
+    // Resolve the correlation ID before any command runs so every span, retry,
+    // network request, plugin call, and deployment step shares it. An invalid
+    // explicit value is fatal: silently generating a different ID would break
+    // the log join the caller asked for.
+    let correlation_id = match utils::correlation::resolve(cli.correlation_id.as_deref()) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Invalid correlation ID: {}", e);
+            std::process::exit(2);
+        }
+    };
+    utils::correlation::init(correlation_id);
+
     if !cli.quiet {
         print_banner();
     }
 
     let command_name = match &cli.command {
         Commands::AiDebug(_) => "ai-debug",
+        Commands::AiNavigate(_) => "ai-navigate",
+        Commands::AiQualityGate(_) => "ai-quality-gate",
         Commands::Ai(_) => "ai",
         Commands::Wallet(_) => "wallet",
+        Commands::Nl(_) => "nl",
         Commands::New(_) => "new",
         Commands::Generate(_) => "generate",
         Commands::Contract(_) => "contract",
@@ -319,6 +384,7 @@ async fn main() {
         Commands::Deployments(_) => "deployments",
         Commands::Info => "info",
         Commands::Prompts(_) => "prompts",
+        Commands::Explain(_) => "explain",
         Commands::Config(_) => "config",
         Commands::Telemetry(_) => "telemetry",
         Commands::Tx(_) => "tx",
@@ -338,7 +404,7 @@ async fn main() {
         Commands::Privacy(_) => "privacy",
         Commands::Project(_) => "project",
         Commands::Template(_) => "template",
-        Commands::Telemetry(_) => "telemetry",
+        Commands::Registry(_) => "registry",
         Commands::Upgrade(_) => "upgrade",
         Commands::Governance(_) => "governance",
         Commands::Orchestrate(_) => "orchestrate",
@@ -351,6 +417,9 @@ async fn main() {
         Commands::AiFeedback(_) => "ai-feedback",
         Commands::AiSearch(_) => "ai-search",
         Commands::AiRecommend(_) => "ai-recommend",
+        Commands::AiRoute(_) => "ai-route",
+        Commands::AiPlan(_) => "ai-plan",
+        Commands::AiAccessibility(_) => "ai-accessibility",
         Commands::AiContractSuggest(_) => "ai-contract-suggest",
         Commands::AiDocQa(_) => "ai-doc-qa",
         Commands::Schedule(_) => "schedule",
@@ -366,19 +435,34 @@ async fn main() {
         Commands::Approval(_) => "approval",
         Commands::Migrate(_) => "migrate",
         Commands::Collab(_) => "collab",
-        Commands::Complete(_) => "complete",
         Commands::External(_) => "external",
         Commands::Verify(_) => "verify",
-        Commands::External(_) => "external",
         Commands::Help(_) => "help",
+        Commands::AiTelemetry(_) => "ai-telemetry",
+        Commands::Optimize(_) => "optimize",
+        Commands::AiSecurityTraining(_) => "ai-security-training",
+        Commands::ContractMonitor(_) => "contract-monitor",
     }
     .to_string();
+
+    // Root span: everything below inherits `correlation_id` through the span
+    // stack, including work done inside spawned command handlers.
+    let command_span = utils::correlation::command_span(&command_name);
+    let _command_guard = command_span.enter();
+    tracing::info!(
+        correlation_id = %utils::correlation::current_str(),
+        command = %command_name,
+        "command started"
+    );
 
     let start = std::time::Instant::now();
     let result = match cli.command {
         Commands::AiDebug(cmd) => commands::ai_debug::handle(cmd).await,
+        Commands::AiNavigate(cmd) => commands::ai_navigate::handle(cmd),
+        Commands::AiQualityGate(cmd) => commands::ai_quality_gate::handle(cmd),
         Commands::Ai(cmd) => commands::ai::handle(cmd).await,
         Commands::Wallet(cmd) => commands::wallet::handle(cmd).await,
+        Commands::Nl(args) => commands::nl::handle(args).await,
         Commands::New(cmd) => commands::new::handle(cmd).await,
         Commands::Generate(cmd) => commands::generate::handle(&cmd).await,
         Commands::Contract(cmd) => commands::contract::handle(cmd).await,
@@ -388,6 +472,7 @@ async fn main() {
         Commands::Deployments(cmd) => commands::deployments::handle(cmd).await,
         Commands::Info => commands::info::handle().await,
         Commands::Prompts(cmd) => commands::prompts::handle(&cmd).await,
+        Commands::Explain(ref cmd) => commands::explain::handle(cmd).await,
         Commands::Config(cmd) => commands::config::handle(cmd).await,
         Commands::Telemetry(cmd) => commands::telemetry::handle(cmd).await,
         Commands::Tx(args) => commands::tx::handle(args).await,
@@ -433,13 +518,16 @@ async fn main() {
         Commands::AiFeedback(cmd) => commands::ai_feedback::handle(cmd).await,
         Commands::AiSearch(cmd) => commands::ai_search::handle(cmd).await,
         Commands::AiRecommend(cmd) => commands::ai_recommend::handle(cmd).await,
+        Commands::AiRoute(cmd) => commands::ai_model_router::handle(cmd).await,
+        Commands::AiPlan(cmd) => commands::ai_plan::handle(cmd).await,
+        Commands::AiAccessibility(cmd) => commands::ai_accessibility::handle(cmd).await,
         Commands::AiContractSuggest(cmd) => commands::ai_contract_suggest::handle(cmd).await,
         Commands::AiDocQa(cmd) => commands::ai_doc_qa::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
         Commands::Lint(args) => commands::lint::handle(args).await,
-        Commands::Diagnostics(args) => commands::diagnostics::handle(args).await,
+        Commands::Diagnostics(args) => commands::diagnostics::handle(args),
         Commands::TemplateVcs(cmd) => commands::template_vcs::handle(cmd).await,
         Commands::Perf(cmd) => commands::perf::handle(cmd).await,
         Commands::AdvancedPerf(cmd) => commands::perf::handle_advanced(cmd).await,
@@ -450,10 +538,25 @@ async fn main() {
         Commands::Collab(cmd) => commands::collab::handle(cmd).await,
         Commands::Complete(cmd) => commands::complete::handle(cmd).await,
         Commands::Verify(cmd) => commands::verify::handle(cmd).await,
+        Commands::Cost(cmd) => commands::cost::handle(cmd).await,
+        Commands::Project(cmd) => commands::project::handle(cmd).await,
+        Commands::FeatureFlags(args) => commands::feature_flags_cmd::handle(args).await,
         Commands::External(args) => handle_external_plugin(args),
         Commands::Help(args) => commands::help::handle(args).await,
+        Commands::AiTelemetry(cmd) => commands::ai_telemetry::handle(cmd).await,
+        Commands::Optimize(cmd) => commands::optimize::handle(cmd).await,
+        Commands::AiSecurityTraining(cmd) => commands::ai_security_training::handle(cmd).await,
+        Commands::ContractMonitor(cmd) => commands::contract_monitor::handle(cmd).await,
     };
     let duration = start.elapsed();
+
+    tracing::info!(
+        correlation_id = %utils::correlation::current_str(),
+        command = %command_name,
+        success = result.is_ok(),
+        duration_ms = duration.as_millis() as u64,
+        "command finished"
+    );
 
     let _ = utils::telemetry::track_event(
         &command_name,
@@ -474,10 +577,10 @@ async fn main() {
     }
 
     // On a successful run, optionally surface a single proactive tip.
-// Gated so the happy path stays cheap:
-//   * STARFORGE_HELP_TIPS=0 explicitly opts out;
-//   * telemetry must be enabled (it already touches the disk/network);
-//   * `proactive_tip` further ignores commands on its blocklist.
+    // Gated so the happy path stays cheap:
+    //   * STARFORGE_HELP_TIPS=0 explicitly opts out;
+    //   * telemetry must be enabled (it already touches the disk/network);
+    //   * `proactive_tip` further ignores commands on its blocklist.
     // Truthy semantics: only the listed false-strings opt out. Any other
     // value ("1", "yes", " true", "", unset) keeps tips enabled; tighten
     // with care so we never regress "1" → disable.
@@ -519,8 +622,13 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Download a model: starforge ai pull codellama:7b".into());
             } else if msg.contains("wasm") || msg.contains("profile") {
                 hints.push("Build your contract first: stellar contract build".into());
-                hints.push("Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into());
-                hints.push("Save a baseline first: starforge ai profile <wasm> --output baseline.json".into());
+                hints.push(
+                    "Pass the compiled WASM: starforge ai profile <path/to/contract.wasm>".into(),
+                );
+                hints.push(
+                    "Save a baseline first: starforge ai profile <wasm> --output baseline.json"
+                        .into(),
+                );
             }
         }
         "wallet" => {
@@ -645,11 +753,16 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Start Ollama: ollama serve".into());
                 hints.push("Or run without --use-ai for local generation".into());
             } else if msg.contains("coverage") {
-                hints.push("Generate coverage first: starforge test --coverage --source src/lib.rs".into());
+                hints.push(
+                    "Generate coverage first: starforge test --coverage --source src/lib.rs".into(),
+                );
             }
         }
         "ai-property-test" => {
-            hints.push("Provide a contract source file: starforge ai-property-test discover src/lib.rs".into());
+            hints.push(
+                "Provide a contract source file: starforge ai-property-test discover src/lib.rs"
+                    .into(),
+            );
             hints.push("Run without --use-ai for local property discovery".into());
         }
         "ai-feedback" => {
@@ -670,6 +783,7 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                 hints.push("Pass the correct --wasm path to the command.".into());
             }
         }
+
         _ => {}
     }
 

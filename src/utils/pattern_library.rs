@@ -117,19 +117,27 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             category: PatternCategory::Token,
             description: "Implements the SEP-41 token interface: initialize, mint, burn, \
                 transfer, balance, allowance, approve, transfer_from. The canonical \
-                fungible-token pattern on Stellar.".into(),
+                fungible-token pattern on Stellar."
+                .into(),
             indicators: vec![
-                "fn initialize".into(), "fn mint".into(), "fn burn".into(),
-                "fn transfer".into(), "fn balance".into(), "fn allowance".into(),
-                "fn approve".into(), "fn transfer_from".into(),
+                "fn initialize".into(),
+                "fn mint".into(),
+                "fn burn".into(),
+                "fn transfer".into(),
+                "fn balance".into(),
+                "fn allowance".into(),
+                "fn approve".into(),
+                "fn transfer_from".into(),
             ],
             references: vec![
-                "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0041.md".into(),
+                "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0041.md"
+                    .into(),
             ],
             suggestions: vec![
                 "Ensure `initialize` is guarded so it can only be called once.".into(),
                 "Emit events on every state-changing operation for off-chain indexers.".into(),
-                "Store the admin key in contract instance storage, not ledger entry storage.".into(),
+                "Store the admin key in contract instance storage, not ledger entry storage."
+                    .into(),
             ],
         },
         ContractPattern {
@@ -137,14 +145,16 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Non-Fungible Token (NFT)".into(),
             category: PatternCategory::Token,
             description: "Mints unique tokens identified by a numeric or string ID with \
-                ownership tracking and optional metadata URI storage.".into(),
+                ownership tracking and optional metadata URI storage."
+                .into(),
             indicators: vec![
-                "fn mint".into(), "fn owner_of".into(), "fn transfer".into(),
-                "TokenId".into(), "token_id".into(),
+                "fn mint".into(),
+                "fn owner_of".into(),
+                "fn transfer".into(),
+                "TokenId".into(),
+                "token_id".into(),
             ],
-            references: vec![
-                "https://soroban.stellar.org/docs/tutorials/nft".into(),
-            ],
+            references: vec!["https://soroban.stellar.org/docs/tutorials/nft".into()],
             suggestions: vec![
                 "Use `Map<u64, Address>` in persistent storage for the ownership registry.".into(),
                 "Guard `mint` with an admin-only access check.".into(),
@@ -156,10 +166,13 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Wrapped Asset".into(),
             category: PatternCategory::Token,
             description: "Wraps a Stellar classic asset (e.g. USDC, XLM) into a Soroban \
-                contract token, bridging the classic and smart-contract layers.".into(),
+                contract token, bridging the classic and smart-contract layers."
+                .into(),
             indicators: vec![
-                "stellar_asset_contract".into(), "StellarAssetClient".into(),
-                "wrap".into(), "unwrap".into(),
+                "stellar_asset_contract".into(),
+                "StellarAssetClient".into(),
+                "wrap".into(),
+                "unwrap".into(),
             ],
             references: vec![],
             suggestions: vec![
@@ -167,17 +180,20 @@ pub fn all_patterns() -> Vec<ContractPattern> {
                 "Implement `unwrap` with a reentrancy guard pattern.".into(),
             ],
         },
-
         // ── Governance patterns ───────────────────────────────────────────────
         ContractPattern {
             id: "on-chain-voting".into(),
             name: "On-Chain Voting / Proposal".into(),
             category: PatternCategory::Governance,
             description: "Allows token holders to create proposals, cast votes, and \
-                execute approved actions on-chain after a voting period.".into(),
+                execute approved actions on-chain after a voting period."
+                .into(),
             indicators: vec![
-                "fn create_proposal".into(), "fn vote".into(), "fn execute".into(),
-                "Proposal".into(), "VoteResult".into(),
+                "fn create_proposal".into(),
+                "fn vote".into(),
+                "fn execute".into(),
+                "Proposal".into(),
+                "VoteResult".into(),
             ],
             references: vec![],
             suggestions: vec![
@@ -191,15 +207,20 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Timelock Controller".into(),
             category: PatternCategory::Governance,
             description: "Enforces a mandatory waiting period between a governance action \
-                being approved and it being executed, giving stakeholders time to react.".into(),
+                being approved and it being executed, giving stakeholders time to react."
+                .into(),
             indicators: vec![
-                "timelock".into(), "delay".into(), "schedule".into(),
-                "min_delay".into(), "execute_after".into(),
+                "timelock".into(),
+                "delay".into(),
+                "schedule".into(),
+                "min_delay".into(),
+                "execute_after".into(),
             ],
             references: vec![],
             suggestions: vec![
                 "Enforce a minimum delay of at least one ledger close time (~5 s) multiplied \
-                 by a safe factor for your security model.".into(),
+                 by a safe factor for your security model."
+                    .into(),
                 "Emit `CallScheduled` and `CallExecuted` events for off-chain monitoring.".into(),
             ],
         },
@@ -208,9 +229,12 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Multi-Signature Admin".into(),
             category: PatternCategory::Governance,
             description: "Requires M-of-N administrator signatures before a privileged \
-                operation is executed, distributing trust across multiple key holders.".into(),
+                operation is executed, distributing trust across multiple key holders."
+                .into(),
             indicators: vec![
-                "signers".into(), "threshold".into(), "required_signatures".into(),
+                "signers".into(),
+                "threshold".into(),
+                "required_signatures".into(),
                 "Vec<Address>".into(),
             ],
             references: vec![],
@@ -219,21 +243,23 @@ pub fn all_patterns() -> Vec<ContractPattern> {
                 "Use a nonce or proposal ID to prevent signature replay attacks.".into(),
             ],
         },
-
         // ── DeFi patterns ─────────────────────────────────────────────────────
         ContractPattern {
             id: "constant-product-amm".into(),
             name: "Constant-Product AMM (x·y=k)".into(),
             category: PatternCategory::DeFi,
             description: "Automated market-maker using the constant-product invariant. \
-                Provides `swap`, `add_liquidity`, and `remove_liquidity` entry points.".into(),
+                Provides `swap`, `add_liquidity`, and `remove_liquidity` entry points."
+                .into(),
             indicators: vec![
-                "fn swap".into(), "fn add_liquidity".into(), "fn remove_liquidity".into(),
-                "reserve_a".into(), "reserve_b".into(), "liquidity".into(),
+                "fn swap".into(),
+                "fn add_liquidity".into(),
+                "fn remove_liquidity".into(),
+                "reserve_a".into(),
+                "reserve_b".into(),
+                "liquidity".into(),
             ],
-            references: vec![
-                "https://github.com/uniswap/v2-core".into(),
-            ],
+            references: vec!["https://github.com/uniswap/v2-core".into()],
             suggestions: vec![
                 "Always validate `min_amount_out` to protect against sandwich attacks.".into(),
                 "Accumulate protocol fees in a separate storage key.".into(),
@@ -245,10 +271,15 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Lending / Borrow Pool".into(),
             category: PatternCategory::DeFi,
             description: "Accepts deposits, issues debt positions, tracks collateral ratios, \
-                and liquidates undercollateralised positions.".into(),
+                and liquidates undercollateralised positions."
+                .into(),
             indicators: vec![
-                "fn deposit".into(), "fn borrow".into(), "fn repay".into(),
-                "fn liquidate".into(), "collateral".into(), "health_factor".into(),
+                "fn deposit".into(),
+                "fn borrow".into(),
+                "fn repay".into(),
+                "fn liquidate".into(),
+                "collateral".into(),
+                "health_factor".into(),
             ],
             references: vec![],
             suggestions: vec![
@@ -262,15 +293,20 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Staking / Yield Distribution".into(),
             category: PatternCategory::DeFi,
             description: "Users deposit tokens to earn a share of a reward pool distributed \
-                proportionally over time.".into(),
+                proportionally over time."
+                .into(),
             indicators: vec![
-                "fn stake".into(), "fn unstake".into(), "fn claim".into(),
-                "rewards_per_share".into(), "staked_amount".into(),
+                "fn stake".into(),
+                "fn unstake".into(),
+                "fn claim".into(),
+                "rewards_per_share".into(),
+                "staked_amount".into(),
             ],
             references: vec![],
             suggestions: vec![
                 "Use the Synthetix staking rewards algorithm (rewards-per-token accumulator) \
-                 to avoid O(n) reward distribution loops.".into(),
+                 to avoid O(n) reward distribution loops."
+                    .into(),
                 "Apply a withdrawal cooldown to protect against flash-loan draining.".into(),
             ],
         },
@@ -279,10 +315,15 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Escrow".into(),
             category: PatternCategory::DeFi,
             description: "Holds funds on behalf of two parties and releases them when \
-                agreed conditions are met or a mediator resolves a dispute.".into(),
+                agreed conditions are met or a mediator resolves a dispute."
+                .into(),
             indicators: vec![
-                "fn deposit".into(), "fn release".into(), "fn refund".into(),
-                "fn dispute".into(), "escrow".into(), "mediator".into(),
+                "fn deposit".into(),
+                "fn release".into(),
+                "fn refund".into(),
+                "fn dispute".into(),
+                "escrow".into(),
+                "mediator".into(),
             ],
             references: vec![],
             suggestions: vec![
@@ -290,21 +331,24 @@ pub fn all_patterns() -> Vec<ContractPattern> {
                 "Emit events on every state transition for auditability.".into(),
             ],
         },
-
         // ── Access control patterns ───────────────────────────────────────────
         ContractPattern {
             id: "owner-admin".into(),
             name: "Single Owner / Admin".into(),
             category: PatternCategory::AccessControl,
             description: "A single privileged address stored in contract storage controls \
-                admin operations. The simplest access-control pattern.".into(),
+                admin operations. The simplest access-control pattern."
+                .into(),
             indicators: vec![
-                "admin".into(), "owner".into(), "fn require_auth".into(),
+                "admin".into(),
+                "owner".into(),
+                "fn require_auth".into(),
                 "env.current_contract_address".into(),
             ],
             references: vec![],
             suggestions: vec![
-                "Use `require_auth` on the admin address rather than manual signature checks.".into(),
+                "Use `require_auth` on the admin address rather than manual signature checks."
+                    .into(),
                 "Implement a two-step ownership transfer to prevent accidental lock-out.".into(),
             ],
         },
@@ -313,10 +357,14 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Role-Based Access Control (RBAC)".into(),
             category: PatternCategory::AccessControl,
             description: "Multiple named roles (e.g. MINTER, PAUSER, UPGRADER) each \
-                controlling a subset of privileged operations.".into(),
+                controlling a subset of privileged operations."
+                .into(),
             indicators: vec![
-                "role".into(), "has_role".into(), "grant_role".into(),
-                "revoke_role".into(), "Symbol::new".into(),
+                "role".into(),
+                "has_role".into(),
+                "grant_role".into(),
+                "revoke_role".into(),
+                "Symbol::new".into(),
             ],
             references: vec![],
             suggestions: vec![
@@ -329,9 +377,12 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Pausable".into(),
             category: PatternCategory::AccessControl,
             description: "Allows an admin to pause and unpause the contract, blocking all \
-                state-changing operations during an emergency.".into(),
+                state-changing operations during an emergency."
+                .into(),
             indicators: vec![
-                "fn pause".into(), "fn unpause".into(), "paused".into(),
+                "fn pause".into(),
+                "fn unpause".into(),
+                "paused".into(),
                 "is_paused".into(),
             ],
             references: vec![],
@@ -340,7 +391,6 @@ pub fn all_patterns() -> Vec<ContractPattern> {
                 "Emit `Paused` / `Unpaused` events for off-chain monitoring.".into(),
             ],
         },
-
         // ── Storage patterns ──────────────────────────────────────────────────
         ContractPattern {
             id: "instance-storage".into(),
@@ -348,18 +398,20 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             category: PatternCategory::Storage,
             description: "Uses `env.storage().instance()` for configuration data that is \
                 read on every invocation (admin, token address, fees), minimising ledger \
-                entry reads.".into(),
+                entry reads."
+                .into(),
             indicators: vec![
-                "storage().instance()".into(), "instance().get".into(),
+                "storage().instance()".into(),
+                "instance().get".into(),
                 "instance().set".into(),
             ],
-            references: vec![
-                "https://soroban.stellar.org/docs/learn/storage".into(),
-            ],
+            references: vec!["https://soroban.stellar.org/docs/learn/storage".into()],
             suggestions: vec![
-                "Extend the TTL of instance storage in the same transaction that writes to it.".into(),
+                "Extend the TTL of instance storage in the same transaction that writes to it."
+                    .into(),
                 "Group all config values behind a single `Config` struct key to reduce \
-                 ledger entry count.".into(),
+                 ledger entry count."
+                    .into(),
             ],
         },
         ContractPattern {
@@ -368,9 +420,11 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             category: PatternCategory::Storage,
             description: "Uses `env.storage().persistent()` for per-user balances, \
                 allowances, and positions — data that must survive TTL but is not read \
-                on every call.".into(),
+                on every call."
+                .into(),
             indicators: vec![
-                "storage().persistent()".into(), "persistent().get".into(),
+                "storage().persistent()".into(),
+                "persistent().get".into(),
                 "persistent().set".into(),
             ],
             references: vec![],
@@ -384,9 +438,11 @@ pub fn all_patterns() -> Vec<ContractPattern> {
             name: "Temporary Storage for Transient State".into(),
             category: PatternCategory::Storage,
             description: "Uses `env.storage().temporary()` for data that only needs to \
-                live for the duration of a transaction or a few ledgers (nonces, locks).".into(),
+                live for the duration of a transaction or a few ledgers (nonces, locks)."
+                .into(),
             indicators: vec![
-                "storage().temporary()".into(), "temporary().get".into(),
+                "storage().temporary()".into(),
+                "temporary().get".into(),
                 "temporary().set".into(),
             ],
             references: vec![],
@@ -410,14 +466,18 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             severity: AntiPatternSeverity::Critical,
             description: "Iterating over a collection stored in persistent ledger entries \
                 without a size bound causes gas to grow unboundedly as the collection grows, \
-                eventually making the contract unusable.".into(),
+                eventually making the contract unusable."
+                .into(),
             indicators: vec![
-                "for ".into(), ".iter()".into(), "while ".into(),
+                "for ".into(),
+                ".iter()".into(),
+                "while ".into(),
                 "persistent().get".into(),
             ],
             remediation: "Introduce pagination (offset + limit). Keep hot collections small \
                 by archiving old entries off-chain. Consider a doubly-linked-list pattern \
-                with head/tail pointers stored in instance storage.".into(),
+                with head/tail pointers stored in instance storage."
+                .into(),
         },
         AntiPattern {
             id: "AP-002".into(),
@@ -426,13 +486,17 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             severity: AntiPatternSeverity::Critical,
             description: "State-changing functions (mint, burn, transfer admin role) that do \
                 not call `env.require_auth(&admin)` or `address.require_auth()` can be \
-                called by any account.".into(),
+                called by any account."
+                .into(),
             indicators: vec![
-                "fn mint".into(), "fn burn".into(), "fn set_admin".into(),
+                "fn mint".into(),
+                "fn burn".into(),
+                "fn set_admin".into(),
                 "fn upgrade".into(),
             ],
             remediation: "Add `admin.require_auth()` at the top of every privileged function \
-                before any state mutations.".into(),
+                before any state mutations."
+                .into(),
         },
         AntiPattern {
             id: "AP-003".into(),
@@ -440,10 +504,12 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             category: PatternCategory::AccessControl,
             severity: AntiPatternSeverity::Critical,
             description: "`initialize` can be called multiple times, allowing an attacker to \
-                reset admin keys or contract state after deployment.".into(),
+                reset admin keys or contract state after deployment."
+                .into(),
             indicators: vec!["fn initialize".into(), "fn init".into()],
             remediation: "Store an `initialized: bool` flag in instance storage and panic \
-                with `already_initialized` if it is true at the start of `initialize`.".into(),
+                with `already_initialized` if it is true at the start of `initialize`."
+                .into(),
         },
         AntiPattern {
             id: "AP-004".into(),
@@ -451,14 +517,19 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             category: PatternCategory::General,
             severity: AntiPatternSeverity::High,
             description: "Arithmetic on token amounts without overflow checking can silently \
-                wrap, causing balance corruption or infinite mint.".into(),
+                wrap, causing balance corruption or infinite mint."
+                .into(),
             indicators: vec![
-                "+ ".into(), "- ".into(), "* ".into(),
-                "as u64".into(), "as i128".into(),
+                "+ ".into(),
+                "- ".into(),
+                "* ".into(),
+                "as u64".into(),
+                "as i128".into(),
             ],
             remediation: "Use Rust's `checked_add`, `checked_sub`, `checked_mul` and \
                 unwrap with a meaningful error, or use `u128` for intermediate calculations \
-                before casting back.".into(),
+                before casting back."
+                .into(),
         },
         AntiPattern {
             id: "AP-005".into(),
@@ -467,13 +538,17 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             severity: AntiPatternSeverity::High,
             description: "Reading a price oracle without checking its freshness timestamp \
                 can cause lending/AMM contracts to operate on stale prices during network \
-                congestion or oracle downtime.".into(),
+                congestion or oracle downtime."
+                .into(),
             indicators: vec![
-                "oracle".into(), "price".into(), "get_price".into(),
+                "oracle".into(),
+                "price".into(),
+                "get_price".into(),
                 "last_updated".into(),
             ],
             remediation: "Compare the oracle's `timestamp` against `env.ledger().timestamp()` \
-                and reject prices older than your configured freshness window (e.g. 60 s).".into(),
+                and reject prices older than your configured freshness window (e.g. 60 s)."
+                .into(),
         },
         AntiPattern {
             id: "AP-006".into(),
@@ -481,13 +556,13 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             category: PatternCategory::Storage,
             severity: AntiPatternSeverity::High,
             description: "Writing to persistent storage without extending the TTL means the \
-                entry can expire before the user interacts again, causing silent data loss.".into(),
-            indicators: vec![
-                "persistent().set".into(),
-            ],
+                entry can expire before the user interacts again, causing silent data loss."
+                .into(),
+            indicators: vec!["persistent().set".into()],
             remediation: "Call `env.storage().persistent().extend_ttl(key, low, high)` \
                 immediately after every `persistent().set` call. Use a helper wrapper to \
-                enforce this consistently.".into(),
+                enforce this consistently."
+                .into(),
         },
         AntiPattern {
             id: "AP-007".into(),
@@ -495,14 +570,16 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             category: PatternCategory::Storage,
             severity: AntiPatternSeverity::Medium,
             description: "Using raw `&str` or `String` as storage keys makes refactoring \
-                dangerous — a typo silently creates a new key, leaving the old data orphaned.".into(),
+                dangerous — a typo silently creates a new key, leaving the old data orphaned."
+                .into(),
             indicators: vec![
                 "storage().persistent().get(\"".into(),
                 "storage().instance().get(\"".into(),
                 "storage().temporary().get(\"".into(),
             ],
             remediation: "Define a typed `DataKey` enum derived with `#[contracttype]` and \
-                use its variants as keys everywhere.".into(),
+                use its variants as keys everywhere."
+                .into(),
         },
         AntiPattern {
             id: "AP-008".into(),
@@ -511,14 +588,16 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             severity: AntiPatternSeverity::Medium,
             description: "Storing large or unbounded data (e.g. user lists, history) in \
                 instance storage increases the base cost of every contract invocation because \
-                instance storage is loaded unconditionally.".into(),
+                instance storage is loaded unconditionally."
+                .into(),
             indicators: vec![
                 "storage().instance().set".into(),
                 "Vec<Address>".into(),
                 "Vec<String>".into(),
             ],
             remediation: "Keep instance storage to a handful of small config values. \
-                Move per-user or historical data to persistent storage with typed keys.".into(),
+                Move per-user or historical data to persistent storage with typed keys."
+                .into(),
         },
         AntiPattern {
             id: "AP-009".into(),
@@ -526,13 +605,16 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             category: PatternCategory::AccessControl,
             severity: AntiPatternSeverity::Medium,
             description: "Embedding an admin address as a compile-time constant makes it \
-                impossible to rotate keys without redeploying the contract.".into(),
+                impossible to rotate keys without redeploying the contract."
+                .into(),
             indicators: vec![
-                "const ADMIN".into(), "const OWNER".into(),
+                "const ADMIN".into(),
+                "const OWNER".into(),
                 "Address::from_str".into(),
             ],
             remediation: "Store the admin address in instance storage and provide a \
-                two-step `transfer_admin` → `accept_admin` pattern.".into(),
+                two-step `transfer_admin` → `accept_admin` pattern."
+                .into(),
         },
         AntiPattern {
             id: "AP-010".into(),
@@ -540,14 +622,18 @@ pub fn all_anti_patterns() -> Vec<AntiPattern> {
             category: PatternCategory::General,
             severity: AntiPatternSeverity::Low,
             description: "State-changing functions that do not emit events make it hard for \
-                off-chain indexers, wallets, and audit tools to track contract activity.".into(),
+                off-chain indexers, wallets, and audit tools to track contract activity."
+                .into(),
             indicators: vec![
-                "fn transfer".into(), "fn mint".into(),
-                "fn burn".into(), "fn swap".into(),
+                "fn transfer".into(),
+                "fn mint".into(),
+                "fn burn".into(),
+                "fn swap".into(),
             ],
             remediation: "Add `env.events().publish(topics, data)` at the end of every \
                 state-changing function following the Stellar event naming convention \
-                (contract_name, action_name).".into(),
+                (contract_name, action_name)."
+                .into(),
         },
     ]
 }
@@ -594,7 +680,11 @@ pub fn pre_scan(source: &str) -> PreScanResult {
     let matched_patterns = all_patterns()
         .into_iter()
         .filter_map(|p| {
-            let hits = p.indicators.iter().filter(|ind| source.contains(ind.as_str())).count();
+            let hits = p
+                .indicators
+                .iter()
+                .filter(|ind| source.contains(ind.as_str()))
+                .count();
             if hits == 0 {
                 return None;
             }
@@ -613,7 +703,11 @@ pub fn pre_scan(source: &str) -> PreScanResult {
     let matched_anti_patterns = all_anti_patterns()
         .into_iter()
         .filter_map(|ap| {
-            let hits = ap.indicators.iter().filter(|ind| source.contains(ind.as_str())).count();
+            let hits = ap
+                .indicators
+                .iter()
+                .filter(|ind| source.contains(ind.as_str()))
+                .count();
             if hits == 0 {
                 return None;
             }
@@ -627,7 +721,11 @@ pub fn pre_scan(source: &str) -> PreScanResult {
         })
         .collect();
 
-    PreScanResult { matched_patterns, matched_anti_patterns, lines_scanned }
+    PreScanResult {
+        matched_patterns,
+        matched_anti_patterns,
+        lines_scanned,
+    }
 }
 
 // ── Feedback store ────────────────────────────────────────────────────────────
@@ -665,8 +763,7 @@ pub fn load_feedback() -> Result<Vec<PatternFeedback>> {
     if !path.exists() {
         return Ok(vec![]);
     }
-    let raw = fs::read_to_string(&path)
-        .context("Failed to read pattern feedback store")?;
+    let raw = fs::read_to_string(&path).context("Failed to read pattern feedback store")?;
     serde_json::from_str(&raw).context("Failed to parse pattern feedback store")
 }
 
@@ -708,7 +805,8 @@ pub fn feedback_context_for_prompt() -> String {
                 return String::new();
             }
             let mut lines = vec![
-                "\nUser feedback on previous pattern recognitions (use to calibrate confidence):".to_string(),
+                "\nUser feedback on previous pattern recognitions (use to calibrate confidence):"
+                    .to_string(),
             ];
             for (pid, (correct, incorrect)) in &summary {
                 lines.push(format!(
@@ -771,7 +869,10 @@ mod tests {
             fn allowance(env: Env, from: Address, spender: Address) -> i128 {}
         "#;
         let result = pre_scan(source);
-        let sep41 = result.matched_patterns.iter().find(|m| m.pattern_id == "sep41-fungible-token");
+        let sep41 = result
+            .matched_patterns
+            .iter()
+            .find(|m| m.pattern_id == "sep41-fungible-token");
         assert!(sep41.is_some(), "sep41 pattern should be detected");
         assert!(sep41.unwrap().confidence > 50);
     }
@@ -780,8 +881,14 @@ mod tests {
     fn pre_scan_detects_missing_auth_anti_pattern() {
         let source = "fn mint(env: Env, to: Address) { /* no require_auth */ }";
         let result = pre_scan(source);
-        let ap = result.matched_anti_patterns.iter().find(|m| m.anti_pattern_id == "AP-002");
-        assert!(ap.is_some(), "AP-002 (missing require_auth) should fire on fn mint");
+        let ap = result
+            .matched_anti_patterns
+            .iter()
+            .find(|m| m.anti_pattern_id == "AP-002");
+        assert!(
+            ap.is_some(),
+            "AP-002 (missing require_auth) should fire on fn mint"
+        );
     }
 
     #[test]

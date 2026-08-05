@@ -342,11 +342,7 @@ pub async fn recommend(request: &RecommendationRequest) -> Result<Vec<Recommenda
     };
 
     // Find the maximum download count for normalisation.
-    let max_downloads = all_templates
-        .iter()
-        .map(|t| t.downloads)
-        .max()
-        .unwrap_or(1);
+    let max_downloads = all_templates.iter().map(|t| t.downloads).max().unwrap_or(1);
 
     let mut scored: Vec<Recommendation> = all_templates
         .iter()
@@ -385,12 +381,7 @@ fn score_template(
             let matched_tags: Vec<&String> = request
                 .tags
                 .iter()
-                .filter(|t| {
-                    entry
-                        .tags
-                        .iter()
-                        .any(|et| et.eq_ignore_ascii_case(t))
-                })
+                .filter(|t| entry.tags.iter().any(|et| et.eq_ignore_ascii_case(t)))
                 .collect();
             if !matched_tags.is_empty() {
                 reasons.push(format!(
@@ -448,10 +439,7 @@ fn score_template(
     }
 
     // ── Personalisation (max 10 pts) ─────────────────────────────────────────
-    let use_count = personal_usage
-        .get(&entry.name)
-        .copied()
-        .unwrap_or(0);
+    let use_count = personal_usage.get(&entry.name).copied().unwrap_or(0);
     let previously_used = use_count > 0;
     if request.personalise && previously_used {
         // Gentle boost for familiarity, capped at 10.
@@ -656,7 +644,10 @@ mod tests {
             skill_fit: "Good fit".to_string(),
         };
         let explanation = format_explanation(&rec);
-        assert!(explanation.contains("75"), "Explanation should include score");
+        assert!(
+            explanation.contains("75"),
+            "Explanation should include score"
+        );
         assert!(
             explanation.contains("Verified template"),
             "Explanation should include reasons"

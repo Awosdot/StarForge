@@ -48,6 +48,11 @@ pub enum ProjectCommands {
 // ══════════════════════════════════════════════════════════════════
 
 #[derive(Subcommand)]
+pub enum RiskCommands {}
+#[derive(clap::Subcommand)]
+pub enum TimelineCommands {}
+
+#[derive(Subcommand)]
 pub enum TaskCommands {
     /// Create a new task
     Create(CreateTaskArgs),
@@ -304,120 +309,7 @@ pub struct WorkloadArgs {
     pub project: Option<String>,
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  PROGRESS TRACKING
-// ══════════════════════════════════════════════════════════════════
-
-#[derive(Subcommand)]
-pub enum ProgressCommands {
-    /// Show progress dashboard for a project
-    Dashboard(ProgressDashboardArgs),
-    /// Show burndown chart for a sprint
-    Burndown(BurndownArgs),
-    /// Show progress summary
-    Summary(ProgressSummaryArgs),
-}
-
-#[derive(Args)]
-pub struct ProgressDashboardArgs {
-    /// Project ID
-    #[arg(long)]
-    pub project: Option<String>,
-    /// Sprint ID
-    #[arg(long)]
-    pub sprint: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    pub json: bool,
-}
-
-#[derive(Args)]
-pub struct BurndownArgs {
-    /// Sprint ID
-    #[arg(long)]
-    pub sprint: String,
-    /// Project ID
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-#[derive(Args)]
-pub struct ProgressSummaryArgs {
-    /// Project ID
-    #[arg(long)]
-    pub project: Option<String>,
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  SPRINT PLANNING
-// ══════════════════════════════════════════════════════════════════
-
-#[derive(Subcommand)]
-pub enum SprintCommands {
-    /// Create a new sprint
-    Create(CreateSprintArgs),
-    /// List all sprints
-    List(ListSprintArgs),
-    /// Show sprint details and burndown
-    Show(ShowSprintArgs),
-    /// AI-assisted sprint planning
-    Plan(SprintPlanArgs),
-    /// Close a sprint and record velocity
-    Close(CloseSprintArgs),
-}
-
-#[derive(Args)]
-pub struct CreateSprintArgs {
-    /// Sprint name
-    pub name: String,
-    /// Sprint goal
-    #[arg(short, long)]
-    pub goal: Option<String>,
-    /// Start date (YYYY-MM-DD)
-    #[arg(long)]
-    pub start: Option<String>,
-    /// End date (YYYY-MM-DD)
-    #[arg(long)]
-    pub end: Option<String>,
-    /// Project ID
-    #[arg(long)]
-    pub project: Option<String>,
-    /// Sprint capacity in story points
-    #[arg(long, default_value_t = 20)]
-    pub capacity: u32,
-}
-
-#[derive(Args)]
-pub struct ListSprintArgs {
-    /// Project ID
-    #[arg(long)]
-    pub project: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    pub json: bool,
-}
-
-#[derive(Args)]
-pub struct ShowSprintArgs {
-    /// Sprint ID
-    pub sprint_id: String,
-}
-
-#[derive(Args)]
-pub struct SprintPlanArgs {
-    /// Project ID for AI planning
-    #[arg(long)]
-    pub project: Option<String>,
-    /// Target number of tasks
-    #[arg(long, default_value_t = 10)]
-    pub tasks: usize,
-    /// Sprint capacity in story points
-    #[arg(long, default_value_t = 20)]
-    pub capacity: u32,
-}
-
-#[derive(Args)]
-pub struct CloseSprintArgs {
-    /// Sprint ID
-    pub sprint_id: String,
+pub async fn handle(_cmd: ProjectCommands) -> Result<()> {
+    println!("Project command is under construction.");
+    Ok(())
 }

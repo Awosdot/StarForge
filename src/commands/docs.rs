@@ -6,6 +6,27 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum DocsCommands {
+    /// Review project documentation completeness and stale references
+    Review {
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Maintain API docs, tutorials, examples, architecture docs, and rustdoc suggestions
+    Maintain {
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value = "docs/generated")]
+        output: PathBuf,
+        /// Fail if documentation completeness is below this percentage
+        #[arg(long, default_value_t = 80.0)]
+        min_completeness: f64,
+    },
+
     /// Generate comprehensive documentation (AI-assisted from source or metadata)
     Generate {
         /// On-chain contract ID (or local identifier)
@@ -138,6 +159,13 @@ pub enum DocsCommands {
 
 pub async fn handle(cmd: DocsCommands) -> Result<()> {
     match cmd {
+        DocsCommands::Review { dir, json } => review(dir, json),
+        DocsCommands::Maintain {
+            dir,
+            name,
+            output,
+            min_completeness,
+        } => maintain(dir, name, output, min_completeness),
         DocsCommands::Generate {
             contract,
             name,
@@ -194,6 +222,75 @@ pub async fn handle(cmd: DocsCommands) -> Result<()> {
             generate_script,
         } => publish(contract, source_dir, dest, generate_script),
     }
+}
+
+fn review(dir: PathBuf, json: bool) -> Result<()> {
+    let review = crate::utils::ai_documentation_assistant::review_project(&dir)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&review)?);
+        return Ok(());
+    }
+    p::header("AI Documentation Review");
+    p::kv("Public items", &review.public_items.to_string());
+    p::kv("Documented", &review.documented_items.to_string());
+    p::kv(
+        "Completeness",
+        &format!("{:.1}%", review.completeness_percent),
+    );
+    for issue in review.issues {
+        println!(
+            "{}:{} [{}] {} — {}",
+            issue.file.display(),
+            issue.line,
+            issue.severity,
+            issue.symbol,
+            issue.message
+        );
+        println!("  suggestion: {}", issue.suggestion);
+    }
+    for stale in review.stale_references {
+        p::warn(&stale);
+    }
+    Ok(())
+}
+
+fn maintain(
+    dir: PathBuf,
+    name: Option<String>,
+    output: PathBuf,
+    min_completeness: f64,
+) -> Result<()> {
+    let project_name = name.or_else(|| {
+        dir.file_name()
+            .and_then(|part| part.to_str())
+            .map(str::to_string)
+    });
+    let bundle = crate::utils::ai_documentation_assistant::generate_bundle(
+        &dir,
+        project_name.as_deref().unwrap_or("StarForge Project"),
+    )?;
+    let files = crate::utils::ai_documentation_assistant::write_bundle(&bundle, &output)?;
+    let suggestions =
+        crate::utils::ai_documentation_assistant::render_rustdoc_suggestions(&bundle.review);
+    let suggestion_path = output.join("RUSTDOC_SUGGESTIONS.rs");
+    std::fs::write(&suggestion_path, suggestions)?;
+
+    p::header("AI Documentation Maintenance");
+    for file in files.iter().chain(std::iter::once(&suggestion_path)) {
+        p::success(&format!("Wrote {}", file.display()));
+    }
+    p::kv(
+        "Completeness",
+        &format!("{:.1}%", bundle.review.completeness_percent),
+    );
+    if bundle.review.completeness_percent < min_completeness {
+        anyhow::bail!(
+            "Documentation completeness {:.1}% is below the required {:.1}%",
+            bundle.review.completeness_percent,
+            min_completeness
+        );
+    }
+    Ok(())
 }
 
 fn generate(

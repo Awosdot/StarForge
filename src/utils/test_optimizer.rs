@@ -173,7 +173,7 @@ pub struct FailurePatternReport {
 
 pub struct TestOptimizer {
     config_dir: PathBuf,
-    history: HashMap<String, TestHistory>,
+    pub history: HashMap<String, TestHistory>,
     cache: HashMap<String, TestCacheEntry>,
 }
 
@@ -324,10 +324,13 @@ impl TestOptimizer {
     ) -> Vec<Vec<OptimizedTestCase>> {
         let mut batches: Vec<Vec<OptimizedTestCase>> = Vec::new();
 
-        let (io_bound, cpu_bound, memory_bound, general): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) = tests
+        let (io_bound, _other): (Vec<OptimizedTestCase>, Vec<OptimizedTestCase>) = tests
             .iter()
             .cloned()
             .partition(|t| t.resource_profile.io_intensity > 0.6);
+        let cpu_bound: Vec<OptimizedTestCase> = vec![];
+        let memory_bound: Vec<OptimizedTestCase> = vec![];
+        let general: Vec<OptimizedTestCase> = vec![];
         let (cpu_only, general): (Vec<_>, Vec<_>) = general
             .into_iter()
             .partition(|t| t.resource_profile.cpu_intensity > 0.6);
@@ -588,13 +591,20 @@ impl TestOptimizer {
     }
 
     fn prune_cache(&mut self) {
-        let mut entries: Vec<(String, &TestCacheEntry)> =
-            self.cache.iter().map(|(k, v)| (k.clone(), v)).collect();
-        entries.sort_by(|a, b| a.1.cached_at.cmp(&b.1.cached_at));
+        let keys_to_remove: Vec<String> = {
+            let mut entries: Vec<(String, &TestCacheEntry)> =
+                self.cache.iter().map(|(k, v)| (k.clone(), v)).collect();
+            entries.sort_by(|a, b| a.1.cached_at.cmp(&b.1.cached_at));
 
-        let remove_count = (entries.len() as f64 * 0.2) as usize;
-        for (key, _) in entries.iter().take(remove_count) {
-            self.cache.remove(key);
+            let remove_count = (entries.len() as f64 * 0.2) as usize;
+            entries
+                .into_iter()
+                .take(remove_count)
+                .map(|(k, _)| k)
+                .collect()
+        };
+        for key in keys_to_remove {
+            self.cache.remove(&key);
         }
     }
 

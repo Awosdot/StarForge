@@ -232,7 +232,11 @@ fn compute_doc_metrics(extracted: &ExtractedDocs) -> DocumentationMetrics {
     let mut total = 0usize;
     let mut documented = 0usize;
 
-    for f in extracted.functions.iter().filter(|f| f.visibility == Visibility::Public) {
+    for f in extracted
+        .functions
+        .iter()
+        .filter(|f| f.visibility == Visibility::Public)
+    {
         total += 1;
         if !f.doc_comment.trim().is_empty() {
             documented += 1;
@@ -430,7 +434,10 @@ fn score_best_practices(source: &str, metrics: &CodeMetrics) -> QualityCategory 
         );
     }
 
-    if metrics.public_functions > 0 && !source.contains("Symbol::new") && !source.contains("publish(") {
+    if metrics.public_functions > 0
+        && !source.contains("Symbol::new")
+        && !source.contains("publish(")
+    {
         score -= 3;
         findings.push(
             "No event emission (env.events().publish) detected for state-changing functions"
@@ -548,9 +555,8 @@ fn build_suggestions(
         ));
     }
     if !test_metrics.has_test_module {
-        suggestions.push(
-            "Add a #[cfg(test)] module with unit tests for each public function".to_string(),
-        );
+        suggestions
+            .push("Add a #[cfg(test)] module with unit tests for each public function".to_string());
     } else if test_metrics.coverage_ratio < 0.5 {
         suggestions.push(
             "Increase test coverage — fewer than half of public functions currently have a matching test"
@@ -621,7 +627,11 @@ pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> bool {
     #[test]
     fn good_source_scores_high() {
         let report = analyze_source("good-template", GOOD_SOURCE);
-        assert!(report.overall_score >= 70, "score was {}", report.overall_score);
+        assert!(
+            report.overall_score >= 70,
+            "score was {}",
+            report.overall_score
+        );
         assert!(report.doc_metrics.has_module_doc);
         assert!(report.test_metrics.has_test_module);
     }

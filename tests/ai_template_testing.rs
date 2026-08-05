@@ -35,7 +35,10 @@ fn test_registry_json_is_valid() {
     assert!(parsed["templates"].is_array());
 
     let templates = parsed["templates"].as_array().unwrap();
-    assert!(!templates.is_empty(), "Registry must contain at least one template");
+    assert!(
+        !templates.is_empty(),
+        "Registry must contain at least one template"
+    );
 }
 
 #[test]
@@ -246,10 +249,10 @@ fn test_template_with_invalid_cargo_toml() {
     let report = test_template(&dir, &config).unwrap();
 
     assert!(
-        report
-            .phases
+        report.phases.iter().any(|p| p
+            .findings
             .iter()
-            .any(|p| p.findings.iter().any(|f| f.title.contains("not valid TOML"))),
+            .any(|f| f.title.contains("not valid TOML"))),
         "Should detect invalid TOML"
     );
 }
@@ -314,10 +317,10 @@ fn test_template_with_old_rust_edition() {
     let report = test_template(&dir, &config).unwrap();
 
     assert!(
-        report
-            .phases
+        report.phases.iter().any(|p| p
+            .findings
             .iter()
-            .any(|p| p.findings.iter().any(|f| f.title.contains("Outdated Rust edition"))),
+            .any(|f| f.title.contains("Outdated Rust edition"))),
         "Should detect old Rust edition"
     );
 }

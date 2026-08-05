@@ -77,8 +77,26 @@ impl MaintenanceStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityReview {
+    pub status: String,
+    pub auditor: Option<String>,
+    pub audited_at: Option<String>,
+    pub findings: Option<String>,
+    pub score: Option<f64>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangelogEntry {
+    pub version: String,
+    pub date: String,
+    pub notes: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateEntry {
     pub name: String,
+    pub repository: Option<String>,
+    pub security_review: Option<SecurityReview>,
+    pub changelog: Option<Vec<ChangelogEntry>>,
     pub description: String,
     pub version: String,
     pub source: TemplateSource,
@@ -336,11 +354,23 @@ fn build_update_report(
     let update_available = previous_version != Some(latest_version);
     let compatibility = match check_template_compatibility(entry) {
         CompatibilityStatus::Compatible => "Compatible with the current StarForge CLI".to_string(),
-        CompatibilityStatus::TooOld { required_min, running } => {
-            format!("Requires StarForge >= {} but the running CLI is {}", required_min, running)
+        CompatibilityStatus::TooOld {
+            required_min,
+            running,
+        } => {
+            format!(
+                "Requires StarForge >= {} but the running CLI is {}",
+                required_min, running
+            )
         }
-        CompatibilityStatus::TooNew { required_max, running } => {
-            format!("Requires StarForge <= {} but the running CLI is {}", required_max, running)
+        CompatibilityStatus::TooNew {
+            required_max,
+            running,
+        } => {
+            format!(
+                "Requires StarForge <= {} but the running CLI is {}",
+                required_max, running
+            )
         }
         CompatibilityStatus::MalformedMetadata { reason } => {
             format!("Version metadata is malformed: {}", reason)
@@ -350,7 +380,8 @@ fn build_update_report(
     let mut migration_guidance = Vec::new();
     let mut severity = "low".to_string();
     let mut breaking_changes = false;
-    let mut impact_summary = "No material changes are expected for this template update.".to_string();
+    let mut impact_summary =
+        "No material changes are expected for this template update.".to_string();
 
     if update_available {
         impact_summary = format!(
@@ -359,7 +390,7 @@ fn build_update_report(
             latest_version
         );
 
-        if let Some(latest) = entry.changelog.first() {
+        if let Some(latest) = entry.changelog.as_ref().and_then(|c| c.first()) {
             let notes = latest.notes.clone();
             if notes.to_lowercase().contains("breaking")
                 || notes.to_lowercase().contains("migration")
@@ -368,12 +399,15 @@ fn build_update_report(
             {
                 breaking_changes = true;
                 severity = "high".to_string();
-                impact_summary.push_str(" The release notes mention breaking or migration-sensitive changes.");
+                impact_summary.push_str(
+                    " The release notes mention breaking or migration-sensitive changes.",
+                );
             }
         }
 
         if previous_version.is_some() && latest_version.contains('.') {
-            let current_parts: Vec<&str> = previous_version.unwrap_or_default().split('.').collect();
+            let current_parts: Vec<&str> =
+                previous_version.unwrap_or_default().split('.').collect();
             let latest_parts: Vec<&str> = latest_version.split('.').collect();
             if current_parts.first() != latest_parts.first() {
                 severity = "high".to_string();
@@ -381,12 +415,16 @@ fn build_update_report(
                 breaking_changes = true;
             } else if current_parts.get(1) != latest_parts.get(1) {
                 severity = "medium".to_string();
-                impact_summary.push_str(" The update introduces a feature or compatibility change.");
+                impact_summary
+                    .push_str(" The update introduces a feature or compatibility change.");
             }
         }
 
         migration_guidance.push("Review the release notes and regenerate any custom project scaffolding before shipping changes.".to_string());
-        migration_guidance.push("Re-run your template smoke test after the update to confirm everything still works.".to_string());
+        migration_guidance.push(
+            "Re-run your template smoke test after the update to confirm everything still works."
+                .to_string(),
+        );
         if breaking_changes {
             migration_guidance.push("Treat this as a breaking update and plan a migration or rollback path before applying it broadly.".to_string());
         }
@@ -1046,7 +1084,7 @@ pub async fn search_templates(query: &str, tags: Option<&[String]>) -> Result<Ve
 }
 
 pub async fn get_template(name: &str) -> Result<TemplateEntry> {
-    let mut versions = get_templates_by_name(name).await?;
+    let versions = get_templates_by_name(name).await?;
     versions
         .into_iter()
         .next()
@@ -1054,15 +1092,17 @@ pub async fn get_template(name: &str) -> Result<TemplateEntry> {
 }
 
 pub async fn get_templates_by_name(name: &str) -> Result<Vec<TemplateEntry>> {
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let mut matching: Vec<TemplateEntry> = registry
         .templates
         .into_iter()
         .filter(|t| t.name == name)
         .collect();
     matching.sort_by(|a, b| {
-        let a_ver = semver::Version::parse(&a.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
-        let b_ver = semver::Version::parse(&b.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+        let a_ver =
+            semver::Version::parse(&a.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+        let b_ver =
+            semver::Version::parse(&b.version).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
         b_ver.cmp(&a_ver)
     });
     Ok(matching)
@@ -1435,7 +1475,7 @@ pub async fn publish_template_versioned(
     let storage_root = template_storage_dir()?.join(&name);
     let dest = storage_root.join(&version);
 
-    let mut registry = load_registry().await?;
+    let registry = load_registry().await?;
     let same_version_exists = registry
         .templates
         .iter()
@@ -1444,7 +1484,10 @@ pub async fn publish_template_versioned(
     if dest.exists() {
         if same_version_exists {
             fs::remove_dir_all(&dest).with_context(|| {
-                format!("Failed to remove existing template version directory {}", dest.display())
+                format!(
+                    "Failed to remove existing template version directory {}",
+                    dest.display()
+                )
             })?;
         } else {
             anyhow::bail!(
@@ -1467,6 +1510,9 @@ pub async fn publish_template_versioned(
 
     let entry = TemplateEntry {
         name: name.clone(),
+        changelog: None,
+        repository: None,
+        security_review: None,
         version: version.clone(),
         description,
         author,
@@ -1709,6 +1755,9 @@ async fn install_from_git_url(
 
     let entry = TemplateEntry {
         name: name.clone(),
+        changelog: None,
+        repository: None,
+        security_review: None,
         description: String::new(),
         version: "1.0.0".to_string(),
         source: TemplateSource::Git {
@@ -1779,6 +1828,9 @@ async fn install_from_local_path(
 
     let entry = TemplateEntry {
         name: name.clone(),
+        changelog: None,
+        repository: None,
+        security_review: None,
         description: String::new(),
         version: "1.0.0".to_string(),
         source: TemplateSource::Local {
@@ -1854,13 +1906,10 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
                 template_storage_dir()?.join(name)
             };
 
-            let previous_version = infer_template_version_from_dir(&dest).or_else(|| Some(entry.version.clone()));
-            let mut report = build_update_report(
-                name,
-                previous_version.as_deref(),
-                &entry.version,
-                &entry,
-            )?;
+            let previous_version =
+                infer_template_version_from_dir(&dest).or_else(|| Some(entry.version.clone()));
+            let mut report =
+                build_update_report(name, previous_version.as_deref(), &entry.version, &entry)?;
 
             if dest.exists() {
                 let backup_root = template_storage_dir()?.join(".backups").join(name);
@@ -1868,7 +1917,11 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-                let backup_dir = backup_root.join(format!("{}_{}", timestamp, previous_version.as_deref().unwrap_or("unknown")));
+                let backup_dir = backup_root.join(format!(
+                    "{}_{}",
+                    timestamp,
+                    previous_version.as_deref().unwrap_or("unknown")
+                ));
                 if backup_dir.exists() {
                     fs::remove_dir_all(&backup_dir)?;
                 }
@@ -1914,7 +1967,8 @@ pub async fn update_installed_template(name: &str) -> Result<TemplateUpdateRepor
 }
 
 /// Update all git-sourced templates. Returns a list of (name, result) pairs.
-pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<TemplateUpdateReport>)>> {
+pub async fn update_all_installed_templates() -> Result<Vec<(String, Result<TemplateUpdateReport>)>>
+{
     let registry = load_registry().await?;
     let git_names: Vec<String> = registry
         .templates
@@ -1939,21 +1993,25 @@ pub async fn rollback_installed_template(name: &str) -> Result<TemplateUpdateRep
         template_storage_dir()?.join(name)
     };
 
-    let state = read_update_state(&dest)?
-        .ok_or_else(|| anyhow::anyhow!("No recorded update state exists for template '{}'", name))?;
-    let backup_path = state.backup_path.as_deref().ok_or_else(|| {
-        anyhow::anyhow!("No backup is available for template '{}'", name)
+    let state = read_update_state(&dest)?.ok_or_else(|| {
+        anyhow::anyhow!("No recorded update state exists for template '{}'", name)
     })?;
+    let backup_path = state
+        .backup_path
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("No backup is available for template '{}'", name))?;
 
     if dest.exists() {
         fs::remove_dir_all(&dest).with_context(|| {
-            format!("Failed to remove template directory before rollback: {}", dest.display())
+            format!(
+                "Failed to remove template directory before rollback: {}",
+                dest.display()
+            )
         })?;
     }
 
-    copy_dir_recursive(Path::new(backup_path), &dest).with_context(|| {
-        format!("Failed to restore template from backup at {}", backup_path)
-    })?;
+    copy_dir_recursive(Path::new(backup_path), &dest)
+        .with_context(|| format!("Failed to restore template from backup at {}", backup_path))?;
 
     let mut report = state.last_report.unwrap_or_else(|| TemplateUpdateReport {
         template_name: name.to_string(),

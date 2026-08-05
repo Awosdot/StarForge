@@ -373,15 +373,20 @@ fn collect_line_mutants(
         for (col, _) in masked.match_indices('!') {
             let prev_ok = col == 0 || !is_ident_byte(bytes[col - 1]);
             let next = bytes.get(col + 1).copied();
-            let next_ok = next
-                .map(|b| is_ident_byte(b) || b == b'(')
-                .unwrap_or(false);
+            let next_ok = next.map(|b| is_ident_byte(b) || b == b'(').unwrap_or(false);
             // `!=` is a comparison, not a negation.
             if next == Some(b'=') || !prev_ok || !next_ok {
                 continue;
             }
             let mutated = splice(line, col, 1, "");
-            push(out, MutationOperator::NegationRemoval, col, "!", "", mutated);
+            push(
+                out,
+                MutationOperator::NegationRemoval,
+                col,
+                "!",
+                "",
+                mutated,
+            );
         }
     }
 
@@ -416,12 +421,7 @@ fn collect_line_mutants(
                 if start < close {
                     let inner = &line[start..close];
                     if inner != "Default::default()" {
-                        let mutated = splice(
-                            line,
-                            start,
-                            close - start,
-                            "Default::default()",
-                        );
+                        let mutated = splice(line, start, close - start, "Default::default()");
                         push(
                             out,
                             MutationOperator::UnwrapDefault,

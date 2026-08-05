@@ -73,10 +73,7 @@ const COMMANDS: &[CmdEntry] = &[
                 "update",
                 "Update installed templates to their latest versions",
             ),
-            (
-                "rollback",
-                "Restore the last tracked template update state",
-            ),
+            ("rollback", "Restore the last tracked template update state"),
             ("publish", "Publish a template to the local marketplace"),
             ("remove", "Remove a template from the local marketplace"),
             (

@@ -16,17 +16,15 @@
 //! - `library`         – browse the built-in Soroban pattern / anti-pattern library
 //! - `cache`           – manage AI request cache (stats, clear, export, etc.)
 
+use crate::utils::ai_cache;
 use crate::utils::{
-    ai_cache,
     contract_profiler,
     ollama::{self, GenerateOptions},
-    pattern_library,
-    print as p,
+    pattern_library, print as p,
 };
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::path::PathBuf;
-use crate::utils::ai_cache;
 
 // ─── Sub-command enum ─────────────────────────────────────────────────────────
 
@@ -255,7 +253,17 @@ pub async fn handle(cmd: AiCommands) -> Result<()> {
             output,
             dashboard,
             model,
-        } => handle_profile(&wasm, label.as_deref(), baseline.as_deref(), output.as_deref(), dashboard.as_deref(), &model).await,
+        } => {
+            handle_profile(
+                &wasm,
+                label.as_deref(),
+                baseline.as_deref(),
+                output.as_deref(),
+                dashboard.as_deref(),
+                &model,
+            )
+            .await
+        }
         AiCommands::CompareProfiles {
             baseline,
             candidate,
@@ -267,16 +275,28 @@ pub async fn handle(cmd: AiCommands) -> Result<()> {
             output,
             static_only,
             model,
-        } => handle_patterns(&file, category.as_deref(), output.as_deref(), static_only, &model).await,
-        AiCommands::Library { category, anti, verbose } => {
-            handle_library(category.as_deref(), anti, verbose)
+        } => {
+            handle_patterns(
+                &file,
+                category.as_deref(),
+                output.as_deref(),
+                static_only,
+                &model,
+            )
+            .await
         }
-        AiCommands::Cache(cache_cmd) => {
-            crate::commands::ai_cache_cmd::handle(cache_cmd).await
-        }
-        AiCommands::PatternFeedback { pattern_id, verdict, file, note } => {
-            handle_pattern_feedback(&pattern_id, &verdict, file.as_deref(), note.as_deref())
-        }
+        AiCommands::Library {
+            category,
+            anti,
+            verbose,
+        } => handle_library(category.as_deref(), anti, verbose),
+        AiCommands::Cache(cache_cmd) => crate::commands::ai_cache_cmd::handle(cache_cmd).await,
+        AiCommands::PatternFeedback {
+            pattern_id,
+            verdict,
+            file,
+            note,
+        } => handle_pattern_feedback(&pattern_id, &verdict, file.as_deref(), note.as_deref()),
         AiCommands::Analytics(analytics_cmd) => {
             crate::commands::ai_test_analytics_cmd::handle(analytics_cmd).await
         }
@@ -584,11 +604,17 @@ async fn handle_profile(
     );
     p::kv(
         "Est. invocation time",
-        &format!("{:.2} ms", report.dashboard_summary.estimated_invocation_time_ms),
+        &format!(
+            "{:.2} ms",
+            report.dashboard_summary.estimated_invocation_time_ms
+        ),
     );
     p::kv(
         "Est. peak memory",
-        &format!("{} bytes", report.dashboard_summary.estimated_peak_memory_bytes),
+        &format!(
+            "{} bytes",
+            report.dashboard_summary.estimated_peak_memory_bytes
+        ),
     );
     p::kv(
         "Bottlenecks found",
@@ -598,14 +624,20 @@ async fn handle_profile(
         "Regression detected",
         &report.dashboard_summary.regression_detected.to_string(),
     );
-    p::kv("Optimisation score", &format!("{}/100", report.optimization_score));
+    p::kv(
+        "Optimisation score",
+        &format!("{}/100", report.optimization_score),
+    );
 
     if let Some(cmp) = &report.comparison {
         println!();
         p::info("Regression Comparison");
         p::kv("Verdict", &cmp.verdict);
         p::kv("Gas delta", &format!("{:+.2}%", cmp.gas_delta_pct));
-        p::kv("Execution time delta", &format!("{:+.2}%", cmp.execution_time_delta_pct));
+        p::kv(
+            "Execution time delta",
+            &format!("{:+.2}%", cmp.execution_time_delta_pct),
+        );
         p::kv("Memory delta", &format!("{:+.2}%", cmp.memory_delta_pct));
     }
 
@@ -688,12 +720,20 @@ async fn handle_compare_profiles(
         baseline_report.dashboard_summary.total_estimated_gas as f64,
     );
     let time_delta_pct = percent_delta(
-        candidate_report.dashboard_summary.estimated_invocation_time_ms,
-        baseline_report.dashboard_summary.estimated_invocation_time_ms,
+        candidate_report
+            .dashboard_summary
+            .estimated_invocation_time_ms,
+        baseline_report
+            .dashboard_summary
+            .estimated_invocation_time_ms,
     );
     let mem_delta_pct = percent_delta(
-        candidate_report.dashboard_summary.estimated_peak_memory_bytes as f64,
-        baseline_report.dashboard_summary.estimated_peak_memory_bytes as f64,
+        candidate_report
+            .dashboard_summary
+            .estimated_peak_memory_bytes as f64,
+        baseline_report
+            .dashboard_summary
+            .estimated_peak_memory_bytes as f64,
     );
 
     p::kv("Gas delta", &format!("{:+.2}%", gas_delta_pct));
@@ -786,17 +826,25 @@ async fn handle_patterns(
     spinner.finish_and_clear();
 
     // Apply category filter to static results
-    let filtered_patterns: Vec<_> = scan.matched_patterns.iter().filter(|m| {
-        category_filter.is_none_or(|cat| {
-            m.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+    let filtered_patterns: Vec<_> = scan
+        .matched_patterns
+        .iter()
+        .filter(|m| {
+            category_filter.is_none_or(|cat| {
+                m.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+            })
         })
-    }).collect();
+        .collect();
 
-    let filtered_anti: Vec<_> = scan.matched_anti_patterns.iter().filter(|m| {
-        category_filter.is_none_or(|cat| {
-            m.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+    let filtered_anti: Vec<_> = scan
+        .matched_anti_patterns
+        .iter()
+        .filter(|m| {
+            category_filter.is_none_or(|cat| {
+                m.category.to_string().to_lowercase().replace(' ', "_") == cat.to_lowercase()
+            })
         })
-    }).collect();
+        .collect();
 
     println!();
     p::info(&format!(
@@ -808,14 +856,17 @@ async fn handle_patterns(
     if !filtered_patterns.is_empty() {
         println!();
         let headers = &["Pattern", "Category", "Confidence", "Hits"];
-        let rows: Vec<Vec<String>> = filtered_patterns.iter().map(|m| {
-            vec![
-                m.pattern_name.clone(),
-                m.category.to_string(),
-                format!("{}%", m.confidence),
-                m.indicator_hits.to_string(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = filtered_patterns
+            .iter()
+            .map(|m| {
+                vec![
+                    m.pattern_name.clone(),
+                    m.category.to_string(),
+                    format!("{}%", m.confidence),
+                    m.indicator_hits.to_string(),
+                ]
+            })
+            .collect();
         p::table(headers, &rows);
     }
 
@@ -823,15 +874,18 @@ async fn handle_patterns(
         println!();
         p::warn("Anti-patterns detected:");
         let headers = &["ID", "Name", "Category", "Severity", "Hits"];
-        let rows: Vec<Vec<String>> = filtered_anti.iter().map(|m| {
-            vec![
-                m.anti_pattern_id.clone(),
-                m.anti_pattern_name.clone(),
-                m.category.to_string(),
-                m.severity.to_string(),
-                m.indicator_hits.to_string(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = filtered_anti
+            .iter()
+            .map(|m| {
+                vec![
+                    m.anti_pattern_id.clone(),
+                    m.anti_pattern_name.clone(),
+                    m.category.to_string(),
+                    m.severity.to_string(),
+                    m.indicator_hits.to_string(),
+                ]
+            })
+            .collect();
         p::table(headers, &rows);
     }
 
@@ -844,8 +898,8 @@ async fn handle_patterns(
         println!();
         ensure_ollama_running().await?;
 
-        let scan_json = serde_json::to_string_pretty(&scan)
-            .context("Failed to serialise pre-scan result")?;
+        let scan_json =
+            serde_json::to_string_pretty(&scan).context("Failed to serialise pre-scan result")?;
         let feedback_ctx = pattern_library::feedback_context_for_prompt();
         let prompt = ollama::prompts::pattern_recognition_prompt(&code, &scan_json, &feedback_ctx);
         let opts = GenerateOptions {
@@ -867,14 +921,17 @@ async fn handle_patterns(
 
         if response.total_duration > 0 {
             println!();
-            p::kv("AI response time", &format!("{} ms", response.total_duration / 1_000_000));
+            p::kv(
+                "AI response time",
+                &format!("{} ms", response.total_duration / 1_000_000),
+            );
         }
     }
 
     // ── Step 3: Persist JSON output ───────────────────────────────────────────
     if let Some(out_path) = output {
-        let json = serde_json::to_string_pretty(&scan)
-            .context("Failed to serialise scan result")?;
+        let json =
+            serde_json::to_string_pretty(&scan).context("Failed to serialise scan result")?;
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -888,11 +945,7 @@ async fn handle_patterns(
 }
 
 /// Browse the built-in pattern or anti-pattern library.
-fn handle_library(
-    category_filter: Option<&str>,
-    show_anti: bool,
-    verbose: bool,
-) -> Result<()> {
+fn handle_library(category_filter: Option<&str>, show_anti: bool, verbose: bool) -> Result<()> {
     p::header(if show_anti {
         "Soroban Anti-Pattern Library"
     } else {

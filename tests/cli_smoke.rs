@@ -408,3 +408,225 @@ fn telemetry_respects_env_override() {
     assert!(stdout.contains("Environment Override"));
     assert!(stdout.contains("false"));
 }
+
+fn write_config(home: &std::path::Path, contents: &str) {
+    let dir = home.join(".starforge");
+    std::fs::create_dir_all(&dir).expect("create config dir");
+    std::fs::write(dir.join("config.toml"), contents).expect("write config");
+}
+
+#[test]
+fn config_doctor_smoke_in_isolated_home() {
+    let home = isolated_home();
+    let output = starforge(home.path())
+        .args(["config", "doctor"])
+        .output()
+        .expect("spawn config doctor");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("StarForge Config Doctor"));
+    assert!(stdout.contains("schema"));
+    assert!(stdout.contains("Passed"));
+    assert!(
+        stdout.contains("no config.toml found") || stdout.contains("config version is"),
+        "expected default schema finding, got: {stdout}"
+    );
+}
+
+#[test]
+fn config_doctor_fails_on_invalid_wallet_key() {
+    let home = isolated_home();
+    write_config(
+        home.path(),
+        r#"
+version = "1"
+network = "testnet"
+
+[[wallets]]
+name = "bad"
+public_key = "not-a-key"
+network = "testnet"
+created_at = ""
+funded = false
+"#,
+    );
+
+    let output = starforge(home.path())
+        .args(["config", "doctor"])
+        .output()
+        .expect("spawn config doctor");
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit for invalid wallet public key"
+    );
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        combined.contains("wallet") || combined.contains("public key"),
+        "expected wallet validation failure, got: {combined}"
+    );
+}
+
+#[test]
+fn config_help_lists_doctor_subcommand() {
+    let home = isolated_home();
+    let output = starforge(home.path())
+        .args(["config", "--help"])
+        .output()
+        .expect("spawn config help");
+    assert_success(&output, "starforge config --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("doctor"));
+}
+
+#[test]
+fn multisig_templates_lists_scenarios() {
+    let home = isolated_home();
+    let output = starforge(home.path())
+        .args(["multisig", "templates"])
+        .output()
+        .expect("spawn multisig templates");
+    assert_success(&output, "starforge multisig templates");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("escrow"));
+    assert!(stdout.contains("dao"));
+}
+
+#[test]
+fn multisig_create_and_sign_workflow() {
+    let home = isolated_home();
+    let dir = home.path().join("proposals");
+    std::fs::create_dir_all(&dir).expect("create proposals dir");
+
+    let create = starforge(home.path())
+        .current_dir(&dir)
+        .args([
+            "multisig",
+            "create",
+            "--threshold",
+            "2",
+            "--signers",
+            "alice,bob",
+            "--network",
+            "testnet",
+        ])
+        .output()
+        .expect("spawn multisig create");
+    assert_success(&create, "starforge multisig create");
+
+    let entries: Vec<_> = std::fs::read_dir(&dir)
+        .expect("read proposals dir")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("proposal_") && n.ends_with(".json"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(entries.len(), 1, "expected one proposal file");
+    let created_path = entries[0].path();
+
+    let sign_alice = starforge(home.path())
+        .args(["multisig", "sign", created_path.to_str().unwrap(), "alice"])
+        .output()
+        .expect("spawn multisig sign alice");
+    assert_success(&sign_alice, "starforge multisig sign alice");
+
+    let status = starforge(home.path())
+        .args(["multisig", "status", created_path.to_str().unwrap()])
+        .output()
+        .expect("spawn multisig status");
+    assert_success(&status, "starforge multisig status");
+    let status_out = String::from_utf8_lossy(&status.stdout);
+    assert!(status_out.contains("Progress: 1/2"));
+    assert!(status_out.contains("50%"));
+
+    let sign_bob = starforge(home.path())
+        .args(["multisig", "sign", created_path.to_str().unwrap(), "bob"])
+        .output()
+        .expect("spawn multisig sign bob");
+    assert_success(&sign_bob, "starforge multisig sign bob");
+
+    let is_ready = starforge(home.path())
+        .args(["multisig", "is-ready", created_path.to_str().unwrap()])
+        .output()
+        .expect("spawn multisig is-ready");
+    assert!(is_ready.status.success(), "expected ready proposal");
+    assert_eq!(String::from_utf8_lossy(&is_ready.stdout).trim(), "ready");
+
+    let export_path = dir.join("exported.json");
+    let export = starforge(home.path())
+        .args([
+            "multisig",
+            "export",
+            created_path.to_str().unwrap(),
+            export_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("spawn multisig export");
+    assert_success(&export, "starforge multisig export");
+
+    let import_path = dir.join("imported.json");
+    let import = starforge(home.path())
+        .args([
+            "multisig",
+            "import",
+            export_path.to_str().unwrap(),
+            import_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("spawn multisig import");
+    assert_success(&import, "starforge multisig import");
+
+    let notify = starforge(home.path())
+        .args([
+            "multisig",
+            "notify",
+            import_path.to_str().unwrap(),
+            "--channel",
+            "email",
+        ])
+        .output()
+        .expect("spawn multisig notify");
+    assert_success(&notify, "starforge multisig notify");
+
+    let submit = starforge(home.path())
+        .args([
+            "multisig",
+            "submit",
+            import_path.to_str().unwrap(),
+            "--network",
+            "testnet",
+        ])
+        .output()
+        .expect("spawn multisig submit");
+    assert_success(&submit, "starforge multisig submit");
+}
+
+#[test]
+fn multisig_from_template_creates_proposal() {
+    let home = isolated_home();
+    let dir = home.path().join("templates");
+    std::fs::create_dir_all(&dir).expect("create templates dir");
+    let output_path = dir.join("escrow.json");
+
+    let output = starforge(home.path())
+        .args([
+            "multisig",
+            "from-template",
+            "escrow",
+            output_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("spawn multisig from-template");
+    assert_success(&output, "starforge multisig from-template");
+    assert!(output_path.exists(), "expected escrow proposal file");
+
+    let contents = std::fs::read_to_string(&output_path).expect("read escrow proposal");
+    assert!(contents.contains("buyer"));
+    assert!(contents.contains("\"threshold\": 2"));
+}

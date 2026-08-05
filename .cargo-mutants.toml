@@ -26,6 +26,12 @@ examine_globs = [
     "src/utils/crypto.rs",
     "src/commands/deploy.rs",
     "src/utils/templates.rs",
+    # Contract testing infrastructure
+    "src/utils/mock_soroban.rs",
+    "src/utils/wasm_hash.rs",
+    "src/utils/contract_mocks.rs",
+    "src/utils/contract_testing.rs",
+    "src/utils/test_generator.rs",
 ]
 
 # ── Skip ─────────────────────────────────────────────────────────────────────

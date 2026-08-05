@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'fuzz/**'
       - 'tests/property_tests.rs'
+      - 'tests/contract_property_tests.rs'
       - '.github/workflows/fuzzing.yml'
       - 'Cargo.toml'
   pull_request:
@@ -14,6 +15,7 @@ on:
       - 'src/**'
       - 'fuzz/**'
       - 'tests/property_tests.rs'
+      - 'tests/contract_property_tests.rs'
       - '.github/workflows/fuzzing.yml'
       - 'Cargo.toml'
   # Allow manual dispatch with configurable fuzz duration.
@@ -27,6 +29,8 @@ on:
         description: 'Number of proptest cases per property'
         required: false
         default: '1000'
+  schedule:
+    - cron: '30 2 * * 1'
 
 # Cancel in-progress runs when a new commit is pushed to the same branch.
 concurrency:
@@ -63,6 +67,9 @@ jobs:
 
       - name: Run property-based tests
         run: cargo test --test property_tests --locked -- --test-threads=1
+
+      - name: Run contract property-based tests
+        run: cargo test --test contract_property_tests --locked -- --test-threads=1
 
       - name: Run all tests (includes property tests)
         run: cargo test --locked -- --test-threads=1
@@ -120,6 +127,11 @@ jobs:
           - fuzz_wasm_hash
           - fuzz_encrypted_bundle_parse
           - fuzz_template_operations
+          # Contract fuzzing harnesses
+          - fuzz_wasm_validation
+          - fuzz_contract_invocation
+          - fuzz_contract_spec_parse
+          - fuzz_test_generator
     steps:
       - uses: actions/checkout@v4
 

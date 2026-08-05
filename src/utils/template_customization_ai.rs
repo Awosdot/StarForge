@@ -1,4 +1,3 @@
-
 use crate::utils::{ollama, template_vcs};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -54,25 +53,34 @@ pub async fn customize_template(
 
     // 5. Save to history and commit to VCS
     save_customization_history(template_path, requirements, &response.response)?;
-    
+
     // Ensure VCS is initialized and commit
     if !template_path.join(".starforge-vcs").exists() {
-        let _ = template_vcs::init_vcs(template_path, template_path.file_name().unwrap_or_default().to_str().unwrap_or("template"));
+        let _ = template_vcs::init_vcs(
+            template_path,
+            template_path
+                .file_name()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or("template"),
+        );
         let _ = template_vcs::commit_version(
             template_path,
             "1.0.0",
             "Initial template state before customizations",
-            "StarForge System"
+            "StarForge System",
         );
     }
-    
-    let history = get_customization_history(template_path).await.unwrap_or(CustomizationHistory { entries: vec![] });
+
+    let history = get_customization_history(template_path)
+        .await
+        .unwrap_or(CustomizationHistory { entries: vec![] });
     let version = format!("1.0.{}", history.entries.len());
     let _ = template_vcs::commit_version(
         template_path,
         &version,
         &format!("AI Customization: {}", requirements),
-        "StarForge AI"
+        "StarForge AI",
     );
 
     Ok(CustomizationResult {
@@ -157,7 +165,9 @@ fn apply_ai_modifications(template_path: &Path, ai_response: &str) -> Result<Vec
                     if let Some((file_path, rest)) = line[2..].split_once(':') {
                         let mut code_change = String::new();
                         i += 1;
-                        while i < lines.len() && (lines[i].starts_with("  ") || lines[i].trim().is_empty()) {
+                        while i < lines.len()
+                            && (lines[i].starts_with("  ") || lines[i].trim().is_empty())
+                        {
                             if !lines[i].trim().is_empty() {
                                 code_change.push_str(lines[i].trim_start());
                                 code_change.push('\n');
@@ -180,7 +190,7 @@ fn apply_ai_modifications(template_path: &Path, ai_response: &str) -> Result<Vec
                         } else {
                             code_change.trim()
                         };
-                        
+
                         // Apply the change to the file
                         let full_path = template_path.join(file_path.trim());
                         if full_path.exists() {
@@ -270,7 +280,9 @@ fn save_customization_history(
 }
 
 pub async fn rollback_customization(template_path: &Path, index: Option<usize>) -> Result<()> {
-    let history_file = template_path.join(".starforge-customizations").join("history.json");
+    let history_file = template_path
+        .join(".starforge-customizations")
+        .join("history.json");
     if !history_file.exists() {
         anyhow::bail!("No customization history found for this template");
     }
@@ -291,7 +303,10 @@ pub async fn rollback_customization(template_path: &Path, index: Option<usize>) 
         history.entries.len().saturating_sub(1)
     };
 
-    println!("Rolling back to state before: {}", history.entries[target_index].timestamp);
+    println!(
+        "Rolling back to state before: {}",
+        history.entries[target_index].timestamp
+    );
 
     // Rollback using git if available
     if template_path.join(".git").exists() {
@@ -302,7 +317,7 @@ pub async fn rollback_customization(template_path: &Path, index: Option<usize>) 
         // Actually, if we just want to reset to a previous tag, let's just use `git checkout`.
         // Let's get the version to rollback to.
         let version_tag = format!("v1.0.{}", target_index);
-        
+
         let output = std::process::Command::new("git")
             .current_dir(template_path)
             .args(["reset", "--hard", &version_tag])
@@ -315,7 +330,7 @@ pub async fn rollback_customization(template_path: &Path, index: Option<usize>) 
                 String::from_utf8_lossy(&output.stderr)
             );
         }
-        
+
         // Truncate history
         history.entries.truncate(target_index);
         let json_content = serde_json::to_string_pretty(&history)?;
@@ -328,7 +343,9 @@ pub async fn rollback_customization(template_path: &Path, index: Option<usize>) 
 }
 
 pub async fn get_customization_history(template_path: &Path) -> Result<CustomizationHistory> {
-    let history_file = template_path.join(".starforge-customizations").join("history.json");
+    let history_file = template_path
+        .join(".starforge-customizations")
+        .join("history.json");
     if !history_file.exists() {
         return Ok(CustomizationHistory {
             entries: Vec::new(),

@@ -423,7 +423,7 @@ fn extract_struct_fields(lines: &[&str], start: usize) -> Vec<ExtractedField> {
                 && field_part
                     .chars()
                     .next()
-                    .map_or(false, |c| c.is_alphabetic() || c == '_')
+                    .is_some_and(|c| c.is_alphabetic() || c == '_')
                 && field_part.chars().all(|c| c.is_alphanumeric() || c == '_')
             {
                 fields.push(ExtractedField {
@@ -480,7 +480,7 @@ fn extract_enum_variants(lines: &[&str], start: usize) -> Vec<ExtractedVariant> 
             && variant_name
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_uppercase())
+                .is_some_and(|c| c.is_uppercase())
         {
             variants.push(ExtractedVariant {
                 name: variant_name,
@@ -509,8 +509,8 @@ impl ExampleExtractor {
         for line in comment.lines() {
             let trimmed = line.trim();
             if !in_fence {
-                if let Some(rest) = trimmed.strip_prefix("```") {
-                    lang = rest.trim().to_string();
+                if let Some(stripped) = trimmed.strip_prefix("```") {
+                    lang = stripped.trim().to_string();
                     if lang.is_empty() {
                         lang = "rust".to_string();
                     }

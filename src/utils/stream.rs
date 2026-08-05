@@ -93,7 +93,8 @@ impl Backoff {
 
 impl SorobanEventStream {
     pub fn new(rpc_url: String, contract_id: String) -> Self {
-        let websocket_url = websocket_url_from_rpc_url(&rpc_url).unwrap_or_else(|_| rpc_url.clone());
+        let websocket_url =
+            websocket_url_from_rpc_url(&rpc_url).unwrap_or_else(|_| rpc_url.clone());
         Self {
             rpc_url,
             websocket_url,
@@ -252,7 +253,12 @@ impl SorobanEventStream {
 
         let (websocket, _) = connect_async(self.websocket_url.as_str())
             .await
-            .with_context(|| format!("failed to connect to Soroban RPC WebSocket {}", self.websocket_url))?;
+            .with_context(|| {
+                format!(
+                    "failed to connect to Soroban RPC WebSocket {}",
+                    self.websocket_url
+                )
+            })?;
         self.websocket = Some(websocket);
         Ok(())
     }
@@ -458,6 +464,8 @@ pub struct SorobanEvent {
 mod tests {
     use super::*;
     use serde_json::json;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::accept_async;
 
     #[test]
     fn derives_websocket_urls_from_http_rpc_urls() {
@@ -497,5 +505,77 @@ mod tests {
         let result = response.result.unwrap();
         assert_eq!(result.cursor.as_deref(), Some("abc"));
         assert_eq!(result.events.len(), 1);
+    }
+
+    #[test]
+    fn decodes_direct_result_websocket_events() {
+        let message = json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "cursor": "xyz",
+                "events": [{
+                    "type": "contract",
+                    "ledger": 9,
+                    "id": "event-2",
+                    "topic": ["mint"],
+                    "value": {"ok": true}
+                }]
+            }
+        });
+
+        let response = decode_websocket_response(&message.to_string())
+            .unwrap()
+            .unwrap();
+        let result = response.result.unwrap();
+        assert_eq!(result.cursor.as_deref(), Some("xyz"));
+        assert_eq!(result.events[0].id, "event-2");
+    }
+
+    #[test]
+    fn websocket_url_derivation_rejects_unrelated_inputs() {
+        assert!(websocket_url_from_rpc_url("notaurl").is_err());
+    }
+
+    #[tokio::test]
+    async fn websocket_transport_round_trips_get_events() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            let message = socket.next().await.unwrap().unwrap();
+            let request: serde_json::Value =
+                serde_json::from_str(message.to_text().unwrap()).unwrap();
+            assert_eq!(request["method"], "getEvents");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": request["id"],
+                        "result": {
+                            "cursor": "mock-cursor",
+                            "events": [{
+                                "type": "contract",
+                                "ledger": 12,
+                                "id": "mock-event",
+                                "topic": ["mint"],
+                                "value": {"amount": 10}
+                            }]
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+        });
+
+        let mut stream = SorobanEventStream::new(format!("http://{}", address), "C123".to_string())
+            .with_transport(EventStreamTransport::WebSocket)
+            .with_websocket_url(format!("ws://{}", address));
+        let events = stream.next_batch().await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, "mock-event");
+        server.await.unwrap();
     }
 }

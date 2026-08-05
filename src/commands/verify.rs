@@ -1,10 +1,12 @@
-use crate::utils::{config, print as p};
+use crate::utils::{
+    config, print as p,
+    wasm_hash::{compute_wasm_hash, BuildEnvironment},
+};
 use anyhow::Result;
 use chrono::Utc;
 use clap::{Args, Subcommand};
 use colored::*;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -249,9 +251,8 @@ fn save_reports(reports: &[VerificationReport]) -> Result<()> {
 
 /// Compute SHA-256 of WASM bytes.
 fn wasm_hash(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hex::encode(hasher.finalize())
+    compute_wasm_hash(bytes, BuildEnvironment::current())
+        .unwrap_or_else(|e| panic!("failed to compute verification WASM hash: {e}"))
 }
 
 /// Lightweight static analysis checks used as stand-ins for full formal proofs.

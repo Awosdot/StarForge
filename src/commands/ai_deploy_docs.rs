@@ -181,7 +181,9 @@ fn read_source(source: &Option<PathBuf>) -> String {
 fn extract_pub_fns(source: &str) -> Vec<String> {
     source
         .lines()
-        .filter(|l| l.trim_start().starts_with("pub fn ") || l.trim_start().starts_with("pub async fn "))
+        .filter(|l| {
+            l.trim_start().starts_with("pub fn ") || l.trim_start().starts_with("pub async fn ")
+        })
         .map(|l| l.trim().trim_end_matches('{').trim().to_string())
         .collect()
 }
@@ -209,12 +211,21 @@ fn emit(content: &str, out: &Option<PathBuf>) -> Result<()> {
 
 // ── Document generators ───────────────────────────────────────────────────────
 
-fn generate_deployment_guide(contract: &str, network: &str, source: &str, markdown: bool) -> String {
+fn generate_deployment_guide(
+    contract: &str,
+    network: &str,
+    source: &str,
+    markdown: bool,
+) -> String {
     let pub_fns = extract_pub_fns(source);
     let fn_list = if pub_fns.is_empty() {
         "  (no public functions detected — provide --source for richer output)".to_string()
     } else {
-        pub_fns.iter().map(|f| format!("  - `{}`", f)).collect::<Vec<_>>().join("\n")
+        pub_fns
+            .iter()
+            .map(|f| format!("  - `{}`", f))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let h1 = if markdown { "#" } else { "" };
@@ -594,7 +605,11 @@ fn generate_architecture(contract: &str, network: &str, source: &str, markdown: 
     let entry_points = if pub_fns.is_empty() {
         "  (provide --source for entry-point list)".to_string()
     } else {
-        pub_fns.iter().map(|f| format!("  - `{}`", f)).collect::<Vec<_>>().join("\n")
+        pub_fns
+            .iter()
+            .map(|f| format!("  - `{}`", f))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let h1 = if markdown { "#" } else { "" };
@@ -791,7 +806,7 @@ fn handle_all(args: AllArgs) -> Result<()> {
 
     for (filename, content) in files {
         let path = args.out_dir.join(filename);
-        write_file(&path, content)?;
+        write_file(&path, &content)?;
         println!("  {} {}", "✓".green(), path.display());
     }
 

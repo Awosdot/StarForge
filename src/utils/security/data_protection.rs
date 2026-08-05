@@ -231,8 +231,7 @@ impl DataProtectionEngine {
         let access_control_score = if access_checks.is_empty() {
             100.0
         } else {
-            access_checks.iter().filter(|c| c.passed).count() as f64
-                / access_checks.len() as f64
+            access_checks.iter().filter(|c| c.passed).count() as f64 / access_checks.len() as f64
                 * 100.0
         };
 
@@ -243,9 +242,7 @@ impl DataProtectionEngine {
         let key_management_score = if key_checks.is_empty() {
             100.0
         } else {
-            key_checks.iter().filter(|c| c.passed).count() as f64
-                / key_checks.len() as f64
-                * 100.0
+            key_checks.iter().filter(|c| c.passed).count() as f64 / key_checks.len() as f64 * 100.0
         };
 
         let integrity_checks: Vec<&DataProtectionCheck> = checks
@@ -282,9 +279,8 @@ impl DataProtectionEngine {
             || source.contains("cipher")
             || source.contains("aes")
             || source.contains("aes_gcm");
-        let has_sensitive_storage = source.contains("store")
-            || source.contains("save")
-            || source.contains("write");
+        let has_sensitive_storage =
+            source.contains("store") || source.contains("save") || source.contains("write");
 
         let passed = has_encryption || !has_sensitive_storage;
         DataProtectionCheck {
@@ -308,9 +304,7 @@ impl DataProtectionEngine {
     }
 
     fn check_encryption_in_transit(&self, source: &str) -> DataProtectionCheck {
-        let has_tls = source.contains("https")
-            || source.contains("tls")
-            || source.contains("ssl");
+        let has_tls = source.contains("https") || source.contains("tls") || source.contains("ssl");
         let has_http = source.contains("http://") && !source.contains("https");
 
         let passed = has_tls || !has_http;
@@ -347,14 +341,14 @@ impl DataProtectionEngine {
             } else {
                 "No access control mechanisms detected".into()
             },
-            remediation: "Add require_auth or role-based access checks to sensitive functions".into(),
+            remediation: "Add require_auth or role-based access checks to sensitive functions"
+                .into(),
         }
     }
 
     fn check_key_management(&self, source: &str) -> DataProtectionCheck {
-        let has_key_ops = source.contains("key")
-            || source.contains("secret")
-            || source.contains("private");
+        let has_key_ops =
+            source.contains("key") || source.contains("secret") || source.contains("private");
         let has_hardcoded = source.contains("\"sk1\"")
             || source.contains("\"secret_key\"")
             || source.contains("hardcoded");
@@ -371,7 +365,8 @@ impl DataProtectionEngine {
             } else {
                 "Hardcoded secret keys found in source".into()
             },
-            remediation: "Use environment variables or secure key storage instead of hardcoded values".into(),
+            remediation:
+                "Use environment variables or secure key storage instead of hardcoded values".into(),
         }
     }
 
@@ -418,12 +413,10 @@ impl DataProtectionEngine {
     }
 
     fn check_secure_storage(&self, source: &str) -> DataProtectionCheck {
-        let has_storage = source.contains("storage")
-            || source.contains("persist")
-            || source.contains("save");
-        let has_secure = source.contains("encrypt")
-            || source.contains("secure")
-            || source.contains("protected");
+        let has_storage =
+            source.contains("storage") || source.contains("persist") || source.contains("save");
+        let has_secure =
+            source.contains("encrypt") || source.contains("secure") || source.contains("protected");
 
         let passed = !has_storage || has_secure;
         DataProtectionCheck {
@@ -463,7 +456,9 @@ impl DataProtectionEngine {
     }
 
     pub fn save_result(&self, result: &DataProtectionResult) -> Result<PathBuf> {
-        let dir = config::config_dir().join("security").join("data-protection");
+        let dir = config::config_dir()
+            .join("security")
+            .join("data-protection");
         fs::create_dir_all(&dir)?;
 
         let filename = format!(

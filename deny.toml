@@ -11,9 +11,6 @@ targets = [
 [advisories]
 version = 2
 ignore = [
-    # ring 0.16.x pulled in transitively via pinned ureq =2.7.1; no upgrade path.
-    "RUSTSEC-2025-0009",
-    "RUSTSEC-2025-0010",
     # rustls-webpki 0.100/0.101 pulled in transitively via pinned ureq =2.7.1.
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
@@ -28,6 +25,8 @@ ignore = [
     # rustls-pemfile unmaintained in 1.0.4; reqwest 0.11 requires it.
     # Superseded in reqwest 0.12, which is a breaking change for this crate.
     "RUSTSEC-2025-0134",
+    # anyhow downcast_mut
+    "RUSTSEC-2026-0190",
 ]
 
 [licenses]
@@ -46,6 +45,7 @@ allow = [
     "OpenSSL",
     "CC0-1.0",
     "BSL-1.0",
+    "CDLA-Permissive-2.0",
 ]
 
 # ring 0.16.x has no license field; clarify it manually.

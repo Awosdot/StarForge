@@ -2,9 +2,71 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Arc;
+use sha2::{Digest, Sha256};
 
 pub fn db_path() -> PathBuf {
     crate::utils::config::config_dir().join("starforge.db")
+}
+
+/// Current schema version of the database
+pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+
+/// Migration trait for defining schema changes
+pub trait Migration: Send + Sync {
+    /// Version number for this migration (must be unique)
+    fn version(&self) -> i64;
+    
+    /// Description of what this migration does
+    fn description(&self) -> &str;
+    
+    /// Apply the migration (upgrade)
+    fn up(&self, conn: &mut Connection) -> Result<()>;
+    
+    /// Rollback the migration (downgrade)
+    fn down(&self, conn: &mut Connection) -> Result<()>;
+}
+
+/// Record of an applied migration in the database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppliedMigration {
+    pub version: i64,
+    pub name: String,
+    pub applied_at: String,
+    pub checksum: String,
+}
+
+/// Result of running migrations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationResult {
+    pub current_version: i64,
+    pub migrations_applied: Vec<i64>,
+    pub migrations_rolled_back: Vec<i64>,
+}
+
+/// Error types for migration operations
+#[derive(Debug, thiserror::Error)]
+pub enum MigrationError {
+    #[error("Migration version {0} is already applied")]
+    AlreadyApplied(i64),
+    
+    #[error("Migration version {0} not found")]
+    NotFound(i64),
+    
+    #[error("Cannot rollback: no migrations applied")]
+    NothingToRollback,
+    
+    #[error("Migration version {0} depends on unapplied version {1}")]
+    MissingDependency(i64, i64),
+    
+    #[error("Invalid migration sequence: versions must be consecutive")]
+    InvalidSequence,
+    
+    #[error("Database schema version {0} is not supported (minimum: {1}, maximum: {2})")]
+    UnsupportedVersion(i64, i64, i64),
+    
+    #[error("Migration failed: {0}")]
+    MigrationFailed(String),
 }
 
 pub struct Database {
@@ -53,7 +115,16 @@ impl Database {
         self.conn.execute_batch(SCHEMA)?;
         self.ensure_column("wallets", "secret_key", "TEXT")?;
         self.ensure_column("wallets", "rotation_history", "TEXT NOT NULL DEFAULT '[]'")?;
-        self.set_meta("schema_version", "1")?;
+        
+        // Run migrations if this is not a fresh database
+        if self.get_meta("schema_version").is_ok() {
+            self.run_migrations()?;
+        } else {
+            // Fresh database - set initial version
+            self.set_meta("schema_version", &CURRENT_SCHEMA_VERSION.to_string())?;
+            self.record_migration(CURRENT_SCHEMA_VERSION, "initial_schema")?;
+        }
+        
         // The feature-flags schema is shipped alongside the rest of the
         // schema for first-startup convenience; subsequent startups hit the
         // idempotent `CREATE TABLE IF NOT EXISTS` guards and no-op.
@@ -64,6 +135,177 @@ impl Database {
             self.upsert_definition(&def)?;
         }
         Ok(())
+    }
+
+    /// Get the current schema version from the database
+    pub fn get_current_schema_version(&self) -> Result<i64> {
+        self.get_meta("schema_version")?
+            .and_then(|v| v.parse::<i64>().ok())
+            .ok_or_else(|| anyhow::anyhow!("Schema version not found or invalid"))
+    }
+
+    /// Get all applied migrations from the database
+    pub fn get_applied_migrations(&self) -> Result<Vec<AppliedMigration>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT version, name, applied_at, checksum FROM schema_migrations ORDER BY version"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(AppliedMigration {
+                version: row.get(0)?,
+                name: row.get(1)?,
+                applied_at: row.get(2)?,
+                checksum: row.get(3)?,
+            })
+        })?;
+        rows.map(|r| r.map_err(anyhow::Error::from)).collect()
+    }
+
+    /// Record a migration as applied in the database
+    fn record_migration(&self, version: i64, name: &str) -> Result<()> {
+        let checksum = self.compute_migration_checksum(version, name)?;
+        let applied_at = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES (?1, ?2, ?3, ?4)",
+            params![version, name, applied_at, checksum],
+        )?;
+        Ok(())
+    }
+
+    /// Remove a migration record from the database
+    fn remove_migration(&self, version: i64) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM schema_migrations WHERE version = ?1",
+            params![version],
+        )?;
+        Ok(())
+    }
+
+    /// Compute a checksum for a migration to detect changes
+    fn compute_migration_checksum(&self, version: i64, name: &str) -> Result<String> {
+        let mut hasher = Sha256::new();
+        hasher.update(version.to_string().as_bytes());
+        hasher.update(name.as_bytes());
+        Ok(hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect())
+    }
+
+    /// Run pending migrations to bring the database to the current schema version
+    pub fn run_migrations(&self) -> Result<MigrationResult> {
+        let current_version = self.get_current_schema_version()?;
+        let applied = self.get_applied_migrations()?;
+        let applied_versions: std::collections::HashSet<i64> = applied.iter().map(|m| m.version).collect();
+        
+        let mut migrations_applied = Vec::new();
+        
+        // Check if we need to upgrade
+        if current_version < CURRENT_SCHEMA_VERSION {
+            // Apply migrations from current_version + 1 to CURRENT_SCHEMA_VERSION
+            for version in (current_version + 1)..=CURRENT_SCHEMA_VERSION {
+                if !applied_versions.contains(&version) {
+                    self.apply_migration(version)?;
+                    migrations_applied.push(version);
+                }
+            }
+        }
+        
+        Ok(MigrationResult {
+            current_version: CURRENT_SCHEMA_VERSION,
+            migrations_applied,
+            migrations_rolled_back: Vec::new(),
+        })
+    }
+
+    /// Apply a single migration within a transaction
+    fn apply_migration(&self, version: i64) -> Result<()> {
+        let migration = self.get_migration(version)
+            .ok_or_else(|| anyhow::anyhow!("Migration version {} not found", version))?;
+        
+        let tx = self.conn.unchecked_transaction()?;
+        
+        // Apply the migration
+        match migration.up(&mut tx) {
+            Ok(()) => {
+                // Record the migration
+                let checksum = self.compute_migration_checksum(version, migration.description())?;
+                let applied_at = chrono::Utc::now().to_rfc3339();
+                tx.execute(
+                    "INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES (?1, ?2, ?3, ?4)",
+                    params![version, migration.description(), applied_at, checksum],
+                )?;
+                
+                // Update schema version
+                tx.execute(
+                    "UPDATE meta SET value = ?1 WHERE key = 'schema_version'",
+                    params![version.to_string()],
+                )?;
+                
+                tx.commit()?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = tx.rollback();
+                Err(anyhow::anyhow!("Migration {} failed: {}", version, e))
+            }
+        }
+    }
+
+    /// Rollback a single migration within a transaction
+    pub fn rollback_migration(&self, version: i64) -> Result<()> {
+        let applied = self.get_applied_migrations()?;
+        let current_version = self.get_current_schema_version()?;
+        
+        // Check if the migration is applied
+        if !applied.iter().any(|m| m.version == version) {
+            return Err(anyhow::anyhow!("Migration version {} is not applied", version));
+        }
+        
+        // Check if we can rollback (must be the latest applied migration)
+        let max_applied = applied.iter().map(|m| m.version).max()
+            .ok_or_else(|| anyhow::anyhow!("No migrations applied"))?;
+        
+        if version != max_applied {
+            return Err(anyhow::anyhow!(
+                "Can only rollback the latest migration ({}), tried to rollback {}",
+                max_applied, version
+            ));
+        }
+        
+        let migration = self.get_migration(version)
+            .ok_or_else(|| anyhow::anyhow!("Migration version {} not found", version))?;
+        
+        let tx = self.conn.unchecked_transaction()?;
+        
+        // Rollback the migration
+        match migration.down(&mut tx) {
+            Ok(()) => {
+                // Remove the migration record
+                tx.execute(
+                    "DELETE FROM schema_migrations WHERE version = ?1",
+                    params![version],
+                )?;
+                
+                // Update schema version to previous version
+                let previous_version = if version > 1 { version - 1 } else { 0 };
+                tx.execute(
+                    "UPDATE meta SET value = ?1 WHERE key = 'schema_version'",
+                    params![previous_version.to_string()],
+                )?;
+                
+                tx.commit()?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = tx.rollback();
+                Err(anyhow::anyhow!("Rollback of migration {} failed: {}", version, e))
+            }
+        }
+    }
+
+    /// Get a migration by version number
+    fn get_migration(&self, version: i64) -> Option<Box<dyn Migration>> {
+        match version {
+            1 => Some(Box::new(MigrationV1 {})),
+            _ => None,
+        }
     }
 
     fn ensure_column(&self, table: &str, column: &str, definition: &str) -> Result<()> {
@@ -451,6 +693,10 @@ impl Database {
             .get_meta("schema_version")?
             .unwrap_or_else(|| "unknown".to_string());
         let db_size = std::fs::metadata(db_path()).map(|m| m.len()).unwrap_or(0);
+        let applied_migrations: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
+            .unwrap_or(0);
         Ok(DbStats {
             wallets: wallets as usize,
             networks: networks as usize,
@@ -458,6 +704,7 @@ impl Database {
             events: events_count as usize,
             schema_version,
             db_size_bytes: db_size,
+            applied_migrations: applied_migrations as usize,
         })
     }
 
@@ -690,6 +937,13 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at TEXT NOT NULL,
+    checksum TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS wallets (
     name        TEXT PRIMARY KEY,
     public_key  TEXT NOT NULL,
@@ -789,6 +1043,7 @@ pub struct DbStats {
     pub events: usize,
     pub schema_version: String,
     pub db_size_bytes: u64,
+    pub applied_migrations: usize,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -841,6 +1096,39 @@ pub struct EventAggregation {
 pub enum ExportFormat {
     Json,
     Csv,
+}
+
+/// Migration V1: Initial schema setup
+struct MigrationV1;
+
+impl Migration for MigrationV1 {
+    fn version(&self) -> i64 {
+        1
+    }
+    
+    fn description(&self) -> &str {
+        "initial_schema"
+    }
+    
+    fn up(&self, conn: &mut Connection) -> Result<()> {
+        // This is a no-op since the initial schema is already applied in SCHEMA
+        Ok(())
+    }
+    
+    fn down(&self, conn: &mut Connection) -> Result<()> {
+        // Rollback: drop all tables
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS events;
+             DROP TABLE IF EXISTS templates;
+             DROP TABLE IF EXISTS plugins;
+             DROP TABLE IF EXISTS config_kv;
+             DROP TABLE IF EXISTS networks;
+             DROP TABLE IF EXISTS wallets;
+             DROP TABLE IF EXISTS schema_migrations;
+             DROP TABLE IF EXISTS meta;"
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -983,5 +1271,137 @@ mod tests {
             .unwrap();
         assert_eq!(aggregates.len(), 1);
         assert_eq!(aggregates[0].count, 2);
+    }
+
+    #[test]
+    fn migration_initialization_sets_version() {
+        let db = in_memory_db();
+        let version = db.get_current_schema_version().unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn migration_records_applied_migrations() {
+        let db = in_memory_db();
+        let applied = db.get_applied_migrations().unwrap();
+        assert!(!applied.is_empty());
+        assert!(applied.iter().any(|m| m.version == 1));
+    }
+
+    #[test]
+    fn migration_rollback_latest_migration() {
+        let db = in_memory_db();
+        let version_before = db.get_current_schema_version().unwrap();
+        
+        // Rollback the latest migration
+        db.rollback_migration(version_before).unwrap();
+        
+        let version_after = db.get_current_schema_version().unwrap();
+        assert_eq!(version_after, version_before - 1);
+        
+        let applied = db.get_applied_migrations().unwrap();
+        assert!(!applied.iter().any(|m| m.version == version_before));
+    }
+
+    #[test]
+    fn migration_rollback_fails_for_nonexistent_migration() {
+        let db = in_memory_db();
+        let result = db.rollback_migration(999);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not applied"));
+    }
+
+    #[test]
+    fn migration_rollback_fails_for_non_latest_migration() {
+        let db = in_memory_db();
+        // Try to rollback a migration that isn't the latest
+        let result = db.rollback_migration(0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("latest migration"));
+    }
+
+    #[test]
+    fn migration_checksum_is_deterministic() {
+        let db = in_memory_db();
+        let checksum1 = db.compute_migration_checksum(1, "test_migration").unwrap();
+        let checksum2 = db.compute_migration_checksum(1, "test_migration").unwrap();
+        assert_eq!(checksum1, checksum2);
+    }
+
+    #[test]
+    fn migration_checksum_differs_for_different_inputs() {
+        let db = in_memory_db();
+        let checksum1 = db.compute_migration_checksum(1, "test_migration").unwrap();
+        let checksum2 = db.compute_migration_checksum(2, "test_migration").unwrap();
+        assert_ne!(checksum1, checksum2);
+    }
+
+    #[test]
+    fn migration_stats_includes_applied_migrations() {
+        let db = in_memory_db();
+        let stats = db.stats().unwrap();
+        assert!(stats.applied_migrations > 0);
+    }
+
+    #[test]
+    fn migration_v1_up_is_noop() {
+        let db = in_memory_db();
+        let migration = MigrationV1 {};
+        let mut conn = db.conn;
+        // Should not fail even though schema already exists
+        assert!(migration.up(&mut conn).is_ok());
+    }
+
+    #[test]
+    fn migration_v1_down_drops_tables() {
+        let db = in_memory_db();
+        let migration = MigrationV1 {};
+        let mut conn = db.conn;
+        
+        // Verify tables exist before rollback
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(table_count > 0);
+        
+        // Rollback
+        migration.down(&mut conn).unwrap();
+        
+        // Verify tables are dropped
+        let table_count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(table_count_after, 0);
+    }
+
+    #[test]
+    fn migration_run_migrations_handles_up_to_date_database() {
+        let db = in_memory_db();
+        let result = db.run_migrations().unwrap();
+        assert_eq!(result.current_version, CURRENT_SCHEMA_VERSION);
+        assert!(result.migrations_applied.is_empty());
+    }
+
+    #[test]
+    fn migration_transaction_rollback_on_failure() {
+        let db = in_memory_db();
+        // Set schema version to 0 to simulate an old database
+        db.conn.execute(
+            "UPDATE meta SET value = '0' WHERE key = 'schema_version'",
+            [],
+        ).unwrap();
+        
+        // This should apply migration 1
+        let result = db.run_migrations().unwrap();
+        assert_eq!(result.current_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(result.migrations_applied, vec![1]);
     }
 }

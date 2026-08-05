@@ -1,10 +1,10 @@
+use crate::plugins::ai::{AICapability, AIPlugin, AIPluginDeclaration, AIPluginRegistrar};
 use crate::plugins::interface::{
     is_core_version_compatible, Plugin, PluginDeclaration, PluginRegistrar, CORE_VERSION,
     RUSTC_VERSION,
 };
-use crate::plugins::ai::{AIPlugin, AIPluginDeclaration, AIPluginRegistrar, AICapability};
-use crate::plugins::registry::{load_registry, TrustLevel};
 use crate::plugins::manifest;
+use crate::plugins::registry::{load_registry, TrustLevel};
 use anyhow::Result;
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
@@ -218,7 +218,9 @@ impl PluginManager {
         }
 
         let registry = load_registry().unwrap_or_default();
-        let plugin_trust = registry.plugins.iter()
+        let plugin_trust = registry
+            .plugins
+            .iter()
             .find(|p| p.path == path_display)
             .map(|p| p.trust.clone())
             .unwrap_or(TrustLevel::Unknown);
@@ -226,7 +228,7 @@ impl PluginManager {
         if let Some(decl) = standard_decl {
             let decl = unsafe { &*decl };
             let mut registrar = ProxyRegistrar::new();
-            
+
             // Protect the system execution loop from third-party registration panics
             let register_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 (decl.register)(&mut registrar);
@@ -256,7 +258,7 @@ impl PluginManager {
         } else if let Some(decl) = ai_decl {
             let decl = unsafe { &*decl };
             let mut registrar = AIProxyRegistrar::new();
-            
+
             let register_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 (decl.register)(&mut registrar);
             }));
@@ -278,13 +280,15 @@ impl PluginManager {
             let plugin_core_version = decl.core_version.to_string();
             for plugin in registrar.plugins {
                 let capabilities = plugin.capabilities();
-                
+
                 // Permission sandbox enforcement
                 if plugin_trust == TrustLevel::Unknown {
                     let mut denied = Vec::new();
                     for cap in &capabilities {
                         match cap {
-                            AICapability::NetworkAccess | AICapability::FileSystemAccess | AICapability::ExecuteCode => {
+                            AICapability::NetworkAccess
+                            | AICapability::FileSystemAccess
+                            | AICapability::ExecuteCode => {
                                 denied.push(format!("{:?}", cap));
                             }
                             _ => {}

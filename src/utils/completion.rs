@@ -9,15 +9,15 @@
 //! The engine does five things:
 //!
 //!   * [`suggest`]        – context-aware, multi-line completion of a partially
-//!                          written contract (function signatures, struct
-//!                          definitions, error handling, storage access and
-//!                          external calls).
+//!     written contract (function signatures, struct
+//!     definitions, error handling, storage access and
+//!     external calls).
 //!   * [`boilerplate`]    – generate accurate boilerplate for common Soroban
-//!                          building blocks.
+//!     building blocks.
 //!   * [`complete_stubs`] – fill in `todo!()` / empty function bodies with a
-//!                          reasonable body inferred from the signature.
+//!     reasonable body inferred from the signature.
 //!   * [`infer_imports`]  – suggest the `use soroban_sdk::{…}` line the file is
-//!                          missing based on the symbols it references.
+//!     missing based on the symbols it references.
 //!   * [`infer_types`]    – infer the type of un-annotated `let` bindings.
 //!
 //! Everything is heuristic. Suggestions carry a `confidence` score so the CLI

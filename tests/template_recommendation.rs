@@ -9,8 +9,8 @@
 //! All I/O is performed against temporary directories so tests are hermetic.
 
 use starforge::utils::template_recommender::{
-    format_explanation, record_usage, usage_counts, load_usage_history,
-    Recommendation, RecommendationRequest, SkillLevel, TemplateUsageEvent,
+    format_explanation, load_usage_history, record_usage, usage_counts, Recommendation,
+    RecommendationRequest, SkillLevel, TemplateUsageEvent,
 };
 use starforge::utils::templates::{
     MaintenanceStatus, SecurityReview, TemplateEntry, TemplateSource,
@@ -119,7 +119,12 @@ fn skill_level_default_is_intermediate() {
 
 #[test]
 fn explanation_contains_all_fields() {
-    let rec = make_rec("my-token", 85.5, vec!["Verified template", "Has documentation"], false);
+    let rec = make_rec(
+        "my-token",
+        85.5,
+        vec!["Verified template", "Has documentation"],
+        false,
+    );
     let explanation = format_explanation(&rec);
 
     assert!(explanation.contains("85"), "Should include rounded score");
@@ -142,12 +147,7 @@ fn explanation_handles_no_reasons() {
 
 #[test]
 fn explanation_marks_previously_used_in_reasons() {
-    let rec = make_rec(
-        "used-before",
-        75.0,
-        vec!["Used 3 times before"],
-        true,
-    );
+    let rec = make_rec("used-before", 75.0, vec!["Used 3 times before"], true);
     let explanation = format_explanation(&rec);
     assert!(explanation.contains("75"), "Should contain score");
     // The `previously_used` field controls CLI display; reasons carry the detail.
@@ -211,7 +211,10 @@ fn recommendation_request_defaults() {
     assert_eq!(req.query, "defi lending");
     assert_eq!(req.limit, 5);
     assert!(req.personalise, "personalise should default to true");
-    assert!(req.community_boost, "community_boost should default to true");
+    assert!(
+        req.community_boost,
+        "community_boost should default to true"
+    );
     assert!(req.tags.is_empty(), "tags should default to empty");
     assert_eq!(req.skill_level, SkillLevel::Intermediate);
 }
@@ -238,7 +241,11 @@ fn verified_documented_audited_entry_scores_high() {
         score: Some(98.0),
     });
     let q = entry.quality_score();
-    assert!(q >= 80, "Fully-vetted template should score >= 80, got {}", q);
+    assert!(
+        q >= 80,
+        "Fully-vetted template should score >= 80, got {}",
+        q
+    );
 }
 
 #[test]
@@ -419,8 +426,8 @@ fn scoring_100_templates_is_fast() {
 
 #[test]
 fn registry_json_entries_are_valid() {
-    use std::path::PathBuf;
     use std::fs;
+    use std::path::PathBuf;
 
     let path = PathBuf::from("templates/registry.json");
     assert!(path.exists(), "templates/registry.json must exist");
@@ -433,7 +440,10 @@ fn registry_json_entries_are_valid() {
         .as_array()
         .expect("templates should be an array");
 
-    assert!(!templates.is_empty(), "Registry should contain at least one template");
+    assert!(
+        !templates.is_empty(),
+        "Registry should contain at least one template"
+    );
 
     for (i, tmpl) in templates.iter().enumerate() {
         assert!(

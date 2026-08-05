@@ -1,4 +1,4 @@
-﻿//! `starforge collab` — AI-driven collaboration tools.
+//! `starforge collab` — AI-driven collaboration tools.
 //!
 //! Sub-commands
 //! ────────────
@@ -160,7 +160,10 @@ fn record_review(file: &PathBuf, kind: &str) {
 
 async fn ensure_ollama_running() -> Result<()> {
     if !ollama::is_ollama_running().await {
-        anyhow::bail!("Ollama is not running.\n\n{}", ollama::cloud_fallback_message());
+        anyhow::bail!(
+            "Ollama is not running.\n\n{}",
+            ollama::cloud_fallback_message()
+        );
     }
     Ok(())
 }
@@ -260,7 +263,11 @@ fn handle_kb_search(query: &str) -> Result<()> {
         return Ok(());
     }
     for entry in matches {
-        println!("• {} ({})", entry.title, entry.created_at.format("%Y-%m-%d"));
+        println!(
+            "• {} ({})",
+            entry.title,
+            entry.created_at.format("%Y-%m-%d")
+        );
         println!("  {}", entry.content);
     }
     p::separator();

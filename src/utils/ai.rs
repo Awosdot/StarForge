@@ -164,7 +164,10 @@ impl AIService for OpenAIAdapter {
             .context("Failed to send OpenAI request")?;
 
         let status = resp.status();
-        let text = resp.text().await.context("Failed to read OpenAI response")?;
+        let text = resp
+            .text()
+            .await
+            .context("Failed to read OpenAI response")?;
 
         if !status.is_success() {
             anyhow::bail!("OpenAI API error ({}): {}", status, text);
@@ -208,7 +211,10 @@ impl AIService for OpenAIAdapter {
         );
         self.generate_text(&AIRequest {
             prompt,
-            context: Some("You are a Rust and Soroban expert. Suggest concrete, actionable improvements.".into()),
+            context: Some(
+                "You are a Rust and Soroban expert. Suggest concrete, actionable improvements."
+                    .into(),
+            ),
             max_tokens: Some(1024),
             temperature: Some(0.5),
         })
@@ -320,7 +326,10 @@ impl AIService for AnthropicAdapter {
         );
         self.generate_text(&AIRequest {
             prompt,
-            context: Some("You are a Rust and Soroban expert. Suggest concrete, actionable improvements.".into()),
+            context: Some(
+                "You are a Rust and Soroban expert. Suggest concrete, actionable improvements."
+                    .into(),
+            ),
             max_tokens: Some(1024),
             temperature: Some(0.5),
         })
@@ -384,10 +393,7 @@ impl AIService for OllamaAdapter {
         let parsed: serde_json::Value =
             serde_json::from_str(&text).context("Failed to parse Ollama response")?;
 
-        let content = parsed["response"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let content = parsed["response"].as_str().unwrap_or("").to_string();
 
         Ok(AIResponse {
             content,
@@ -434,12 +440,41 @@ pub struct AIServiceManager {
     providers: RwLock<HashMap<AIProvider, Arc<Mutex<Box<dyn AIService>>>>>,
     circuit_breakers: RwLock<HashMap<AIProvider, Arc<Mutex<CircuitBreaker>>>>,
     fallback_order: Vec<AIProvider>,
+    provider_models: HashMap<AIProvider, String>,
+}
+
+fn provider_telemetry_name(provider: &AIProvider) -> &'static str {
+    match provider {
+        AIProvider::OpenAI => "openai",
+        AIProvider::Anthropic => "anthropic",
+        AIProvider::Ollama => "ollama",
+    }
+}
+
+/// Coarse error classification for telemetry, derived from an `anyhow`
+/// error's display string (the provider layer has no typed error enum).
+fn classify_error_kind(err: &anyhow::Error) -> &'static str {
+    let msg = err.to_string().to_lowercase();
+    if msg.contains("timeout") || msg.contains("timed out") {
+        "timeout"
+    } else if msg.contains("429") || msg.contains("rate limit") {
+        "rate_limit"
+    } else if msg.contains("401") || msg.contains("403") || msg.contains("unauthorized") {
+        "auth"
+    } else if msg.contains("network") || msg.contains("connection") || msg.contains("dns") {
+        "network"
+    } else if msg.contains("parse") || msg.contains("invalid response") || msg.contains("json") {
+        "invalid_response"
+    } else {
+        "unknown"
+    }
 }
 
 impl AIServiceManager {
     pub fn new(config: &AIServiceConfig) -> Self {
         let mut providers = HashMap::new();
         let mut circuit_breakers = HashMap::new();
+        let mut provider_models = HashMap::new();
 
         for (provider_type, provider_config) in &config.providers {
             let adapter: Box<dyn AIService> = match provider_type {
@@ -448,6 +483,7 @@ impl AIServiceManager {
                 AIProvider::Ollama => Box::new(OllamaAdapter::new(provider_config.clone())),
             };
             providers.insert(provider_type.clone(), Arc::new(Mutex::new(adapter)));
+            provider_models.insert(provider_type.clone(), provider_config.model.clone());
             circuit_breakers.insert(
                 provider_type.clone(),
                 Arc::new(Mutex::new(CircuitBreaker::new(
@@ -461,10 +497,20 @@ impl AIServiceManager {
             providers: RwLock::new(providers),
             circuit_breakers: RwLock::new(circuit_breakers),
             fallback_order: config.fallback_order.clone(),
+            provider_models,
         }
     }
 
     pub async fn generate_text(&self, request: &AIRequest) -> Result<AIResponse> {
+        self.generate_text_for_feature(request, "generate_text")
+            .await
+    }
+
+    pub async fn generate_text_for_feature(
+        &self,
+        request: &AIRequest,
+        feature: &str,
+    ) -> Result<AIResponse> {
         let providers = self.providers.read().await;
         let breakers = self.circuit_breakers.read().await;
 
@@ -484,22 +530,46 @@ impl AIServiceManager {
             }
             drop(breaker);
 
+            let start = Instant::now();
             let adapter_lock = adapter.lock().await;
             let result = adapter_lock.generate_text(request).await;
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+            let model = self
+                .provider_models
+                .get(provider_type)
+                .cloned()
+                .unwrap_or_default();
 
             match result {
                 Ok(response) => {
                     let mut breaker = breakers.get(provider_type).unwrap().lock().await;
                     breaker.record_success();
+                    crate::utils::ai_telemetry::record_call(
+                        provider_telemetry_name(provider_type),
+                        &model,
+                        feature,
+                        None,
+                        response.tokens_used.map(|t| t as u64),
+                        elapsed_ms,
+                        true,
+                        None,
+                    );
                     return Ok(response);
                 }
                 Err(e) => {
                     let mut breaker = breakers.get(provider_type).unwrap().lock().await;
                     breaker.record_failure();
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
+                    crate::utils::ai_telemetry::record_call(
+                        provider_telemetry_name(provider_type),
+                        &model,
+                        feature,
+                        None,
+                        None,
+                        elapsed_ms,
+                        false,
+                        Some(classify_error_kind(&e)),
                     );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }
@@ -509,6 +579,16 @@ impl AIServiceManager {
     }
 
     pub async fn analyze_code(&self, code: &str, language: &str) -> Result<AIResponse> {
+        self.analyze_code_for_feature(code, language, "analyze_code")
+            .await
+    }
+
+    pub async fn analyze_code_for_feature(
+        &self,
+        code: &str,
+        language: &str,
+        feature: &str,
+    ) -> Result<AIResponse> {
         let providers = self.providers.read().await;
         let breakers = self.circuit_breakers.read().await;
 
@@ -528,22 +608,46 @@ impl AIServiceManager {
             }
             drop(breaker);
 
+            let start = Instant::now();
             let adapter_lock = adapter.lock().await;
             let result = adapter_lock.analyze_code(code, language).await;
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+            let model = self
+                .provider_models
+                .get(provider_type)
+                .cloned()
+                .unwrap_or_default();
 
             match result {
                 Ok(response) => {
                     let mut breaker = breakers.get(provider_type).unwrap().lock().await;
                     breaker.record_success();
+                    crate::utils::ai_telemetry::record_call(
+                        provider_telemetry_name(provider_type),
+                        &model,
+                        feature,
+                        None,
+                        response.tokens_used.map(|t| t as u64),
+                        elapsed_ms,
+                        true,
+                        None,
+                    );
                     return Ok(response);
                 }
                 Err(e) => {
                     let mut breaker = breakers.get(provider_type).unwrap().lock().await;
                     breaker.record_failure();
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
+                    crate::utils::ai_telemetry::record_call(
+                        provider_telemetry_name(provider_type),
+                        &model,
+                        feature,
+                        None,
+                        None,
+                        elapsed_ms,
+                        false,
+                        Some(classify_error_kind(&e)),
                     );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }
@@ -553,6 +657,15 @@ impl AIServiceManager {
     }
 
     pub async fn suggest_improvements(&self, code: &str) -> Result<AIResponse> {
+        self.suggest_improvements_for_feature(code, "suggest_improvements")
+            .await
+    }
+
+    pub async fn suggest_improvements_for_feature(
+        &self,
+        code: &str,
+        feature: &str,
+    ) -> Result<AIResponse> {
         let providers = self.providers.read().await;
         let breakers = self.circuit_breakers.read().await;
 
@@ -572,22 +685,46 @@ impl AIServiceManager {
             }
             drop(breaker);
 
+            let start = Instant::now();
             let adapter_lock = adapter.lock().await;
             let result = adapter_lock.suggest_improvements(code).await;
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+            let model = self
+                .provider_models
+                .get(provider_type)
+                .cloned()
+                .unwrap_or_default();
 
             match result {
                 Ok(response) => {
                     let mut breaker = breakers.get(provider_type).unwrap().lock().await;
                     breaker.record_success();
+                    crate::utils::ai_telemetry::record_call(
+                        provider_telemetry_name(provider_type),
+                        &model,
+                        feature,
+                        None,
+                        response.tokens_used.map(|t| t as u64),
+                        elapsed_ms,
+                        true,
+                        None,
+                    );
                     return Ok(response);
                 }
                 Err(e) => {
                     let mut breaker = breakers.get(provider_type).unwrap().lock().await;
                     breaker.record_failure();
-                    eprintln!(
-                        "Provider {:?} failed: {}. Trying next...",
-                        provider_type, e
+                    crate::utils::ai_telemetry::record_call(
+                        provider_telemetry_name(provider_type),
+                        &model,
+                        feature,
+                        None,
+                        None,
+                        elapsed_ms,
+                        false,
+                        Some(classify_error_kind(&e)),
                     );
+                    eprintln!("Provider {:?} failed: {}. Trying next...", provider_type, e);
                     continue;
                 }
             }
