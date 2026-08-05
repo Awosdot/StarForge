@@ -226,6 +226,10 @@ enum Commands {
     #[command(subcommand)]
     AiContractSuggest(commands::ai_contract_suggest::AiContractSuggestCommands),
 
+    /// AI documentation Q&A (answer questions about StarForge, Stellar, and Soroban docs with citations)
+    #[command(subcommand)]
+    AiDocQa(commands::ai_doc_qa::AiDocQaCommands),
+
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
     Schedule(commands::schedule::ScheduleCommands),
@@ -348,6 +352,7 @@ async fn main() {
         Commands::AiSearch(_) => "ai-search",
         Commands::AiRecommend(_) => "ai-recommend",
         Commands::AiContractSuggest(_) => "ai-contract-suggest",
+        Commands::AiDocQa(_) => "ai-doc-qa",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -429,6 +434,7 @@ async fn main() {
         Commands::AiSearch(cmd) => commands::ai_search::handle(cmd).await,
         Commands::AiRecommend(cmd) => commands::ai_recommend::handle(cmd).await,
         Commands::AiContractSuggest(cmd) => commands::ai_contract_suggest::handle(cmd).await,
+        Commands::AiDocQa(cmd) => commands::ai_doc_qa::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,

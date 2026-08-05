@@ -1,5 +1,6 @@
 pub mod ai_conversation;
 pub mod ai_debugger;
+pub mod ai_doc_qa;
 pub mod ai_docs;
 pub mod ai_error_handler;
 pub mod ai_feedback;
