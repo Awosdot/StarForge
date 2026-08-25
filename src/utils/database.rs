@@ -21,10 +21,10 @@ pub trait Migration: Send + Sync {
     fn description(&self) -> &str;
     
     /// Apply the migration (upgrade)
-    fn up(&self, conn: &mut Connection) -> Result<()>;
+    fn up(&self, conn: &Connection) -> Result<()>;
     
     /// Rollback the migration (downgrade)
-    fn down(&self, conn: &mut Connection) -> Result<()>;
+    fn down(&self, conn: &Connection) -> Result<()>;
 }
 
 /// Record of an applied migration in the database
@@ -117,7 +117,7 @@ impl Database {
         self.ensure_column("wallets", "rotation_history", "TEXT NOT NULL DEFAULT '[]'")?;
         
         // Run migrations if this is not a fresh database
-        if self.get_meta("schema_version").is_ok() {
+        if matches!(self.get_meta("schema_version"), Ok(Some(_))) {
             self.run_migrations()?;
         } else {
             // Fresh database - set initial version
@@ -222,7 +222,7 @@ impl Database {
         let tx = self.conn.unchecked_transaction()?;
         
         // Apply the migration
-        match migration.up(&mut tx) {
+        match migration.up(&tx) {
             Ok(()) => {
                 // Record the migration
                 let checksum = self.compute_migration_checksum(version, migration.description())?;
@@ -275,7 +275,7 @@ impl Database {
         let tx = self.conn.unchecked_transaction()?;
         
         // Rollback the migration
-        match migration.down(&mut tx) {
+        match migration.down(&tx) {
             Ok(()) => {
                 // Remove the migration record
                 tx.execute(
@@ -1110,12 +1110,12 @@ impl Migration for MigrationV1 {
         "initial_schema"
     }
     
-    fn up(&self, conn: &mut Connection) -> Result<()> {
+    fn up(&self, conn: &Connection) -> Result<()> {
         // This is a no-op since the initial schema is already applied in SCHEMA
         Ok(())
     }
     
-    fn down(&self, conn: &mut Connection) -> Result<()> {
+    fn down(&self, conn: &Connection) -> Result<()> {
         // Rollback: drop all tables
         conn.execute_batch(
             "DROP TABLE IF EXISTS events;

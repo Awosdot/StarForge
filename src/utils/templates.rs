@@ -94,8 +94,11 @@ pub struct ChangelogEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateEntry {
     pub name: String,
+    #[serde(default)]
     pub repository: Option<String>,
+    #[serde(default)]
     pub security_review: Option<SecurityReview>,
+    #[serde(default)]
     pub changelog: Option<Vec<ChangelogEntry>>,
     pub description: String,
     pub version: String,
@@ -2062,6 +2065,9 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
+            repository: None,
+            security_review: None,
+            changelog: None,
             repository_url: None,
             homepage: None,
             documentation: None,
@@ -2396,6 +2402,9 @@ mod tests {
             documented: true,
             maintenance: MaintenanceStatus::Active,
             license: None,
+            repository: None,
+            security_review: None,
+            changelog: None,
             repository_url: None,
             homepage: None,
             documentation: None,
@@ -2447,6 +2456,9 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
+            repository: None,
+            security_review: None,
+            changelog: None,
             repository_url: None,
             homepage: None,
             documentation: None,
@@ -2500,6 +2512,9 @@ mod tests {
             documented: false,
             maintenance: MaintenanceStatus::Unknown,
             license: None,
+            repository: None,
+            security_review: None,
+            changelog: None,
             repository_url: None,
             homepage: None,
             documentation: None,

@@ -160,9 +160,9 @@ pub const HELP_REGISTRY: &[CommandHelpInfo] = &[
         name: "network",
         summary: "Show, switch, or add a Stellar/Soroban network",
         flags: &[
-            FlagHelp { flag: "switch <name>", purpose: "Set the active network for subsequent commands" },
-            FlagHelp { flag: "add <name> --horizon-url <url>", purpose: "Add a custom network entry" },
-            FlagHelp { flag: "remove <name>", purpose: "Remove a custom network (reserved names are protected)" },
+            FlagHelp { flag: "--switch <name>", purpose: "Set the active network for subsequent commands" },
+            FlagHelp { flag: "--add <name> --horizon-url <url>", purpose: "Add a custom network entry" },
+            FlagHelp { flag: "--remove <name>", purpose: "Remove a custom network (reserved names are protected)" },
         ],
         examples: &[
             ExampleHelp {

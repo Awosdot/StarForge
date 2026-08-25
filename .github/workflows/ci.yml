@@ -17,6 +17,17 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
 
+  msrv:
+    name: MSRV (Rust 1.80)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.80.0
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - name: Verify compilation on Rust 1.80 MSRV
+        run: cargo check --locked --workspace
+
   deny:
     name: Cargo Deny
     runs-on: ubuntu-latest
