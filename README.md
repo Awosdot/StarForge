@@ -59,6 +59,49 @@ You can install the latest release binary using the installation script:
 curl -sL https://raw.githubusercontent.com/Josetic224/StarForge/main/install.sh | bash
 ```
 
+The script automatically:
+1. Detects your OS and CPU architecture
+2. Downloads the correct release archive from GitHub
+3. **Verifies the SHA-256 checksum** against the published `SHA256SUMS.txt` before extracting
+4. Installs the binary to `/usr/local/bin` (or a custom path — see below)
+5. Cleans up all temporary files on exit
+
+> **Security note**: Never pipe an untrusted script to `bash` without reviewing it first.
+> You can read [`install.sh`](./install.sh) before running it, or download the binary
+> directly from the [Releases page](https://github.com/Josetic224/StarForge/releases) and verify the checksum manually:
+>
+> ```bash
+> sha256sum -c SHA256SUMS.txt
+> ```
+
+#### Platform compatibility
+
+| OS | Architecture | Supported |
+|---|---|---|
+| Linux | x86\_64 | ✅ |
+| Linux | aarch64 | ✅ |
+| macOS | x86\_64 | ✅ |
+| macOS | aarch64 (Apple Silicon) | ✅ |
+| Windows | x86\_64 | Download `.zip` from [Releases](https://github.com/Josetic224/StarForge/releases) |
+| FreeBSD / other | — | Not supported |
+
+#### Custom install directory
+
+Override the default `/usr/local/bin` destination:
+
+```bash
+INSTALL_DIR="$HOME/.local/bin" \
+  curl -sL https://raw.githubusercontent.com/Josetic224/StarForge/main/install.sh | bash
+```
+
+#### Uninstall
+
+```bash
+rm -f /usr/local/bin/starforge
+# or, if you used a custom INSTALL_DIR:
+rm -f "$INSTALL_DIR/starforge"
+```
+
 ### Homebrew (macOS / Linux)
 
 A draft Homebrew formula is available for testing:
