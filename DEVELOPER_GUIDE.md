@@ -1305,6 +1305,37 @@ starforge db stats
 
 ---
 
+## Configuration Schema Migrations
+
+StarForge configuration stored in `~/.starforge/config.toml` uses explicit, versioned schema migrations managed by `src/utils/config.rs`.
+
+### Architecture
+
+- `CURRENT_CONFIG_VERSION`: Constant (`"1"`) defining the latest supported schema version.
+- `run_config_migrations()`: Entry point that compares the config version with `CURRENT_CONFIG_VERSION`.
+- `ConfigMigrationError`: Custom error enum with `FromFuture`, `UnknownVersion`, `StepFailed`, and `BackupFailed` variants.
+- `MigrationReport`: Detailed report returned with `from_version`, `to_version`, `steps_applied`, and `backup_path`.
+
+### Safe Execution & Backup Policy
+
+Before any migration steps run, a timestamped backup is automatically created:
+`~/.starforge/config.backup.v<version>.<timestamp>.toml`. If backup creation fails, migration is immediately aborted to guarantee zero data loss.
+
+### Adding a New Migration Step
+
+1. Update `CURRENT_CONFIG_VERSION` in `src/utils/config.rs`.
+2. Implement `fn migrate_vN_to_vM(config: &mut Config)`.
+3. Add a new `ConfigMigrationStep` entry to `MIGRATION_STEPS` in `src/utils/config.rs`.
+4. Add integration tests in `tests/config_migrations.rs`.
+
+### Testing Config Migrations
+
+Run the integration test suite:
+
+```bash
+cargo test --test config_migrations
+```
+
 ## Contributing Guidelines
 
 ### Pull Request Process

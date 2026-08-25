@@ -172,6 +172,44 @@ Common settings:
 
 For privacy information, see [Telemetry & Privacy](#telemetry--privacy).
 
+### Configuration schema migrations
+
+starforge stores its configuration in `~/.starforge/config.toml`. When a new
+release introduces a new schema version the CLI migrates the file automatically
+on first run.
+
+**What happens during a migration:**
+
+1. A timestamped backup is written **before** any change is made:
+   ```
+   ~/.starforge/config.backup.v0.1753000000.toml
+   ```
+2. Each migration step is applied in order (v0 → v1, v1 → v2, …).
+3. The updated config is persisted.
+
+If the migration fails you can manually restore from the backup:
+
+```bash
+cp ~/.starforge/config.backup.v0.<timestamp>.toml ~/.starforge/config.toml
+```
+
+**Error types and what they mean:**
+
+| Error | Cause | Fix |
+|---|---|---|
+| `Config schema version 'X' is newer than this binary supports` | Config was written by a newer `starforge` | Upgrade `starforge` |
+| `Unrecognised config schema version 'X'` | Config version field was manually edited or corrupted | Restore from backup or delete `~/.starforge/config.toml` to reset |
+| `Failed to create backup of config vX before migration` | Backup write failed (disk full, permissions) | Free disk space or fix directory permissions |
+
+**For contributors — adding a new migration step:**
+
+1. Bump `CURRENT_CONFIG_VERSION` in `src/utils/config.rs`.
+2. Add a `fn migrate_vN_to_vM(config: &mut Config)` function.
+3. Append a `ConfigMigrationStep` entry to the `MIGRATION_STEPS` slice.
+4. Add tests to `tests/config_migrations.rs` covering the new step.
+
+
+
 ### Scaffold commands
 
 ```bash
