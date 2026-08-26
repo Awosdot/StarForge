@@ -21,10 +21,10 @@ pub trait Migration: Send + Sync {
     fn description(&self) -> &str;
     
     /// Apply the migration (upgrade)
-    fn up(&self, conn: &mut Connection) -> Result<()>;
+    fn up(&self, conn: &Connection) -> Result<()>;
     
     /// Rollback the migration (downgrade)
-    fn down(&self, conn: &mut Connection) -> Result<()>;
+    fn down(&self, conn: &Connection) -> Result<()>;
 }
 
 /// Record of an applied migration in the database
@@ -222,7 +222,7 @@ impl Database {
         let tx = self.conn.unchecked_transaction()?;
         
         // Apply the migration
-        match migration.up(&mut tx) {
+        match migration.up(&tx) {
             Ok(()) => {
                 // Record the migration
                 let checksum = self.compute_migration_checksum(version, migration.description())?;
@@ -275,7 +275,7 @@ impl Database {
         let tx = self.conn.unchecked_transaction()?;
         
         // Rollback the migration
-        match migration.down(&mut tx) {
+        match migration.down(&tx) {
             Ok(()) => {
                 // Remove the migration record
                 tx.execute(
@@ -1110,12 +1110,13 @@ impl Migration for MigrationV1 {
         "initial_schema"
     }
     
-    fn up(&self, conn: &mut Connection) -> Result<()> {
+    fn up(&self, conn: &Connection) -> Result<()> {
         // This is a no-op since the initial schema is already applied in SCHEMA
+        let _ = conn;
         Ok(())
     }
     
-    fn down(&self, conn: &mut Connection) -> Result<()> {
+    fn down(&self, conn: &Connection) -> Result<()> {
         // Rollback: drop all tables
         conn.execute_batch(
             "DROP TABLE IF EXISTS events;
@@ -1349,7 +1350,7 @@ mod tests {
         let migration = MigrationV1 {};
         let mut conn = db.conn;
         // Should not fail even though schema already exists
-        assert!(migration.up(&mut conn).is_ok());
+        assert!(migration.up(&conn).is_ok());
     }
 
     #[test]
@@ -1369,7 +1370,7 @@ mod tests {
         assert!(table_count > 0);
         
         // Rollback
-        migration.down(&mut conn).unwrap();
+        migration.down(&conn).unwrap();
         
         // Verify tables are dropped
         let table_count_after: i64 = conn
