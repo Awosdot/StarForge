@@ -60,6 +60,7 @@ pub mod info;
 pub mod inspect;
 pub mod invoke;
 pub mod lint;
+pub mod man;
 pub mod migrate;
 pub mod migrate_ai;
 pub mod monitor;
