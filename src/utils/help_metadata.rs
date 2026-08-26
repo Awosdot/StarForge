@@ -207,7 +207,7 @@ pub const HELP_REGISTRY: &[CommandHelpInfo] = &[
             FlagHelp { flag: "--wasm <path>", purpose: "WASM to measure" },
             FlagHelp { flag: "--function <name>", purpose: "Target method for the estimate" },
             FlagHelp { flag: "--args <json>", purpose: "Arguments to the method" },
-            FlagHelp { flag: "report", purpose: "Produce a human-readable gas usage report" },
+            FlagHelp { flag: "--report", purpose: "Produce a human-readable gas usage report" },
         ],
         examples: &[
             ExampleHelp { command: "starforge gas estimate --wasm app.wasm --function transfer",
@@ -225,7 +225,7 @@ pub const HELP_REGISTRY: &[CommandHelpInfo] = &[
         name: "audit",
         summary: "Static security analysis for a Soroban contract",
         flags: &[
-            FlagHelp { flag: "<wasm-or-src>", purpose: "Path to the WASM or contract source" },
+            FlagHelp { flag: "--path <wasm-or-src>", purpose: "Path to the WASM or contract source" },
             FlagHelp { flag: "--deep", purpose: "Run additional deep checks (slower, more findings)" },
         ],
         examples: &[
@@ -243,8 +243,8 @@ pub const HELP_REGISTRY: &[CommandHelpInfo] = &[
         name: "ai-debug",
         summary: "AI-assisted error analysis with root-cause hints",
         flags: &[
-            FlagHelp { flag: "analyse <error>", purpose: "Analyse an error message and return findings" },
-            FlagHelp { flag: "explain <category>", purpose: "Explain a known error category in detail" },
+            FlagHelp { flag: "--analyse <error>", purpose: "Analyse an error message and return findings" },
+            FlagHelp { flag: "--explain <category>", purpose: "Explain a known error category in detail" },
         ],
         examples: &[
             ExampleHelp { command: "starforge ai-debug analyse \"require_auth failed for address\"",
@@ -261,10 +261,10 @@ pub const HELP_REGISTRY: &[CommandHelpInfo] = &[
         name: "tutorial",
         summary: "Interactive, step-by-step CLI tutorials",
         flags: &[
-            FlagHelp { flag: "list", purpose: "Show every installed tutorial" },
-            FlagHelp { flag: "start <slug>", purpose: "Start a tutorial by slug (e.g. hello-world)" },
-            FlagHelp { flag: "next", purpose: "Mark the current step done and advance" },
-            FlagHelp { flag: "status", purpose: "Show overall tutorial progress" },
+            FlagHelp { flag: "--list", purpose: "Show every installed tutorial" },
+            FlagHelp { flag: "--start <slug>", purpose: "Start a tutorial by slug (e.g. hello-world)" },
+            FlagHelp { flag: "--next", purpose: "Mark the current step done and advance" },
+            FlagHelp { flag: "--status", purpose: "Show overall tutorial progress" },
         ],
         examples: &[
             ExampleHelp { command: "starforge tutorial start hello-world",
@@ -281,9 +281,9 @@ pub const HELP_REGISTRY: &[CommandHelpInfo] = &[
         name: "template",
         summary: "Search, install, and publish community Soroban templates",
         flags: &[
-            FlagHelp { flag: "search <query>", purpose: "Search the marketplace by name/tag" },
-            FlagHelp { flag: "install <slug>", purpose: "Fetch a template into your project" },
-            FlagHelp { flag: "publish", purpose: "Publish a local template to the marketplace" },
+            FlagHelp { flag: "--search <query>", purpose: "Search the marketplace by name/tag" },
+            FlagHelp { flag: "--install <slug>", purpose: "Fetch a template into your project" },
+            FlagHelp { flag: "--publish", purpose: "Publish a local template to the marketplace" },
         ],
         examples: &[
             ExampleHelp { command: "starforge template search token",
