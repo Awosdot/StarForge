@@ -742,7 +742,7 @@ fn recovery_hints(command: &str, err: &anyhow::Error) -> Vec<String> {
                     .into(),
             );
             hints.push("Explain a specific category: starforge ai-debug explain auth".into());
-            hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, ttl, test, type".into());
+            hints.push("Available categories: auth, arithmetic, storage, token, panic, wasm, network, deployment, rollback, security, analytics, ttl, test, type".into());
         }
         "ai-test" => {
             if msg.contains("not found") || msg.contains("no such file") {
