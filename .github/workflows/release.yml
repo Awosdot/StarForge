@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -94,24 +96,16 @@ jobs:
           7z a "${{ matrix.archive_name }}.zip" "${{ matrix.binary_name }}"
           rm "${{ matrix.binary_name }}"
 
-      # Generate checksums for all archives
-      - name: Generate checksums
-        shell: bash
-        run: |
-          cd dist
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            certutil -hashfile "${{ matrix.archive_name }}.zip" SHA256 | grep -v "SHA256 hash" | grep -v "^$" > checksums.txt
-          else
-            sha256sum "${{ matrix.archive_name }}.tar.gz" >> checksums.txt
-          fi
-
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.archive_name }}
-          path: |
-            dist/${{ matrix.archive_name }}.*
-            dist/checksums.txt
+          path: dist/${{ matrix.archive_name }}.*
+
+      - name: Attest release archive provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/${{ matrix.archive_name }}.*
 
   release:
     name: Publish GitHub Release
@@ -120,6 +114,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test release artifact validation
+        run: python -m unittest tests/release_artifacts_test.py
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -127,9 +124,7 @@ jobs:
 
       - name: Prepare release files
         run: |
-          mkdir -p release-files
-          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
-          find release-artifacts -type f -name "checksums.txt" -exec cat {} >> release-files/SHA256SUMS.txt \;
+          python scripts/release_artifacts.py release-artifacts release-files
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
