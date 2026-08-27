@@ -340,6 +340,7 @@ When using templates from the marketplace:
 3. **Use Verified** - Prefer verified templates when available
 4. **Test Thoroughly** - Test templates in a safe environment first
 5. **Update Dependencies** - Keep template dependencies up to date
+6. **Checksum Verification** - Downloaded template archives are checked against expected SHA-256 checksums when provided by the registry before any files reach disk. Downloads from registries that do not send a checksum are accepted without verification for backward compatibility.
 
 ## Contributing
 
