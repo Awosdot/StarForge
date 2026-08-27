@@ -1204,11 +1204,16 @@ async fn rotate_wallet(
     // ── Step 1: optional pre-rotation backup snapshot ────────────────────────
     if let Some(ref backup_path) = backup {
         p::step(1, steps, "Writing pre-rotation backup snapshot...");
-        let snapshot = WalletBackup {
+        let mut snapshot = WalletBackup {
             version: WALLET_BACKUP_VERSION.to_string(),
             exported_at: Utc::now().to_rfc3339(),
             wallets: vec![backup_entry_from(&cfg.wallets[wallet_index])],
+            integrity_tag: None,
         };
+        let snap_tag =
+            wallet_import::compute_integrity_tag(&snapshot, wallet_import::BACKUP_HMAC_KEY)
+                .context("Failed to compute integrity tag for backup snapshot")?;
+        snapshot.integrity_tag = Some(snap_tag);
         let json = serde_json::to_string_pretty(&snapshot)
             .context("Failed to serialize backup snapshot")?;
         if let Some(parent) = backup_path.parent() {
@@ -1420,11 +1425,15 @@ fn export_wallet(name_opt: Option<String>, all: bool, output: PathBuf, strict: b
         }
     }
 
-    let backup = WalletBackup {
+    let mut backup = WalletBackup {
         version: WALLET_BACKUP_VERSION.to_string(),
         exported_at: Utc::now().to_rfc3339(), // This was missing a comma
         wallets: wallets_to_export.clone(),
+        integrity_tag: None,
     };
+    let export_tag = wallet_import::compute_integrity_tag(&backup, wallet_import::BACKUP_HMAC_KEY)
+        .context("Failed to compute integrity tag for wallet backup")?;
+    backup.integrity_tag = Some(export_tag);
 
     let context: Vec<&str> = backup
         .wallets
