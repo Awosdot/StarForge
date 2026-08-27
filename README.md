@@ -96,6 +96,53 @@ starforge info
 
 ## Usage
 
+### Repeatable invocation scripts
+
+Store ordered contract calls in YAML or JSON. Scripts use schema version `1`, reject unknown fields, and support `${NAME}` interpolation from the script's `env` map or the CI process environment:
+
+```yaml
+version: 1
+env:
+  CONTRACT_ID: CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+steps:
+  - name: read-state
+    contract_id: ${CONTRACT_ID}
+    function: get_value
+    wallet: ci
+    network: testnet
+    args:
+      - type: string
+        value: deployment
+    assertions:
+      - contains: ready
+  - name: write-state
+    contract_id: ${CONTRACT_ID}
+    function: set_value
+    wallet: ci
+    network: testnet
+    args:
+      - type: string
+        value: deployment
+      - type: string
+        value: ${VALUE}
+```
+
+Validate the complete sequence without contacting RPC or submitting transactions:
+
+```bash
+starforge contract invoke-script ops.yaml --dry-run
+```
+
+Run it in CI after configuring the `ci` wallet and environment variables. Steps execute sequentially, and a failed assertion stops the script:
+
+```yaml
+# .github/workflows/invoke.yml
+- name: Run contract operations
+  run: starforge contract invoke-script ops.yaml
+  env:
+    VALUE: production
+```
+
 ### Wallet commands
 
 ```bash
