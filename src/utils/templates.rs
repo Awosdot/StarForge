@@ -94,8 +94,11 @@ pub struct ChangelogEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateEntry {
     pub name: String,
+    #[serde(default)]
     pub repository: Option<String>,
+    #[serde(default)]
     pub security_review: Option<SecurityReview>,
+    #[serde(default)]
     pub changelog: Option<Vec<ChangelogEntry>>,
     pub description: String,
     pub version: String,
@@ -2067,6 +2070,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         }
     }
 
@@ -2401,6 +2407,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         });
 
         // Test name search
@@ -2452,6 +2461,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         };
 
         let dest = tmp.path().join(&entry.name);
@@ -2505,6 +2517,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         }
     }
 
