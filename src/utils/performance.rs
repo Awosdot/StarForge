@@ -94,8 +94,7 @@ fn metrics_dir() -> Result<PathBuf> {
         }
         return Ok(dir);
     }
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    let dir = home.join(".starforge").join("metrics");
+    let dir = crate::utils::config::config_dir().join("metrics");
     if !dir.exists() {
         fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     }

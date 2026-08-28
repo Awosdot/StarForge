@@ -30,8 +30,7 @@ pub struct AuditReport {
 }
 
 fn audit_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    let dir = home.join(".starforge").join("audit");
+    let dir = crate::utils::config::config_dir().join("audit");
     if !dir.exists() {
         fs::create_dir_all(&dir)?;
     }

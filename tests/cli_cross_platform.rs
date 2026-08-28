@@ -105,15 +105,56 @@ fn test_cross_platform_home_dir_resolution() {
         .expect("spawn wallet list");
     assert_success(&output, "wallet list with isolated home");
 
-    // Check that HOME / USERPROFILE env var was respected
-    // The .starforge directory or wallet config should be created inside the temp home
+    // The isolated config directory must actually be used. This is asserted
+    // unconditionally on purpose: HOME / USERPROFILE alone cannot isolate the
+    // CLI on Windows, where `dirs::home_dir()` resolves through
+    // SHGetKnownFolderPath(FOLDERID_Profile) and ignores both variables. The
+    // isolation therefore comes from STARFORGE_CONFIG_DIR (see
+    // `starforge_cmd`), which the CLI honors on every platform.
     let starforge_dir = home_path.join(".starforge");
-    if starforge_dir.exists() {
-        assert!(
-            starforge_dir.is_dir(),
-            ".starforge in isolated home should be a directory"
-        );
+    assert!(
+        starforge_dir.is_dir(),
+        "STARFORGE_CONFIG_DIR was not honored: expected {} to be created.\nStdout: {}\nStderr: {}",
+        starforge_dir.display(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_cross_platform_config_dir_is_isolated_from_real_home() {
+    // Two commands pointed at two different config directories must not share
+    // state. Without STARFORGE_CONFIG_DIR support, both would fall back to the
+    // one real profile directory on Windows and share a single SQLite
+    // database across concurrent test processes.
+    let first = isolated_home();
+    let second = isolated_home();
+
+    for home in [&first, &second] {
+        let output = starforge_cmd(home.path())
+            .arg("info")
+            .output()
+            .expect("spawn starforge info");
+        assert_success(&output, "starforge info with isolated config dir");
     }
+
+    let first_db = first.path().join(".starforge").join("starforge.db");
+    let second_db = second.path().join(".starforge").join("starforge.db");
+
+    assert!(
+        first_db.is_file(),
+        "expected an isolated database at {}",
+        first_db.display()
+    );
+    assert!(
+        second_db.is_file(),
+        "expected an isolated database at {}",
+        second_db.display()
+    );
+    assert_ne!(
+        first_db, second_db,
+        "each isolated home must get its own database path"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

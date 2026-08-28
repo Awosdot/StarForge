@@ -259,8 +259,7 @@ pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<InstalledPlugin> {
 }
 
 fn registry_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    let dir = home.join(".starforge").join("plugins");
+    let dir = crate::utils::config::config_dir().join("plugins");
     if !dir.exists() {
         fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     }
@@ -305,20 +304,18 @@ pub struct UninstallReport {
 }
 
 fn plugins_data_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    Ok(home.join(".starforge").join("plugins"))
+    Ok(crate::utils::config::config_dir().join("plugins"))
 }
 
 /// Returns true if `path` is under the StarForge plugins directory (safe to purge).
 pub fn is_managed_plugin_path(path: &Path) -> bool {
     if let Ok(dir) = plugins_data_dir() {
+        // Prefer the canonicalized comparison; fall back to the uncanonicalized
+        // prefix when either path does not exist on disk yet.
         if let (Ok(path), Ok(dir)) = (path.canonicalize(), dir.canonicalize()) {
             return path.starts_with(&dir);
         }
-        if let Some(parent) = dirs::home_dir() {
-            let prefix = parent.join(".starforge").join("plugins");
-            return path.starts_with(&prefix);
-        }
+        return path.starts_with(&dir);
     }
     false
 }
@@ -445,8 +442,9 @@ pub fn resolve_plugin_library_path(name: &str, explicit: Option<PathBuf>) -> Res
     }
 
     let cwd = std::env::current_dir().context("Failed to get current dir")?;
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    let plugin_dir = home.join(".starforge").join("plugins").join(name);
+    let plugin_dir = crate::utils::config::config_dir()
+        .join("plugins")
+        .join(name);
 
     let candidates = candidate_library_names(name)
         .into_iter()
