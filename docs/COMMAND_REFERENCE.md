@@ -114,6 +114,43 @@ starforge deploy --wasm ./token.wasm --optimize --yes --execute
 starforge contract generate-bindings ./token.wasm --lang rust
 ```
 
+### Invocation scripts
+
+Repeatable contract calls can be stored as `.yaml`, `.yml`, or `.json` files.
+Each script has `version: 1` and an ordered `steps` list. Steps support typed
+arguments, `${ENV_VAR}` interpolation, and assertions such as
+`return_equals`, `return_contains`, `error_contains`, `event_contains`, and
+`fee_at_most`.
+
+```yaml
+version: 1
+steps:
+  - name: set value
+    contract_id: ${CONTRACT_ID}
+    function: set_value
+    args:
+      - type: string
+        value: ${VALUE}
+    assertions:
+      - type: return_contains
+        value: ok
+```
+
+Preview a script without loading wallets or contacting Soroban RPC:
+
+```bash
+starforge contract script ./ops.yaml --dry-run
+```
+
+Run it in CI after exporting required variables. A step submits only when it
+sets `submit: true` and names a configured wallet; otherwise it simulates.
+
+```bash
+export CONTRACT_ID=CA...
+export VALUE=ready
+starforge contract script ./ops.yaml --network testnet
+```
+
 ---
 
 ## `test`
@@ -188,6 +225,8 @@ Coverage analysis tracks Soroban contract functions, line spans, branch paths, u
 | `template init <ID> <DIR>` | Scaffold from template |
 | `template publish` | Publish template metadata |
 | `template remove <ID>` | Remove local template entry |
+
+When downloading template archives from a remote registry, the CLI automatically verifies the SHA-256 checksum if provided by the registry prior to extraction. Archives from registries that omit a checksum field are accepted without verification.
 
 ---
 
