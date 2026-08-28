@@ -193,6 +193,17 @@ impl TestOptimizer {
         })
     }
 
+    /// Construct an optimizer scoped to an explicit directory with empty
+    /// in-memory history and cache, bypassing disk I/O against the real
+    /// config directory. Intended for tests that need an isolated instance.
+    pub fn with_config_dir(config_dir: PathBuf) -> Self {
+        Self {
+            config_dir,
+            history: HashMap::new(),
+            cache: HashMap::new(),
+        }
+    }
+
     fn load_history(dir: &Path) -> HashMap<String, TestHistory> {
         let path = dir.join("history.json");
         if path.exists() {
@@ -324,17 +335,14 @@ impl TestOptimizer {
     ) -> Vec<Vec<OptimizedTestCase>> {
         let mut batches: Vec<Vec<OptimizedTestCase>> = Vec::new();
 
-        let (io_bound, _other): (Vec<OptimizedTestCase>, Vec<OptimizedTestCase>) = tests
+        let (io_bound, other): (Vec<OptimizedTestCase>, Vec<OptimizedTestCase>) = tests
             .iter()
             .cloned()
             .partition(|t| t.resource_profile.io_intensity > 0.6);
-        let cpu_bound: Vec<OptimizedTestCase> = vec![];
-        let memory_bound: Vec<OptimizedTestCase> = vec![];
-        let general: Vec<OptimizedTestCase> = vec![];
-        let (cpu_only, general): (Vec<_>, Vec<_>) = general
+        let (cpu_only, other): (Vec<_>, Vec<_>) = other
             .into_iter()
             .partition(|t| t.resource_profile.cpu_intensity > 0.6);
-        let (mem_only, general): (Vec<_>, Vec<_>) = general
+        let (mem_only, general): (Vec<_>, Vec<_>) = other
             .into_iter()
             .partition(|t| t.resource_profile.memory_mb > 256);
 
@@ -1162,8 +1170,10 @@ mod tests {
     use super::*;
 
     fn create_test_optimizer() -> TestOptimizer {
+        let config_dir = PathBuf::from("/tmp/test_optimizer");
+        fs::create_dir_all(&config_dir).unwrap();
         TestOptimizer {
-            config_dir: PathBuf::from("/tmp/test_optimizer"),
+            config_dir,
             history: HashMap::new(),
             cache: HashMap::new(),
         }
