@@ -76,11 +76,30 @@ impl MaintenanceStatus {
     }
 }
 
+fn deserialize_optional_string_or_int<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt {
+        String(String),
+        Int(i64),
+    }
+
+    Ok(match Option::<StringOrInt>::deserialize(deserializer)? {
+        Some(StringOrInt::String(s)) => Some(s),
+        Some(StringOrInt::Int(i)) => Some(i.to_string()),
+        None => None,
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityReview {
     pub status: String,
     pub auditor: Option<String>,
     pub audited_at: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_string_or_int")]
     pub findings: Option<String>,
     pub score: Option<f64>,
 }
@@ -94,8 +113,11 @@ pub struct ChangelogEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateEntry {
     pub name: String,
+    #[serde(default)]
     pub repository: Option<String>,
+    #[serde(default)]
     pub security_review: Option<SecurityReview>,
+    #[serde(default)]
     pub changelog: Option<Vec<ChangelogEntry>>,
     pub description: String,
     pub version: String,
@@ -632,6 +654,27 @@ fn registry_path() -> Result<PathBuf> {
         fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     }
     Ok(dir.join("registry.json"))
+}
+
+/// Verify that the SHA-256 checksum of `bytes` matches `expected_hex`.
+///
+/// On mismatch, returns an error containing both the expected and actual hex strings.
+pub fn verify_archive_checksum(bytes: &[u8], expected_hex: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let actual_bytes = hasher.finalize();
+    let actual_hex = hex::encode(actual_bytes);
+    let expected_clean = expected_hex.trim();
+
+    if !actual_hex.eq_ignore_ascii_case(expected_clean) {
+        anyhow::bail!(
+            "Checksum mismatch for template archive: expected {}, got {}",
+            expected_clean,
+            actual_hex
+        );
+    }
+    Ok(())
 }
 
 /// Returns true if the path looks like a supported template archive.
@@ -2067,6 +2110,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         }
     }
 
@@ -2401,6 +2447,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         });
 
         // Test name search
@@ -2452,6 +2501,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         };
 
         let dest = tmp.path().join(&entry.name);
@@ -2505,6 +2557,9 @@ mod tests {
             documentation: None,
             categories: Vec::new(),
             featured: false,
+            repository: None,
+            security_review: None,
+            changelog: None,
         }
     }
 
