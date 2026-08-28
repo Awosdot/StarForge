@@ -59,6 +59,17 @@ You can install the latest release binary using the installation script:
 curl -sL https://raw.githubusercontent.com/Josetic224/StarForge/main/install.sh | bash
 ```
 
+### Verify release downloads
+
+Release archives are published with `SHA256SUMS.txt` and GitHub build-provenance attestations. After downloading an archive and the checksum file into the same directory, verify its exact bytes before extracting it:
+
+```bash
+sha256sum --check SHA256SUMS.txt
+gh attestation verify starforge-linux-x86_64.tar.gz --repo Josetic224/StarForge
+```
+
+On Windows, use `certutil -hashfile <archive> SHA256` and compare the output with the matching entry in `SHA256SUMS.txt`. The checksum protects download integrity; the GitHub attestation verifies that the archive was built by this repository's tagged release workflow. Unsupported or missing release files should be treated as a failed installation rather than substituted with another platform's archive.
+
 ### Homebrew (macOS / Linux)
 
 A draft Homebrew formula is available for testing:
@@ -587,6 +598,7 @@ StarForge has comprehensive documentation covering all aspects of the project:
 - **[docs/CORRELATION_IDS.md](docs/CORRELATION_IDS.md)** - Correlating structured logs across one invocation
 - **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Config parsing, overlay merging, and validation rules
 - **[docs/WALLET_IMPORT_SECURITY.md](docs/WALLET_IMPORT_SECURITY.md)** - Limits enforced on untrusted wallet backups
+- **[docs/DEPLOYMENT_CHECKPOINTS.md](docs/DEPLOYMENT_CHECKPOINTS.md)** - Resumable and idempotent deployment operations, session checkpointing, and staleness detection
 - **[FUZZING_GUIDE.md](FUZZING_GUIDE.md)** - Property-based tests, fuzz targets, mutation testing
 
 ### ?? Navigation
