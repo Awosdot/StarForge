@@ -127,6 +127,7 @@ pub mod sandbox;
 pub mod scheduler;
 pub mod security;
 pub mod security_scanner;
+pub mod shamir;
 pub mod simulation_resources;
 pub mod social;
 pub mod soroban;
