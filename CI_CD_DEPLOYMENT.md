@@ -14,6 +14,10 @@ The deployment pipelines require:
 
 The existing deployment verification and rollback harness can be added to project release pipelines when contract artifacts and rollback scenarios are available. See `ROLLBACK_TESTING.md`.
 
+## Resumable and Idempotent Deployments
+
+Deployment operations automatically persist progress checkpoints to disk (`~/.starforge/checkpoints/`). If a CI job is cancelled or interrupted mid-flight, re-running the deployment step automatically resumes from the last succeeded step without re-executing earlier steps. If a deployment has already succeeded, re-running the command is a safe no-op. See [`docs/DEPLOYMENT_CHECKPOINTS.md`](docs/DEPLOYMENT_CHECKPOINTS.md).
+
 ## Required CI Secrets
 
 Configure these values as masked/protected secrets (GitHub environment secrets, GitLab protected variables, or Jenkins credentials):
