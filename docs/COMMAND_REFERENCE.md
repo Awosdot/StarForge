@@ -94,6 +94,7 @@ starforge multisig notify proposal.json --message "Please sign the treasury paym
 | Command | Purpose |
 |---------|---------|
 | `contract invoke` | Invoke contract function (`--simulate`) |
+| `contract invoke-script` | Run an ordered YAML or JSON invocation script (`--dry-run`) |
 | `contract inspect` | Inspect deployed contract metadata |
 | `contract generate-bindings <WASM_FILE>` | Generate Rust or TypeScript wrappers (`--lang rust\|ts`) |
 | `inspect storage` | Deep storage inspection |
