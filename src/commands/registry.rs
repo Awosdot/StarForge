@@ -555,7 +555,9 @@ async fn install(name: String, version: Option<String>) -> Result<()> {
     let tpl = client.get_template(&name, version.as_deref()).await?;
 
     // Download archive
-    let archive_bytes = client.download_template(&tpl.download_url).await?;
+    let archive_bytes = client
+        .download_template(&tpl.download_url, tpl.expected_sha256.as_deref())
+        .await?;
 
     // Save to temp and extract
     let temp_dir = std::env::temp_dir().join(format!("starforge-dl-{}", uuid::Uuid::new_v4()));

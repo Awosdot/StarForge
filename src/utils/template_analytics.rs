@@ -925,6 +925,8 @@ mod tests {
             repository_url: None,
             homepage: None,
             documentation: None,
+            categories: vec![],
+            featured: false,
             security_review: None,
             changelog: Some(vec![]),
             categories: Vec::new(),
