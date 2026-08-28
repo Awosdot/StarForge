@@ -516,7 +516,7 @@ mod tests {
             documentation: None,
             security_review: None,
             changelog: None,
-            categories: vec![],
+            categories: Vec::new(),
             featured: false,
             repository_url: None,
         }

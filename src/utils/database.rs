@@ -131,7 +131,7 @@ impl Database {
         self.ensure_column("wallets", "rotation_history", "TEXT NOT NULL DEFAULT '[]'")?;
 
         // Run migrations if this is not a fresh database
-        if self.get_meta("schema_version").is_ok() {
+        if matches!(self.get_meta("schema_version"), Ok(Some(_))) {
             self.run_migrations()?;
         } else {
             // Fresh database - set initial version
@@ -271,10 +271,12 @@ impl Database {
     /// Rollback a single migration within a transaction
     pub fn rollback_migration(&self, version: i64) -> Result<()> {
         let applied = self.get_applied_migrations()?;
-        let current_version = self.get_current_schema_version()?;
 
-        // Check if the migration is applied
-        if !applied.iter().any(|m| m.version == version) {
+        // Check if the migration is applied. Version 0 is the implicit
+        // baseline (the state before any migrations exist) and is always
+        // considered "applied" — it never gets a `schema_migrations` row
+        // because there's nothing to record for it.
+        if version != 0 && !applied.iter().any(|m| m.version == version) {
             return Err(anyhow::anyhow!(
                 "Migration version {} is not applied",
                 version
@@ -305,7 +307,25 @@ impl Database {
         // Rollback the migration
         match migration.down(&tx) {
             Ok(()) => {
-                // Remove the migration record
+                // `down()` may have dropped every table, including the
+                // framework's own bookkeeping tables (see `MigrationV1::down`,
+                // which wipes the whole database). Recreate them — this is a
+                // no-op if they still exist — before recording the rollback.
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS meta (
+                        key   TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        applied_at TEXT NOT NULL,
+                        checksum TEXT NOT NULL
+                    );",
+                )?;
+
+                // Remove the migration record (no-op if down() already
+                // dropped the table it lived in).
                 tx.execute(
                     "DELETE FROM schema_migrations WHERE version = ?1",
                     params![version],
@@ -314,7 +334,8 @@ impl Database {
                 // Update schema version to previous version
                 let previous_version = if version > 1 { version - 1 } else { 0 };
                 tx.execute(
-                    "UPDATE meta SET value = ?1 WHERE key = 'schema_version'",
+                    "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                     params![previous_version.to_string()],
                 )?;
 
@@ -1148,7 +1169,8 @@ impl Migration for MigrationV1 {
     }
 
     fn down(&self, conn: &Connection) -> Result<()> {
-        // Rollback: drop all tables
+        // Rollback: drop all tables, including the feature-flags tables
+        // `initialize()` ships alongside the rest of the initial schema.
         conn.execute_batch(
             "DROP TABLE IF EXISTS events;
              DROP TABLE IF EXISTS templates;
@@ -1156,6 +1178,10 @@ impl Migration for MigrationV1 {
              DROP TABLE IF EXISTS config_kv;
              DROP TABLE IF EXISTS networks;
              DROP TABLE IF EXISTS wallets;
+             DROP TABLE IF EXISTS flag_definitions;
+             DROP TABLE IF EXISTS flag_states;
+             DROP TABLE IF EXISTS flag_overrides;
+             DROP TABLE IF EXISTS flag_metrics;
              DROP TABLE IF EXISTS schema_migrations;
              DROP TABLE IF EXISTS meta;",
         )?;
@@ -1425,11 +1451,12 @@ mod tests {
     #[test]
     fn migration_transaction_rollback_on_failure() {
         let db = in_memory_db();
-        // Set schema version to 0 to simulate an old database
+        // Set schema version to 0 and clear applied-migration bookkeeping to
+        // simulate an old database that hasn't run migration 1 yet.
         db.conn
-            .execute(
-                "UPDATE meta SET value = '0' WHERE key = 'schema_version'",
-                [],
+            .execute_batch(
+                "UPDATE meta SET value = '0' WHERE key = 'schema_version';
+                 DELETE FROM schema_migrations;",
             )
             .unwrap();
 

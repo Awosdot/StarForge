@@ -227,35 +227,33 @@ pub struct InstalledPlugin {
     /// Commands this plugin registers.
     #[serde(default)]
     pub commands: Vec<RegisteredCommand>,
-    /// Optional human-readable description.
+    /// Plugin summary from `Plugin::description()` at install time.
     #[serde(default)]
     pub description: String,
 }
 
-pub fn resolve_plugin_description(plugin: &InstalledPlugin) -> &str {
+/// Resolve the description to display for a plugin: prefer the registry's
+/// own `description` field, falling back to the first command's description.
+pub fn resolve_plugin_description(plugin: &InstalledPlugin) -> String {
     if !plugin.description.is_empty() {
-        &plugin.description
-    } else if let Some(cmd) = plugin.commands.first() {
-        &cmd.description
-    } else {
-        ""
+        return plugin.description.clone();
     }
+    plugin
+        .commands
+        .first()
+        .map(|c| c.description.clone())
+        .unwrap_or_default()
 }
 
-#[derive(Debug, Clone)]
-pub struct PluginListEntry {
-    pub name: String,
-    pub description: String,
-    pub commands: Vec<RegisteredCommand>,
-}
-
-pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<PluginListEntry> {
+/// Return registry entries with `description` resolved for display (see
+/// [`resolve_plugin_description`]).
+pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<InstalledPlugin> {
     reg.plugins
         .iter()
-        .map(|p| PluginListEntry {
-            name: p.name.clone(),
-            description: resolve_plugin_description(p).to_string(),
-            commands: p.commands.clone(),
+        .cloned()
+        .map(|mut p| {
+            p.description = resolve_plugin_description(&p);
+            p
         })
         .collect()
 }
@@ -358,7 +356,7 @@ pub fn install_plugin(
         plugin_version: plugin_version.to_string(),
         installed_at: Some(now),
         commands,
-        description: String::new(),
+        description: description.to_string(),
     });
     reg.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     save_registry(&reg)?;

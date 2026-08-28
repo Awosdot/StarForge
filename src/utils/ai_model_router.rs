@@ -366,7 +366,15 @@ fn infer_category(lower: &str, has_code: bool, signals: &mut Vec<String>) -> Tas
     } else if lower.contains("document") || lower.contains("readme") || lower.contains("explain") {
         TaskCategory::Documentation
     } else if lower.contains("generate") || lower.contains("implement") || lower.contains("write") {
-        if has_code {
+        // `has_code` only catches literal code already in the prompt; a
+        // request to generate code won't have that yet, so also recognize
+        // code-shaped nouns as the target of generation.
+        if has_code
+            || lower.contains("contract")
+            || lower.contains("function")
+            || lower.contains("struct")
+            || lower.contains("module")
+        {
             signals.push("code_generation".into());
             TaskCategory::CodeGeneration
         } else {

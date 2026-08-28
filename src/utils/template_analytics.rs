@@ -926,7 +926,7 @@ mod tests {
             documentation: None,
             security_review: None,
             changelog: None,
-            categories: vec![],
+            categories: Vec::new(),
             featured: false,
             repository_url: None,
         }
@@ -1259,7 +1259,7 @@ mod tests {
             status: "audited".to_string(),
             audited_at: Some("2026-01-01".to_string()),
             auditor: Some("Auditor".to_string()),
-            findings: Some("2".to_string()),
+            findings: Some(2.to_string()),
             score: Some(80.0),
         });
         e.documented = true;
