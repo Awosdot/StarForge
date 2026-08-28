@@ -65,5 +65,18 @@ else
 fi
 chmod +x "$INSTALL_DIR/starforge"
 
+# Install man pages if present in the tarball
+MAN_DIR="/usr/local/share/man/man1"
+if [ -d man ]; then
+    echo "Installing man pages to $MAN_DIR..."
+    mkdir -p "$MAN_DIR"
+    if [ -w "$MAN_DIR" ]; then
+        cp man/*.1 "$MAN_DIR/"
+    else
+        sudo cp man/*.1 "$MAN_DIR/"
+    fi
+    echo "Man pages installed. Run 'man starforge' to view."
+fi
+
 rm -f "$TAR_FILE" checksums.txt
 echo "starforge $TAG installed successfully! Run 'starforge --version' to verify."

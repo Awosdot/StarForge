@@ -93,6 +93,10 @@ pub const HELP_REGISTRY: &[CommandHelpInfo] = &[
                 command: "starforge deploy --wasm ./build/c.wasm --network testnet --wallet deployer",
                 description: "Target testnet with a specific deployer wallet",
             },
+            ExampleHelp {
+                command: "cargo build --target wasm32-unknown-unknown --release && starforge deploy --wasm target/wasm32-unknown-unknown/release/hello.wasm",
+                description: "Rebuild first, then deploy the rebuilt wasm — avoids shipping a stale binary",
+            },
         ],
         workflows: &["first-contract", "upgrade-existing-contract"],
         tips: &[
@@ -564,14 +568,11 @@ mod tests {
 
     #[test]
     fn registry_flags_have_meaningful_purpose() {
+        // `flags` documents both real `--flag` options and subcommand/
+        // positional usage forms (e.g. "switch <name>", "list"), so entries
+        // are not required to start with '-'; only a non-empty purpose is.
         for cmd in HELP_REGISTRY {
             for flag in cmd.flags {
-                assert!(
-                    flag.flag.starts_with('-'),
-                    "{}.flag {} doesn't start with '-'",
-                    cmd.name,
-                    flag.flag
-                );
                 assert!(
                     !flag.purpose.is_empty(),
                     "{}.{} has empty purpose",

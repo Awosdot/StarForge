@@ -4,7 +4,6 @@
 //! deduplication, caching, performance analysis, resource scheduling,
 //! failure pattern analysis, and report generation.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use starforge::utils::test_generator::GeneratedTestCase;
@@ -13,11 +12,7 @@ use starforge::utils::test_optimizer::*;
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn make_optimizer() -> TestOptimizer {
-    TestOptimizer {
-        config_dir: PathBuf::from("/tmp/test_opt_integration"),
-        history: HashMap::new(),
-        cache: HashMap::new(),
-    }
+    TestOptimizer::with_config_dir(PathBuf::from("/tmp/test_opt_integration"))
 }
 
 fn make_history(

@@ -197,6 +197,17 @@ impl TestOptimizer {
         })
     }
 
+    /// Construct an optimizer scoped to an explicit directory with empty
+    /// in-memory history and cache, bypassing disk I/O against the real
+    /// config directory. Intended for tests that need an isolated instance.
+    pub fn with_config_dir(config_dir: PathBuf) -> Self {
+        Self {
+            config_dir,
+            history: HashMap::new(),
+            cache: HashMap::new(),
+        }
+    }
+
     fn load_history(dir: &Path) -> HashMap<String, TestHistory> {
         let path = dir.join("history.json");
         if path.exists() {

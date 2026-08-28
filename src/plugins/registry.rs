@@ -230,6 +230,35 @@ pub struct InstalledPlugin {
     /// Commands this plugin registers.
     #[serde(default)]
     pub commands: Vec<RegisteredCommand>,
+    /// Plugin summary from `Plugin::description()` at install time.
+    #[serde(default)]
+    pub description: String,
+}
+
+/// Resolve the description to display for a plugin: prefer the registry's
+/// own `description` field, falling back to the first command's description.
+pub fn resolve_plugin_description(plugin: &InstalledPlugin) -> String {
+    if !plugin.description.is_empty() {
+        return plugin.description.clone();
+    }
+    plugin
+        .commands
+        .first()
+        .map(|c| c.description.clone())
+        .unwrap_or_default()
+}
+
+/// Return registry entries with `description` resolved for display (see
+/// [`resolve_plugin_description`]).
+pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<InstalledPlugin> {
+    reg.plugins
+        .iter()
+        .cloned()
+        .map(|mut p| {
+            p.description = resolve_plugin_description(&p);
+            p
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +400,7 @@ pub fn install_plugin(
         description: String::new(),
         installed_at: Some(now),
         commands,
+        description: description.to_string(),
     });
     reg.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     save_registry(&reg)?;
