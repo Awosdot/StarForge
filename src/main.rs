@@ -259,6 +259,22 @@ enum Commands {
     #[command(subcommand)]
     AiDocQa(commands::ai_doc_qa::AiDocQaCommands),
 
+    /// AI-driven performance profiling of a compiled Soroban WASM
+    #[command(subcommand)]
+    AiProfile(commands::ai_profile::AiProfileCommands),
+
+    /// AI IDE integration (setup, diagnostics, editor support)
+    #[command(subcommand)]
+    AiIde(commands::ai_ide::AiIdeCommands),
+
+    /// AI test maintenance (analyze, suggest, health gates)
+    #[command(subcommand)]
+    AiTestMaintain(commands::ai_test_maintain::AiTestMaintainCommands),
+
+    /// AI-driven deployment testing (pre/post checks, readiness gate)
+    #[command(subcommand)]
+    AiDeploymentTest(commands::ai_deployment_test::AiDeploymentTestCommands),
+
     /// Schedule deployments for future execution with approval workflows
     #[command(subcommand)]
     Schedule(commands::schedule::ScheduleCommands),
@@ -422,6 +438,10 @@ async fn main() {
         Commands::AiAccessibility(_) => "ai-accessibility",
         Commands::AiContractSuggest(_) => "ai-contract-suggest",
         Commands::AiDocQa(_) => "ai-doc-qa",
+        Commands::AiProfile(_) => "ai-profile",
+        Commands::AiIde(_) => "ai-ide",
+        Commands::AiTestMaintain(_) => "ai-test-maintain",
+        Commands::AiDeploymentTest(_) => "ai-deployment-test",
         Commands::Schedule(_) => "schedule",
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
@@ -523,6 +543,10 @@ async fn main() {
         Commands::AiAccessibility(cmd) => commands::ai_accessibility::handle(cmd).await,
         Commands::AiContractSuggest(cmd) => commands::ai_contract_suggest::handle(cmd).await,
         Commands::AiDocQa(cmd) => commands::ai_doc_qa::handle(cmd).await,
+        Commands::AiProfile(cmd) => commands::ai_profile::handle(cmd).await,
+        Commands::AiIde(cmd) => commands::ai_ide::handle(cmd).await,
+        Commands::AiTestMaintain(cmd) => commands::ai_test_maintain::handle(cmd).await,
+        Commands::AiDeploymentTest(cmd) => commands::ai_deployment_test::handle(cmd).await,
         Commands::Schedule(cmd) => commands::schedule::handle(cmd).await,
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
