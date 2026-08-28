@@ -172,14 +172,18 @@ pub struct FailurePatternReport {
 // ── Test Optimizer ──────────────────────────────────────────────────────────
 
 pub struct TestOptimizer {
-    config_dir: PathBuf,
+    pub config_dir: PathBuf,
     pub history: HashMap<String, TestHistory>,
-    cache: HashMap<String, TestCacheEntry>,
+    pub cache: HashMap<String, TestCacheEntry>,
 }
 
 impl TestOptimizer {
     pub fn new() -> Result<Self> {
         let config_dir = crate::utils::config::config_dir().join("test_optimizer");
+        Self::with_config_dir(config_dir)
+    }
+
+    pub fn with_config_dir(config_dir: PathBuf) -> Result<Self> {
         if !config_dir.exists() {
             fs::create_dir_all(&config_dir)
                 .with_context(|| format!("Failed to create {}", config_dir.display()))?;
@@ -1170,13 +1174,8 @@ mod tests {
     use super::*;
 
     fn create_test_optimizer() -> TestOptimizer {
-        let config_dir = PathBuf::from("/tmp/test_optimizer");
-        fs::create_dir_all(&config_dir).unwrap();
-        TestOptimizer {
-            config_dir,
-            history: HashMap::new(),
-            cache: HashMap::new(),
-        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        TestOptimizer::with_config_dir(dir.into_path()).unwrap()
     }
 
     #[test]

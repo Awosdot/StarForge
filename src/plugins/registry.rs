@@ -221,6 +221,9 @@ pub struct InstalledPlugin {
     /// Plugin version from manifest.
     #[serde(default)]
     pub plugin_version: String,
+    /// Optional description from manifest.
+    #[serde(default)]
+    pub description: String,
     /// RFC3339 timestamp of when the plugin was installed.
     #[serde(default)]
     pub installed_at: Option<String>,
@@ -254,6 +257,46 @@ pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<InstalledPlugin> {
         .map(|mut p| {
             p.description = resolve_plugin_description(&p);
             p
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginListEntry {
+    pub name: String,
+    pub path: String,
+    pub source: String,
+    pub trust: String,
+    pub starforge_version: String,
+    pub plugin_version: String,
+    pub description: String,
+    pub installed_at: Option<String>,
+    pub commands: Vec<RegisteredCommand>,
+}
+
+pub fn resolve_plugin_description(plugin: &InstalledPlugin) -> String {
+    if !plugin.description.is_empty() {
+        plugin.description.clone()
+    } else if let Some(cmd) = plugin.commands.first() {
+        cmd.description.clone()
+    } else {
+        String::new()
+    }
+}
+
+pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<PluginListEntry> {
+    reg.plugins
+        .iter()
+        .map(|p| PluginListEntry {
+            name: p.name.clone(),
+            path: p.path.clone(),
+            source: p.source.clone(),
+            trust: p.trust.label().to_string(),
+            starforge_version: p.starforge_version.clone(),
+            plugin_version: p.plugin_version.clone(),
+            description: resolve_plugin_description(p),
+            installed_at: p.installed_at.clone(),
+            commands: p.commands.clone(),
         })
         .collect()
 }
@@ -354,6 +397,7 @@ pub fn install_plugin(
         trust,
         starforge_version: starforge_version.to_string(),
         plugin_version: plugin_version.to_string(),
+        description: String::new(),
         installed_at: Some(now),
         commands,
         description: description.to_string(),
