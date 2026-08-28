@@ -62,6 +62,7 @@ pub mod invoke_script;
 pub mod invoke;
 pub mod invoke_script;
 pub mod lint;
+pub mod man;
 pub mod migrate;
 pub mod migrate_ai;
 pub mod monitor;

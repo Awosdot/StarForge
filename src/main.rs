@@ -290,6 +290,10 @@ enum Commands {
     /// Static analysis and linting for Soroban contracts
     Lint(commands::lint::LintArgs),
 
+    /// Generate or install man pages
+    #[command(subcommand)]
+    Man(commands::man::ManCommand),
+
     /// Run connectivity diagnostics for attached Ledger/Trezor devices
     Diagnostics(commands::diagnostics::DiagnosticsArgs),
 
@@ -446,6 +450,7 @@ async fn main() {
         Commands::Simulate(_) => "simulate",
         Commands::Backup(_) => "backup",
         Commands::Lint(_) => "lint",
+        Commands::Man(_) => "man",
         Commands::Diagnostics(_) => "diagnostics",
         Commands::TemplateVcs(_) => "template-vcs",
         Commands::Perf(_) => "perf",
@@ -551,6 +556,7 @@ async fn main() {
         Commands::Simulate(cmd) => commands::simulate::handle(cmd).await,
         Commands::Backup(cmd) => commands::backup::handle(cmd).await,
         Commands::Lint(args) => commands::lint::handle(args).await,
+        Commands::Man(cmd) => commands::man::handle(cmd).await,
         Commands::Diagnostics(args) => commands::diagnostics::handle(args),
         Commands::TemplateVcs(cmd) => commands::template_vcs::handle(cmd).await,
         Commands::Perf(cmd) => commands::perf::handle(cmd).await,

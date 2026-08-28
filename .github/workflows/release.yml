@@ -89,7 +89,12 @@ jobs:
           else
             cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/starforge
           fi
-          tar -czf "dist/${{ matrix.archive_name }}.tar.gz" -C dist starforge
+          # Include man pages if present
+          if [ -d man ] && ls man/*.1 >/dev/null 2>&1; then
+            tar -czf "dist/${{ matrix.archive_name }}.tar.gz" -C dist starforge -C "$GITHUB_WORKSPACE" man
+          else
+            tar -czf "dist/${{ matrix.archive_name }}.tar.gz" -C dist starforge
+          fi
           rm dist/starforge
 
       # Windows produces .zip
