@@ -119,6 +119,7 @@ pub mod privacy;
 pub mod profiler;
 pub mod prompt_manager;
 pub mod quality_analysis;
+pub mod redaction;
 pub mod registry;
 pub mod repl;
 pub mod rollback_testing;

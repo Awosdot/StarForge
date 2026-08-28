@@ -227,6 +227,37 @@ pub struct InstalledPlugin {
     /// Commands this plugin registers.
     #[serde(default)]
     pub commands: Vec<RegisteredCommand>,
+    /// Optional human-readable description.
+    #[serde(default)]
+    pub description: String,
+}
+
+pub fn resolve_plugin_description(plugin: &InstalledPlugin) -> &str {
+    if !plugin.description.is_empty() {
+        &plugin.description
+    } else if let Some(cmd) = plugin.commands.first() {
+        &cmd.description
+    } else {
+        ""
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginListEntry {
+    pub name: String,
+    pub description: String,
+    pub commands: Vec<RegisteredCommand>,
+}
+
+pub fn plugin_list_entries(reg: &PluginRegistry) -> Vec<PluginListEntry> {
+    reg.plugins
+        .iter()
+        .map(|p| PluginListEntry {
+            name: p.name.clone(),
+            description: resolve_plugin_description(p).to_string(),
+            commands: p.commands.clone(),
+        })
+        .collect()
 }
 
 fn registry_path() -> Result<PathBuf> {
@@ -327,6 +358,7 @@ pub fn install_plugin(
         plugin_version: plugin_version.to_string(),
         installed_at: Some(now),
         commands,
+        description: String::new(),
     });
     reg.plugins.sort_by(|a, b| a.name.cmp(&b.name));
     save_registry(&reg)?;
