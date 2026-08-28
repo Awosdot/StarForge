@@ -42,6 +42,13 @@ struct Cli {
     /// Must be 8–64 characters of [A-Za-z0-9_-].
     #[arg(long, global = true)]
     correlation_id: Option<String>,
+
+    /// Never block on an interactive prompt: fail with a clear error
+    /// instead, pointing to the env var or flag that supplies the value
+    /// headlessly. Auto-detected when $CI is set or stdin isn't a terminal
+    /// (also settable via $STARFORGE_NON_INTERACTIVE).
+    #[arg(long, global = true)]
+    non_interactive: bool,
 }
 
 #[derive(Subcommand)]
@@ -361,6 +368,7 @@ async fn main() {
     let cli = Cli::parse();
     OUTPUT_MODE_INIT.call_once(|| {});
     utils::output::set_json_mode(cli.json);
+    utils::interactive::set_non_interactive(cli.non_interactive);
 
     // Initialise structured logging before anything else runs.
     let log_cfg =

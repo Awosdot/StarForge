@@ -321,14 +321,14 @@ impl Database {
                 let _ = tx.execute(
                     "DELETE FROM schema_migrations WHERE version = ?1",
                     params![version],
-                );
+                )?;
 
-                // Update schema version to previous version if meta table exists
+                // Update schema version to previous version
                 let previous_version = if version > 1 { version - 1 } else { 0 };
                 let _ = tx.execute(
                     "UPDATE meta SET value = ?1 WHERE key = 'schema_version'",
                     params![previous_version.to_string()],
-                );
+                )?;
 
                 tx.commit()?;
                 Ok(())
@@ -1344,10 +1344,10 @@ mod tests {
         // Rollback the latest migration
         db.rollback_migration(version_before).unwrap();
 
-        let version_after = db.get_current_schema_version().unwrap_or(0);
+        let version_after = db.get_current_schema_version().unwrap();
         assert_eq!(version_after, version_before - 1);
 
-        let applied = db.get_applied_migrations().unwrap_or_default();
+        let applied = db.get_applied_migrations().unwrap();
         assert!(!applied.iter().any(|m| m.version == version_before));
     }
 
@@ -1404,8 +1404,8 @@ mod tests {
     fn migration_v1_down_drops_tables() {
         let db = in_memory_db();
         let migration = MigrationV1 {};
-        let conn = db.conn;
-        
+        let mut conn = db.conn;
+
         // Verify tables exist before rollback
         let table_count: i64 = conn
             .query_row(
@@ -1417,8 +1417,8 @@ mod tests {
         assert!(table_count > 0);
 
         // Rollback
-        migration.down(&conn).unwrap();
-        
+        migration.down(&mut conn).unwrap();
+
         // Verify tables are dropped
         let table_count_after: i64 = conn
             .query_row(
@@ -1447,9 +1447,6 @@ mod tests {
                 "UPDATE meta SET value = '0' WHERE key = 'schema_version'",
                 [],
             )
-            .unwrap();
-        db.conn
-            .execute("DELETE FROM schema_migrations WHERE version = 1", [])
             .unwrap();
 
         // This should apply migration 1

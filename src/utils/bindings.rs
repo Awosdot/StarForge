@@ -78,7 +78,7 @@ pub fn generate_bindings(wasm_path: &Path, language: BindingLanguage) -> Result<
     generate_from_metadata(&metadata, language)
 }
 
-pub fn read_spec_entries(wasm: &[u8]) -> Result<Vec<ScSpecEntry>> {
+fn read_spec_entries(wasm: &[u8]) -> Result<Vec<ScSpecEntry>> {
     let spec = contract_spec_section(wasm)?;
     let cursor = Cursor::new(spec);
     let entries = ScSpecEntry::read_xdr_iter(&mut Limited::new(

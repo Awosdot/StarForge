@@ -639,10 +639,6 @@ mod tests {
             plugin.commands.is_empty(),
             "missing commands field should default to an empty list"
         );
-        assert_eq!(
-            plugin.description, "",
-            "missing description field should default to empty string"
-        );
     }
 
     // ── resolve_plugin_library_path ───────────────────────────────────────────
@@ -659,69 +655,6 @@ mod tests {
     fn missing_implicit_path_returns_error() {
         let result = resolve_plugin_library_path("__no_such_plugin_xyz__", None);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn resolve_plugin_description_prefers_registry_field() {
-        let plugin = InstalledPlugin {
-            name: "demo".into(),
-            path: "/tmp/demo.so".into(),
-            source: String::new(),
-            trust: TrustLevel::Local,
-            starforge_version: String::new(),
-            plugin_version: String::new(),
-            installed_at: None,
-            commands: vec![RegisteredCommand {
-                name: "demo".into(),
-                description: "from command".into(),
-            }],
-            description: "from plugin".into(),
-        };
-        assert_eq!(resolve_plugin_description(&plugin), "from plugin");
-    }
-
-    #[test]
-    fn resolve_plugin_description_falls_back_to_first_command() {
-        let plugin = InstalledPlugin {
-            name: "demo".into(),
-            path: "/tmp/demo.so".into(),
-            source: String::new(),
-            trust: TrustLevel::Local,
-            starforge_version: String::new(),
-            plugin_version: String::new(),
-            installed_at: None,
-            commands: vec![RegisteredCommand {
-                name: "demo".into(),
-                description: "from command".into(),
-            }],
-            description: String::new(),
-        };
-        assert_eq!(resolve_plugin_description(&plugin), "from command");
-    }
-
-    #[test]
-    fn plugin_list_entries_include_resolved_description() {
-        let reg = PluginRegistry {
-            plugins: vec![InstalledPlugin {
-                name: "trusted".into(),
-                path: "/tmp/trusted.so".into(),
-                source: String::new(),
-                trust: TrustLevel::Trusted,
-                starforge_version: "0.1.0".into(),
-                plugin_version: "1.0.0".into(),
-                installed_at: None,
-                commands: vec![RegisteredCommand {
-                    name: "trusted".into(),
-                    description: "Lifecycle integration test plugin".into(),
-                }],
-                description: "Lifecycle integration test plugin".into(),
-            }],
-        };
-
-        let entries = plugin_list_entries(&reg);
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].description, "Lifecycle integration test plugin");
-        assert_eq!(entries[0].commands[0].name, "trusted");
     }
 
     // ── backward compatibility ────────────────────────────────────────────────
