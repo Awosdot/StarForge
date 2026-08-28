@@ -47,7 +47,10 @@ fn make_entry(name: &str, tags: &[&str], downloads: u32, verified: bool) -> Temp
         homepage: None,
         documentation: None,
         security_review: None,
-        changelog: vec![],
+        changelog: None,
+        categories: Vec::new(),
+        featured: false,
+        repository_url: None,
     }
 }
 
@@ -237,7 +240,7 @@ fn verified_documented_audited_entry_scores_high() {
         status: "audited".to_string(),
         audited_at: Some("2025-06-01T00:00:00Z".to_string()),
         auditor: Some("StarForge Security Team".to_string()),
-        findings: Some(0),
+        findings: Some(0.to_string()),
         score: Some(98.0),
     });
     let q = entry.quality_score();
