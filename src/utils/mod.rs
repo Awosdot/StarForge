@@ -6,6 +6,7 @@
 // AI Service Abstraction Layer (#479)
 // AI Test Analytics (#570)
 pub mod ai;
+pub mod audit_bundle;
 pub mod ai_accessibility;
 pub mod ai_cache;
 pub mod ai_context;
