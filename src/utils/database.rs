@@ -143,7 +143,7 @@ impl Database {
         self.ensure_column("wallets", "rotation_history", "TEXT NOT NULL DEFAULT '[]'")?;
 
         // Run migrations if this is not a fresh database
-        if matches!(self.get_meta("schema_version"), Ok(Some(_))) {
+        if self.get_meta("schema_version")?.is_some() {
             self.run_migrations()?;
         } else {
             // Fresh database - set initial version
@@ -1395,17 +1395,17 @@ mod tests {
     fn migration_v1_up_is_noop() {
         let db = in_memory_db();
         let migration = MigrationV1 {};
-        let mut conn = db.conn;
+        let conn = db.conn;
         // Should not fail even though schema already exists
-        assert!(migration.up(&mut conn).is_ok());
+        assert!(migration.up(&conn).is_ok());
     }
 
     #[test]
     fn migration_v1_down_drops_tables() {
         let db = in_memory_db();
         let migration = MigrationV1 {};
-        let mut conn = db.conn;
-
+        let conn = db.conn;
+        
         // Verify tables exist before rollback
         let table_count: i64 = conn
             .query_row(
@@ -1417,8 +1417,8 @@ mod tests {
         assert!(table_count > 0);
 
         // Rollback
-        migration.down(&mut conn).unwrap();
-
+        migration.down(&conn).unwrap();
+        
         // Verify tables are dropped
         let table_count_after: i64 = conn
             .query_row(

@@ -76,22 +76,45 @@ impl MaintenanceStatus {
     }
 }
 
-fn deserialize_optional_string_or_int<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+fn deserialize_findings_opt<'de, D>(deserializer: D) -> std::result::Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrInt {
-        String(String),
-        Int(i64),
+    struct FindingsVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for FindingsVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string, integer, or null")
+        }
+
+        fn visit_none<E>(self) -> std::result::Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> std::result::Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_string<E>(self, value: String) -> std::result::Result<Self::Value, E> {
+            Ok(Some(value))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E> {
+            Ok(Some(value.to_string()))
+        }
     }
 
-    Ok(match Option::<StringOrInt>::deserialize(deserializer)? {
-        Some(StringOrInt::String(s)) => Some(s),
-        Some(StringOrInt::Int(i)) => Some(i.to_string()),
-        None => None,
-    })
+    deserializer.deserialize_any(FindingsVisitor)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +122,7 @@ pub struct SecurityReview {
     pub status: String,
     pub auditor: Option<String>,
     pub audited_at: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_optional_string_or_int")]
+    #[serde(default, deserialize_with = "deserialize_findings_opt")]
     pub findings: Option<String>,
     pub score: Option<f64>,
 }

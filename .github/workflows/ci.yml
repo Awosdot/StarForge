@@ -69,7 +69,7 @@ jobs:
         run: cargo clippy --all-features --locked -- -D warnings
 
   smoke:
-    name: CLI Smoke Tests
+    name: CLI Smoke Tests (Linux)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +78,35 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - name: Build
         run: cargo build --locked
+      - name: Cross-platform CLI Integration Tests
+        run: cargo test --test cli_cross_platform --locked
       - name: Rust smoke tests
         run: cargo test --test cli_smoke --locked
       - name: Shell smoke script
         run: bash scripts/e2e-smoke.sh
+
+  cli-macos:
+    name: macOS CLI Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build CLI
+        run: cargo build --locked
+      - name: Cross-platform CLI Integration Tests
+        run: cargo test --test cli_cross_platform --locked
+      - name: Rust smoke tests
+        run: cargo test --test cli_smoke --locked
+
+  cli-windows:
+    name: Windows CLI Tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build CLI
+        run: cargo build --locked
+      - name: Cross-platform CLI Integration Tests
+        run: cargo test --test cli_cross_platform --locked
+      - name: Rust smoke tests
+        run: cargo test --test cli_smoke --locked
