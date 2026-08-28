@@ -189,6 +189,8 @@ Coverage analysis tracks Soroban contract functions, line spans, branch paths, u
 | `template publish` | Publish template metadata |
 | `template remove <ID>` | Remove local template entry |
 
+When downloading template archives from a remote registry, the CLI automatically verifies the SHA-256 checksum if provided by the registry prior to extraction. Archives from registries that omit a checksum field are accepted without verification.
+
 ---
 
 ## `gas`
