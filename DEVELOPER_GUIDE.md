@@ -176,6 +176,9 @@ export STARFORGE_TELEMETRY=false
 export STARFORGE_CONFIG_DIR=~/.starforge-dev
 ```
 
+### Secret Redaction & Security Logging
+StarForge enforces centralized secret redaction via `crate::utils::redaction::redact_secrets`. Tracing output streams (`RUST_LOG`) and CLI error output streams automatically sanitize Stellar secret keys (`S...`), hex private keys, BIP-39 mnemonic seed phrases, auth tokens (`Bearer`, `ghp_`, `sk-`), signed XDR transaction payloads, and embedded URL credentials before output. Existing helper functions (`redact_public_key`, `redact_secret_value`, `redact_signed_xdr`) delegate to this centralized engine.
+
 ### Development Workflow
 
 ```bash
