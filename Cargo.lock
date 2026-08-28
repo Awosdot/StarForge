@@ -3641,6 +3641,7 @@ dependencies = [
  "hidapi",
  "hmac",
  "indicatif",
+ "libc",
  "libloading",
  "minijinja",
  "mockito",

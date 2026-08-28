@@ -601,8 +601,15 @@ fn build_issue_detection(entries: &[TemplateEntry], feedback: &[FeedbackEntry]) 
         }
         if let Some(sr) = &e.security_review {
             if let Some(findings) = &sr.findings {
-                if findings.len() > 0 {
-                    reasons.push(format!("{} unresolved security finding(s)", findings));
+                if let Ok(count) = findings.parse::<i32>() {
+                    if count > 0 {
+                        reasons.push(format!("{} unresolved security finding(s)", findings));
+                    }
+                } else if findings != "0"
+                    && !findings.eq_ignore_ascii_case("none")
+                    && !findings.is_empty()
+                {
+                    reasons.push(format!("Unresolved security findings: {}", findings));
                 }
             }
         }
@@ -928,9 +935,7 @@ mod tests {
             categories: vec![],
             featured: false,
             security_review: None,
-            changelog: Some(vec![]),
-            categories: Vec::new(),
-            featured: false,
+            changelog: None,
         }
     }
 
