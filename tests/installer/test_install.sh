@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+RED='\033[0;31m'; GREEN='\033[0;32m'
 RESET='\033[0m'; BOLD='\033[1m'
 pass() { echo -e "${GREEN}[PASS]${RESET} $1"; }
 fail() { echo -e "${RED}[FAIL]${RESET} $1"; FAILURES=$((FAILURES + 1)); }
