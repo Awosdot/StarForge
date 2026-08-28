@@ -92,6 +92,7 @@ pub mod governance;
 pub mod hardware_wallet;
 pub mod help_metadata;
 pub mod history;
+pub mod history_search;
 pub mod horizon;
 pub mod http_client;
 pub mod invocation_script;
