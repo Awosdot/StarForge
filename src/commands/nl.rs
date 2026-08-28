@@ -297,8 +297,8 @@ const STOP_WORDS: &[&str] = &[
     "after", "above", "below", "between", "out", "off", "over", "under", "again", "further",
     "then", "once", "and", "but", "or", "nor", "not", "so", "very", "just", "than", "too", "also",
     "here", "there", "when", "where", "why", "how", "all", "each", "every", "both", "few", "more",
-    "most", "other", "some", "such", "no", "only", "own", "same", "now", "if", "please", "me",
-    "want",
+    "most", "other", "some", "such", "no", "only", "own", "same", "now", "if", "please", "show",
+    "me", "want",
 ];
 
 /// Extracts entities from the natural language input.

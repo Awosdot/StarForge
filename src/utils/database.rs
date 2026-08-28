@@ -271,12 +271,10 @@ impl Database {
     /// Rollback a single migration within a transaction
     pub fn rollback_migration(&self, version: i64) -> Result<()> {
         let applied = self.get_applied_migrations()?;
+        let current_version = self.get_current_schema_version()?;
 
-        // Check if the migration is applied. Version 0 is the implicit
-        // baseline (the state before any migrations exist) and is always
-        // considered "applied" — it never gets a `schema_migrations` row
-        // because there's nothing to record for it.
-        if version != 0 && !applied.iter().any(|m| m.version == version) {
+        // Check if the migration is applied
+        if !applied.iter().any(|m| m.version == version) {
             return Err(anyhow::anyhow!(
                 "Migration version {} is not applied",
                 version
@@ -1451,12 +1449,11 @@ mod tests {
     #[test]
     fn migration_transaction_rollback_on_failure() {
         let db = in_memory_db();
-        // Set schema version to 0 and clear applied-migration bookkeeping to
-        // simulate an old database that hasn't run migration 1 yet.
+        // Set schema version to 0 to simulate an old database
         db.conn
-            .execute_batch(
-                "UPDATE meta SET value = '0' WHERE key = 'schema_version';
-                 DELETE FROM schema_migrations;",
+            .execute(
+                "UPDATE meta SET value = '0' WHERE key = 'schema_version'",
+                [],
             )
             .unwrap();
 
