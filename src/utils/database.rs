@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::sync::Arc;
+use thiserror::Error;
 
 pub fn db_path() -> PathBuf {
     crate::utils::config::config_dir().join("starforge.db")
@@ -22,7 +23,6 @@ pub trait Migration: Send + Sync {
 
     /// Apply the migration (upgrade)
     fn up(&self, conn: &Connection) -> Result<()>;
-
     /// Rollback the migration (downgrade)
     fn down(&self, conn: &Connection) -> Result<()>;
 }
@@ -45,14 +45,26 @@ pub struct MigrationResult {
 }
 
 /// Error types for migration operations
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MigrationError {
     AlreadyApplied(i64),
+
+    #[error("Migration version {0} not found")]
     NotFound(i64),
+
+    #[error("Cannot rollback: no migrations applied")]
     NothingToRollback,
+
+    #[error("Migration version {0} depends on unapplied version {1}")]
     MissingDependency(i64, i64),
+
+    #[error("Invalid migration sequence: versions must be consecutive")]
     InvalidSequence,
+
+    #[error("Database schema version {0} is not supported (minimum: {1}, maximum: {2})")]
     UnsupportedVersion(i64, i64, i64),
+
+    #[error("Migration failed: {0}")]
     MigrationFailed(String),
 }
 
@@ -239,7 +251,7 @@ impl Database {
             .get_migration(version)
             .ok_or_else(|| anyhow::anyhow!("Migration version {} not found", version))?;
 
-        let tx = self.conn.unchecked_transaction()?;
+        let mut tx = self.conn.unchecked_transaction()?;
 
         // Apply the migration
         match migration.up(&tx) {
@@ -300,7 +312,7 @@ impl Database {
             .get_migration(version)
             .ok_or_else(|| anyhow::anyhow!("Migration version {} not found", version))?;
 
-        let tx = self.conn.unchecked_transaction()?;
+        let mut tx = self.conn.unchecked_transaction()?;
 
         // Rollback the migration
         match migration.down(&tx) {
@@ -1160,12 +1172,10 @@ impl Migration for MigrationV1 {
     fn description(&self) -> &str {
         "initial_schema"
     }
-
     fn up(&self, conn: &Connection) -> Result<()> {
         // This is a no-op since the initial schema is already applied in SCHEMA
         Ok(())
     }
-
     fn down(&self, conn: &Connection) -> Result<()> {
         // Rollback: drop all tables, including the feature-flags tables
         // `initialize()` ships alongside the rest of the initial schema.

@@ -3644,6 +3644,7 @@ dependencies = [
  "stellar-strkey",
  "stellar-xdr",
  "tempfile",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-tungstenite",
  "toml",
