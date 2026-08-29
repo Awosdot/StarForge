@@ -11,6 +11,13 @@ fn starforge(home: &std::path::Path) -> Command {
     cmd.arg("-q");
     cmd.env("HOME", home);
     cmd.env("USERPROFILE", home);
+    // HOME / USERPROFILE alone do not isolate the CLI on Windows, where
+    // `dirs::home_dir()` resolves through SHGetKnownFolderPath(FOLDERID_Profile)
+    // and ignores both. Without this, every test in this file shares the one
+    // real config directory, and the tests that mutate networks concurrently
+    // clobber each other. Set explicitly rather than inherited so a
+    // STARFORGE_CONFIG_DIR already in the environment cannot deisolate the run.
+    cmd.env("STARFORGE_CONFIG_DIR", home.join(".starforge"));
     cmd
 }
 

@@ -172,7 +172,11 @@ fn test_cross_platform_config_dir_is_isolated_from_real_home() {
 /// `main` therefore runs the CLI on a thread with an explicit 8 MiB stack. This
 /// test lowers RLIMIT_STACK for the child to the Windows default so a
 /// regression fails here, on Linux CI, instead of only on the Windows job.
-#[cfg(unix)]
+///
+/// Linux only: macOS rejects `setrlimit(RLIMIT_STACK)` with EINVAL here, and it
+/// already gives the main thread 8 MiB, so it would add no coverage over the
+/// Linux job even if it were permitted.
+#[cfg(target_os = "linux")]
 #[test]
 fn test_cli_starts_under_windows_sized_main_stack() {
     use std::os::unix::process::CommandExt;
