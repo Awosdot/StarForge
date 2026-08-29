@@ -158,6 +158,60 @@ fn test_cross_platform_config_dir_is_isolated_from_real_home() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 1b. Startup Stack Budget
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Emulates the Windows main-thread stack budget on Unix.
+///
+/// Windows reserves 1 MiB for the process main thread; Linux and macOS reserve
+/// 8 MiB. Building this crate's clap command tree needs more than 1 MiB in a
+/// debug build, so every `starforge` invocation on Windows once died in
+/// `Cli::parse()` with STATUS_STACK_OVERFLOW (0xC00000FD) before running any
+/// command, while all three platforms looked fine locally.
+///
+/// `main` therefore runs the CLI on a thread with an explicit 8 MiB stack. This
+/// test lowers RLIMIT_STACK for the child to the Windows default so a
+/// regression fails here, on Linux CI, instead of only on the Windows job.
+#[cfg(unix)]
+#[test]
+fn test_cli_starts_under_windows_sized_main_stack() {
+    use std::os::unix::process::CommandExt;
+
+    const WINDOWS_DEFAULT_MAIN_STACK: u64 = 1024 * 1024;
+
+    for args in [vec!["--version"], vec!["--help"], vec!["info"]] {
+        let home = isolated_home();
+        let mut cmd = starforge_cmd(home.path());
+        cmd.args(&args);
+
+        // SAFETY: setrlimit is async-signal-safe and touches only this child
+        // between fork and exec.
+        unsafe {
+            cmd.pre_exec(|| {
+                let limit = libc::rlimit {
+                    rlim_cur: WINDOWS_DEFAULT_MAIN_STACK,
+                    rlim_max: WINDOWS_DEFAULT_MAIN_STACK,
+                };
+                if libc::setrlimit(libc::RLIMIT_STACK, &limit) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+
+        let output = cmd.output().expect("spawn with a 1 MiB main stack");
+        assert_success(
+            &output,
+            &format!(
+                "starforge {:?} with a {} MiB main stack (Windows default)",
+                args,
+                WINDOWS_DEFAULT_MAIN_STACK / (1024 * 1024)
+            ),
+        );
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 2. Filesystem & Path Boundary Tests
 // ─────────────────────────────────────────────────────────────────────────────
 

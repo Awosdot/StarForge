@@ -367,8 +367,38 @@ enum Commands {
 
 static OUTPUT_MODE_INIT: Once = Once::new();
 
+/// Stack reserved for the thread that actually runs the CLI.
+///
+/// Windows gives the process main thread a 1 MiB stack by default, where Linux
+/// and macOS give 8 MiB. Building this crate's clap command tree needs more
+/// than 1 MiB in a debug build, so on Windows *every* invocation -- including
+/// `--version` -- died in `Cli::parse()` with STATUS_STACK_OVERFLOW
+/// (0xC00000FD) before reaching any command. Measured floor is between 1 and
+/// 2 MiB; 8 MiB matches the Unix default and leaves room for the tree to grow.
+const MAIN_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+/// Exit code Rust uses when the main thread panics.
+const PANIC_EXIT_CODE: i32 = 101;
+
+fn main() {
+    // Run on an explicitly sized thread rather than the process main thread so
+    // the stack does not depend on the platform default. rustc does the same
+    // thing for the same reason.
+    let worker = std::thread::Builder::new()
+        .name("starforge-main".to_string())
+        .stack_size(MAIN_STACK_SIZE)
+        .spawn(run)
+        .expect("failed to spawn the starforge main thread");
+
+    if worker.join().is_err() {
+        // The panic hook has already reported the payload; mirror the exit code
+        // the runtime would have produced had this panicked on the main thread.
+        std::process::exit(PANIC_EXIT_CODE);
+    }
+}
+
 #[tokio::main]
-async fn main() {
+async fn run() {
     let cli = Cli::parse();
     OUTPUT_MODE_INIT.call_once(|| {});
     utils::output::set_json_mode(cli.json);
